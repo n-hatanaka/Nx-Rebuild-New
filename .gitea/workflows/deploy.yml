@@ -6,7 +6,7 @@ on:
 
 jobs:
   build:
-    runs-on: gitea_runner
+    runs-on: dotnet10
 
     steps:
       # 1. Gitea 内部からソースを取得（LAN 完結）
