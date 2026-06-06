@@ -2,7 +2,7 @@ name: Deploy NxRebuild
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
   build:
@@ -16,7 +16,14 @@ jobs:
       #      repository: akino/NxRebuild
       #      fetch-depth: 0
       #
-      
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Sync to NAS
+        run: |
+          # Runnerの最新ソースをNASへ強制同期
+          rsync -av --delete ./ /share/Dockerpython/WebPj/NxR_source/
+
       - name: Install Genuine Docker CLI
         run: |
           echo "=== Runnerの中に本物のDockerコマンドを叩き込みます ==="
