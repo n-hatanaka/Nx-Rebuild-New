@@ -6,7 +6,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: gitea_runner
 
     steps:
       # 1. Gitea 内部からソースを取得（LAN 完結）
