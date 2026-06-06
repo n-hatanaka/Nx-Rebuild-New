@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NxRebuild.Client</title>
+
+    <!-- ★ URLやポートが変わってもファイルを見失わないように相対パスに変更 -->
+    <base href="./" />
+
+    <!-- ★ MudBlazor の CSS（必須） -->
+    <link href="_content/MudBlazor/MudBlazor.min.css" rel="stylesheet" />
+
+    <!-- ★ Bootstrap（MudBlazor の前） -->
+    <link rel="stylesheet" href="lib/bootstrap/dist/css/bootstrap.min.css" />
+
+    <!-- ★ アプリ固有の CSS -->
+    <link rel="stylesheet" href="css/app.css" />
+
+    <!-- ★ PWA 関連 -->
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="apple-touch-icon" sizes="512x512" href="icon-512.png" />
+    <link rel="apple-touch-icon" sizes="192x192" href="icon-192.png" />
+</head>
+
+<body>
+    <div id="app">
+        <svg class="loading-progress">
+            <circle r="40%" cx="50%" cy="50%" />
+            <circle r="40%" cx="50%" cy="50%" />
+        </svg>
+        <div class="loading-progress-text"></div>
+    </div>
+
+    <div id="blazor-error-ui">
+        An unhandled error has occurred.
+        <a href="." class="reload">Reload</a>
+        <span class="dismiss">🗙</span>
+    </div>
+
+    <!-- ★ 1. Blazorが動く前に必要な自前スクリプトを先に読み込ませる（頭の / を削除） -->
+    <script src="js/mdi.js"></script>
+    <script src="localstorage.js"></script>
+
+    <!-- ★ 2. Blazor 本体（すべての土台） -->
+    <script src="_framework/blazor.webassembly.js"></script>
+
+    <!-- ★ 3. Blazorの後に MudBlazor のJSを合流させる -->
+    <script src="_content/MudBlazor/MudBlazor.min.js"></script>
+
+    <!-- ★ 4. その他周辺スクリプト -->
+    <script src="_content/Bootstrap/js/bootstrap.bundle.min.js"></script>
+
+    <!-- ★ 5. Service Worker -->
+    <script>
+        navigator.serviceWorker.register('service-worker.js', { updateViaCache: 'none' });
+    </script>
+</body>
+</html>

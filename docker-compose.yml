@@ -1,0 +1,41 @@
+services:
+  # dotnet:
+  #     image: mcr.microsoft.com/dotnet/sdk:8.0
+  #     container_name: dotnet_dev
+  #     volumes:
+  #       - /share/Dockerpython/WebPj/NxR_source/CS_SRC/publish:/app
+  #     working_dir: /app
+  #     tty: true # コンテナを落とさず起動させ続けるため
+  #     stdin_open: true
+  #     environment:
+  #       - DOTNET_USE_POLLING_FILE_WATCHER=1
+  #     networks:
+  #       qnet-static-eth0-6fc1a0:
+  #         ipv4_address: ${DOTNET_IP}
+
+  nx-app:
+      image: mcr.microsoft.com/dotnet/aspnet:8.0 # 実行専用の軽量イメージ
+      container_name: nxr_app
+      volumes:
+        - /share/Dockerpython/WebPj/NxR_source/CS_SRC/publish:/app
+        # デバッガ用
+        - /share/Dockerpython/WebPj/vsdbg:/remote_debugger:ro
+      restart: unless-stopped
+      ports:
+        - ${NXR_PORTS} 
+      working_dir: /app
+      environment:
+        - ASPNETCORE_URLS=http://+:8080
+        - ASPNETCORE_ENVIRONMENT=Development
+        - DB_NAME=nx_db
+        - DB_HOST=${DB_HOST_IP} # ポスグレのIP
+        - DB_PORT=${DB_HOST_PORT} 
+        - DB_USER=${DB_USER}
+        - DB_PASS=${DB_PASSWORD}
+      networks:
+        qnet-static-eth0-6fc1a0:
+          ipv4_address: ${NXR_IP}
+
+networks:
+  qnet-static-eth0-6fc1a0:
+    external: true

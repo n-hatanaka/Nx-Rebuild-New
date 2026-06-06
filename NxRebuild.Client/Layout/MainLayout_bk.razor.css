@@ -1,0 +1,18 @@
+/*.topbar-mobile {
+    display: none;
+}*/
+
+/* スマホ幅（例: 640px以下）で表示 */
+/*@media (max-width: 640px) {
+    .topbar-mobile {
+        display: block;
+        padding: 0.5rem;
+        background: #333;
+        color: white;
+    }*/
+
+    /* スマホ時はサイドバーのウィンドウボタンを隠す */
+    /*.nav-item .mdi-btn-reset {
+        display: none;
+    }
+}*/

@@ -1,0 +1,125 @@
+﻿@inherits LayoutComponentBase
+@inject IJSRuntime JS
+@using MudBlazor
+@using NxRebuild.Client.Pages.NxPrograms.MDI
+@inject WindowManagerBase Manager
+
+<MudThemeProvider />
+<MudPopoverProvider />
+
+<MudDrawerContainer>
+
+    <!-- ▼ Drawer（スマホではスライド、PCでは固定） -->
+    <MudDrawer @bind-Open="_drawerOpen"
+               Variant="DrawerVariant.Responsive"
+               Elevation="1"
+               Anchor="Anchor.Left">
+
+        <NavMenu />
+    </MudDrawer>
+
+    <!-- ▼ メインコンテンツ -->
+    <MudMainContent>
+
+        <!-- トップバー（スマホ用） -->
+        <div class="topbar-mobile">
+            <MudIconButton Icon="@Icons.Material.Filled.Menu"
+                           Color="Color.Inherit"
+                           OnClick="ToggleDrawer" />
+
+            <MudMenu Label="ウィンドウ" Color="Color.Primary">
+                @if (Manager.Windows.Count == 0)
+                {
+                    <MudMenuItem Disabled="true">ウィンドウなし</MudMenuItem>
+                }
+                else
+                {
+                    @foreach (var w in Manager.Windows)
+                    {
+                        <MudMenuItem OnClick="@(() => Manager.Restore(w.Id))">
+                            @w.Title @(w.IsMinimized ? "(最小化)" : "")
+                        </MudMenuItem>
+                    }
+                }
+            </MudMenu>
+        </div>
+
+        <!-- トップバー（PC用） -->
+        <div class="topbar">
+            <MudMenu Label="ウィンドウ" Color="Color.Primary">
+                @if (Manager.Windows.Count == 0)
+                {
+                    <MudMenuItem Disabled="true">ウィンドウなし</MudMenuItem>
+                }
+                else
+                {
+                    @foreach (var w in Manager.Windows)
+                    {
+                        <MudMenuItem OnClick="@(() => Manager.Restore(w.Id))">
+                            @w.Title @(w.IsMinimized ? "(最小化)" : "")
+                        </MudMenuItem>
+                    }
+                }
+            </MudMenu>
+        </div>
+
+        <main>
+            <article class="content px-4">
+                @Body
+            </article>
+        </main>
+
+    </MudMainContent>
+
+</MudDrawerContainer>
+
+<style>
+    .topbar {
+        padding: 0.5rem;
+        background: #333;
+        color: white;
+    }
+
+    /* スマホ用トップバー */
+    .topbar-mobile {
+        display: none;
+        padding: 0.5rem;
+        background: #333;
+        color: white;
+    }
+
+    /* スマホ時に Drawer を使い、PC時は固定サイドバー */
+    @@media (max-width: 640px) {
+        .topbar-mobile {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .topbar {
+            display: none;
+        }
+    }
+</style>
+
+@code {
+    bool _drawerOpen;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var openedBefore = await JS.InvokeAsync<string>("localStore.get", "drawerOpened");
+
+        if (string.IsNullOrEmpty(openedBefore))
+        {
+            _drawerOpen = true; // 初回だけ開く
+            await JS.InvokeVoidAsync("localStore.set", "drawerOpened", "1");
+        }
+    }
+    void ToggleDrawer()
+    {
+        _drawerOpen = !_drawerOpen;
+    }
+
+
+}
+

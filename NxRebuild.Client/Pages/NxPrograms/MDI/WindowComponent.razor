@@ -1,0 +1,156 @@
+﻿@using Microsoft.AspNetCore.Components
+@inject IJSRuntime JS
+
+<style>
+    .mdi-window {
+        position: fixed;
+        background: white;
+        border: 1px solid #ccc;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        z-index: 9999;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+
+    .mdi-titlebar {
+        height: 32px;
+        background: #eee;
+        display: flex;
+        align-items: center;
+        padding: 0 8px;
+        cursor: move;
+        flex-shrink: 0;
+    }
+
+    .mdi-content {
+        flex: 1;
+        min-height: 0;
+        min-width: 0;
+        overflow: auto;
+        display: flex;
+    }
+
+    .mdi-buttons {
+        margin-left: auto;
+        display: flex;
+        gap: 4px;
+    }
+
+    .mdi-btn {
+        width: 24px;
+        height: 24px;
+        border: none;
+        background: transparent;
+        cursor: pointer;
+        font-size: 14px;
+    }
+
+    .mdi-resizer {
+        width: 12px;
+        height: 12px;
+        background: transparent;
+        position: absolute;
+        right: 0;
+        bottom: 0;
+        cursor: se-resize;
+    }
+</style>
+
+@if (!Info.IsMinimized)
+{
+    <div @ref="windowRef"
+         class="mdi-window"
+         style="
+        left:@Info.Xpx;
+        top:@Info.Ypx;
+        width:@Info.Wpx;
+        height:@Info.Hpx;
+        z-index:@Info.Z;"
+         @onclick="() => Manager.BringToFront(Info)">
+
+        <div class="mdi-titlebar">
+            <span>@Info.Title</span>
+            <div class="mdi-buttons">
+                <button class="mdi-btn" @onclick="Minimize">＿</button>
+                <button class="mdi-btn" @onclick="ToggleMaximize">□</button>
+                <button class="mdi-btn" @onclick="() => Manager.Close(Info.Id)">✕</button>
+            </div>
+        </div>
+
+        <div class="mdi-content">
+            <DynamicComponent Type="Info.ComponentType" Parameters="Info.Parameters" />
+        </div>
+
+        <div class="mdi-resizer"></div>
+    </div>
+}
+
+
+@code {
+    [Parameter] public WindowInfo Info { get; set; } = default!;
+    [Parameter] public WindowManagerBase Manager { get; set; } = default!;
+
+    private ElementReference windowRef;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {            
+            var dotNetRef = DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("mdi.initDrag", windowRef, dotNetRef);
+            await JS.InvokeVoidAsync("mdi.initResize", windowRef, dotNetRef);
+        }
+    }
+
+    [JSInvokable]
+    public void UpdatePosition(double x, double y)
+    {
+        Info.X = x;
+        Info.Y = y;
+    }
+
+    [JSInvokable]
+    public void UpdateSize(double w, double h)
+    {
+        Info.Width = w;
+        Info.Height = h;
+    }
+
+    //最大化 / 復元の C# ロジック
+    private void ToggleMaximize()
+    {
+        if (!Info.IsMaximized)
+        {
+            // 現在の位置とサイズを保存
+            Info.PrevX = Info.X;
+            Info.PrevY = Info.Y;
+            Info.PrevWidth = Info.Width;
+            Info.PrevHeight = Info.Height;
+
+            // 最大化
+            Info.X = 0;
+            Info.Y = 0;
+            Info.Width = Manager.ScreenWidth;
+            Info.Height = Manager.ScreenHeight;
+
+            Info.IsMaximized = true;
+        }
+        else
+        {
+            // 元に戻す
+            Info.X = Info.PrevX;
+            Info.Y = Info.PrevY;
+            Info.Width = Info.PrevWidth;
+            Info.Height = Info.PrevHeight;
+
+            Info.IsMaximized = false;
+        }
+    }
+
+    private void Minimize()
+    {
+        Info.IsMinimized = true;
+    }
+
+}

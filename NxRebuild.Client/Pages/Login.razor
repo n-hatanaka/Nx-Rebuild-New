@@ -1,0 +1,61 @@
+﻿@page "/login"
+@using Microsoft.AspNetCore.Components.Authorization;
+@using System.Security.Claims;
+@using NxRebuild.Client.Pages.Auth
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthProvider
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+<h3>ログイン</h3>
+
+<div>
+    <label>Email</label>
+    <input @bind="Email" />
+</div>
+
+<div>
+    <label>Password</label>
+    <input type="password" @bind="Password" />
+</div>
+
+<button @onclick="DoLogin">ログイン</button>
+
+@code {
+    string Email = "";
+    string Password = "";
+    private string? ErrorMessage;
+
+    private async Task DoLogin()
+    {
+        var result = await Http.PostAsJsonAsync("auth/login", new { Email, Password });
+
+        if (!result.IsSuccessStatusCode)
+        {
+            ErrorMessage = "ログイン失敗";
+            return;
+        }
+
+        var json = await result.Content.ReadFromJsonAsync<LoginResponse>();
+
+        // JWT を sessionStorage に保存
+        await JS.InvokeVoidAsync("sessionStorage.setItem", "authToken", json!.token);
+
+        // GroupCode 保存
+        await JS.InvokeVoidAsync("sessionStorage.setItem", "group_code", json!.GroupCode);
+
+        // JWT を AuthStateProvider に通知
+        var provider = (CustomAuthStateProvider)AuthProvider;
+        provider.NotifyUserAuthentication(json.token);
+
+        // ホームへ
+        Nav.NavigateTo("/Home");
+    }
+
+    public class LoginResponse
+    {
+        public string token { get; set; }
+        public string GroupCode { get; set; }
+    }
+
+}

@@ -1,0 +1,210 @@
+@using MudBlazor
+@using NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View
+
+<style>
+    /* 画面全体のレイアウト（左右並び・隙間・高さ） */
+    .app-container {
+        display: flex;
+        flex-direction: row;
+        gap: 10px;
+        flex: 1; /* ← ウインドウに合わせて伸縮 */
+        min-height: 0; /* ← はみ出し防止 */
+        min-width: 0;
+        width: 100%; /* ← これで flex の誤判定を完全に防ぐ */
+        overflow: hidden;
+        color: black;
+
+        padding: 5px; /* ← 上下左右すべてに余白 */
+        box-sizing: border-box;
+    }
+
+    /* 画面が狭い時のレスポンシブ制御（上下並び替え、器の大きさ調整） */
+    @@media (max-width: 700px) {
+        .app-container {
+            flex-direction: column;
+        }
+
+        .tree-pane {
+            flex: 0 0 25% !important;
+            width: 100% !important;
+            max-height: 25% !important;
+        }
+
+        .grid-pane {
+            flex: 1 !important;
+            width: 100% !important;
+        }
+    }
+
+    /* スクロール領域の基本枠（中身の配置とスクロール可否） */
+    .scroll-pane {
+        background-color: white;
+        border: 1px solid #ccc;
+        padding: 10px;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        overflow-y: auto;
+        overflow-x: auto;
+    }
+
+    .tree-pane {
+        flex: 0 0 300px;
+        min-width: 250px;
+        min-height: 0; /* ← 必須 */
+    }
+
+    .grid-pane {
+        flex: 2;
+        min-width: 0;
+        min-height: 0; /* ← 必須 */
+    }
+</style>
+
+<div class="app-container">
+    @* A. ツリーコンポーネント (イベント処理を外部結合) *@
+    <MyTreeView TreeData="TreeData"
+                OnNodeSelected="HandleNodeSelection"
+                OnNodeDropped="HandleNodeDrop" />
+
+    @* B. グリッドコンポーネント (イベント処理を外部結合) *@
+    @* ソート機能を無効化する場合（AllowSorting="false" を渡す） *@
+    <MyGridView GridDataItems="GridDataItems"
+                Columns="Columns"
+                AllowSorting="true"
+                OnRowClicked="HandleGridClick"
+                OnRowDoubleClicked="HandleGridDoubleClick"
+                OnRowDropped="HandleGridReorder"
+                OnSortRequested="HandleSortRequest" />
+</div>
+
+@code {
+
+
+    
+    [Parameter] public EventCallback<(MyDataObj Item, MouseEventArgs Args)> OnRowClicked { get; set; } // 行クリックイベントコールバック
+    [Parameter] public EventCallback<MyDataObj> OnRowDoubleClicked { get; set; } // 行ダブルクリックイベントコールバック
+    [Parameter] public EventCallback<(int TargetIndex, MyDataObj? DraggedItem)> OnRowDropped { get; set; } // 行ドロップイベントコールバック
+    [Parameter] public EventCallback<(string Key, bool IsAscending)> OnSortRequested { get; set; } // ソートリクエストイベントコールバック
+
+    // ツリーデータ
+    private List<MyTreeData> TreeData = new();
+
+    // グリッド列定義
+    private List<GridColumn> Columns { get; set; } = new();
+
+    // グリッドデータリスト
+    private List<MyDataObj> GridDataItems { get; set; } = new();
+
+    // コンポーネント初期化
+    protected override void OnInitialized()
+    {
+        var root = new MyTreeData { Text = "プロジェクトRoot", IsExpanded = true };
+        root.Children.Add(new MyTreeData { Text = "配合データ" });
+        TreeData.Add(root);
+
+        Columns = new List<GridColumn> {
+            new GridColumn { Caption = "区分", DataKey = "Category", AlignClass = "grid-cell-left", Format = "0", Width = 100 },
+            new GridColumn { Caption = "数値 (kg)", DataKey = "Value", AlignClass = "grid-cell-right", Format = "0.0", Width = 100 }
+        };
+
+        GridDataItems.Add(new MyDataObj
+        {
+            Name = "zairyou",
+            ExtraData = new Dictionary<string, object> { { "Category", 1 }, { "Value", 2000 } }
+        });
+
+        GridDataItems.Add(new MyDataObj
+        {
+            Name = "zairyou2",
+            ExtraData = new Dictionary<string, object> { { "Category", 2 }, { "Value", 3000 } }
+        });
+    }
+
+    // ノード選択イベントハンドラ
+    private void HandleNodeSelection(MyTreeData selectedNode)
+    {
+        Console.WriteLine($"フォルダ選択: {selectedNode.Text}");
+    }
+
+    // ノードドラッグドロップイベントハンドラ
+    private void HandleNodeDrop((MyTreeData Target, MyDataObj? DroppedItem, MyTreeData? DroppedNode) payload)
+    {
+        if (payload.DroppedItem != null)
+        {
+            payload.Target.Children.Add(new MyTreeData { Text = payload.DroppedItem.Name });
+        }
+        else if (payload.DroppedNode != null)
+        {
+            if (payload.DroppedNode == payload.Target || IsDescendantNode(payload.DroppedNode, payload.Target)) return;
+            RemoveNodeFromAll(TreeData, payload.DroppedNode);
+            payload.Target.Children.Add(payload.DroppedNode);
+        }
+
+        DraggingState.DraggingGridItem = null;
+        DraggingState.DraggingTreeNode = null;
+        StateHasChanged();
+    }
+
+    // グリッド行クリックイベントハンドラ
+    private void HandleGridClick((MyDataObj Item, MouseEventArgs Args) payload)
+    {
+        if (!payload.Args.CtrlKey)
+        {
+            foreach (var i in GridDataItems) i.IsSelected = false;
+        }
+        payload.Item.IsSelected = true;
+    }
+
+    // グリッド行ダブルクリックイベントハンドラ
+    private void HandleGridDoubleClick(MyDataObj item)
+    {
+        Console.WriteLine($"グリッド行がダブルクリックされました: {item.Name}");
+    }
+
+    // グリッド行再配置イベントハンドラ
+    private void HandleGridReorder((int TargetIndex, MyDataObj? DraggedItem) payload)
+    {
+        if (payload.DraggedItem == null) return;
+
+        var idx = GridDataItems.IndexOf(payload.DraggedItem);
+        if (idx != -1)
+        {
+            GridDataItems.RemoveAt(idx);
+            GridDataItems.Insert(payload.TargetIndex, payload.DraggedItem);
+        }
+
+        DraggingState.DraggingGridItem = null;
+    }
+
+    //ソートリクエストイベントハンドラ
+    private async Task HandleSortRequest((string Key, bool IsAscending) payload)
+    {
+        //ソートを外部結合
+        await OnSortRequested.InvokeAsync(payload);
+    }
+
+    // 親ノードが子孫ノードであるかどうかチェック
+    private bool IsDescendantNode(MyTreeData parent, MyTreeData potentialDescendant)
+    {
+        if (parent == potentialDescendant) return true;
+
+        foreach (var child in parent.Children)
+        {
+            if (IsDescendantNode(child, potentialDescendant)) return true;
+        }
+
+        return false;
+    }
+
+    // 指定されたノードとその子孫からリストから削除
+    private void RemoveNodeFromAll(List<MyTreeData> list, MyTreeData node)
+    {
+        if (list.Remove(node)) return;
+
+        foreach (var n in list)
+        {
+            RemoveNodeFromAll(n.Children, node);
+        }
+    }
+}

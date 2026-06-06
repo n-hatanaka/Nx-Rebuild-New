@@ -1,0 +1,619 @@
+Table GenerationsItem {
+  ID integer [primary key]
+  Generation varchar
+  OlderMin integer
+  OlderMax integer
+  note: "世代・年齢区分マスター"
+}
+
+// Use colors to group related tables
+Table ActivityLevel {
+  older_min float [note: '年齢別の活動レベル（下限）']
+  older_max float
+  Sex int
+  activityLevel int
+  preg int
+  Val float
+}
+
+// 身体活動レベルの定義
+Table ActLevel {
+  ActivityLevel int [note: '身体活動区分']
+  ActivityVal int [note: '身体活動レベル代表値']
+  Oldermin int [note: '対象年齢下限']
+  Oldermax int [note: '対象年齢上限']
+  AVmin int [note: '身体活動レベル下限']
+  AVmax int [note: '身体活動レベル上限']
+  Combo varchar [note: 'コンボボックス用']
+  PrtCaption varchar
+  caption varchar [note: '説明']
+}
+
+Table BaseWeightC {
+  older_min float
+  older_max float
+  Sex int
+  a float [note: '推定平均必要量']
+  b float [note: '推奨量']
+}
+
+// 基礎代謝基準値
+Table BMStandardVal {
+  older_min float [note: '表6の数値']
+  older_max float
+  Sex int
+  preg int
+  BMBase float [note: '基礎代謝基準値(kcal/体重kg/日)']
+  Val float [note: '基礎代謝量(kcal)=基礎代謝基準値＊参照体重 1の位切り上げ']
+}
+
+// 分類・名称定義系
+Table gun_m {
+  jun int
+  dai_cd int
+  dai_name varchar
+  syou_cd int
+  syou_name varchar
+}
+
+Table ColName {
+  Group_ID uuid
+  No int [increment, note: 'オートナンバー型']
+  SortNo int
+  Col varchar
+  Name varchar
+  Format varchar
+  Digit int
+  Visible boolean
+  Nutrition boolean
+  PName1 varchar
+  PName2 varchar
+  PName3 varchar
+  PTanni varchar
+  indexes {
+    (Group_ID, No) [pk]
+  }
+}
+
+Table IBColName {
+  Group_ID uuid
+  No integer [increment, note: 'オートナンバー型']
+  SortNo integer [note: '並び順']
+  Col varchar [note: '列識別子']
+  egNpCol varchar
+  Name varchar [note: '項目名称']
+  Format varchar [note: '表示書式']
+  Digit integer [note: '桁数']
+  ForEnergy integer
+  Visible boolean [note: '表示フラグ']
+  PName1 varchar
+  PName2 varchar
+  PName3 varchar
+  PTanni varchar [note: '単位']
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量（0=目標, 1=目標未満, 2=目標以上, 3=目標以上 目標未満）']
+  UL float [note: '耐容上限量']
+  DG float [note: '目標量']
+  GoalUL float
+  PregCalc integer [note: '妊婦数値計算フラグ（0=加算, 1=交換）']
+  
+  indexes {
+    (Group_ID, No) [pk]
+  }
+}
+
+// 体重増加量基準
+Table IncWeight {
+  older_min float [note: '表10']
+  older_max float
+  Sex int
+  Val float [note: '体重増加量(kg/年)']
+}
+
+// 妊婦区分マスター
+Table PregItem {
+  Preg int [pk]
+  Caption varchar
+}
+
+// たんぱく質（Protein）基礎係数
+Table ProBase {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean
+  preg int
+  C float [note: '体たんぱく質(%)']
+  E float [note: '蓄積効率(%)']
+  F float [note: '維持必要量']
+  G float [note: '利用効率(%)']
+}
+
+
+// 蓄積エネルギー関連（妊婦・授乳婦用など）
+Table StoreUpEnergy {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  DeEnergy float [note: 'エネルギー密度(kcal／g)']
+  UpEnergy float [note: 'エネルギー蓄積量(kcal／日)']
+}
+
+Table Ene {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table Pro {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table ProEne {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table Lip {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table Sat {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table Car {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table Tot {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table Ere {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table ViD {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table ToA {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table ViK {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table VB1 {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table VB2 {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table Nia {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table VB6 {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+// ビタミンB12（または栄養素一般）の基準値
+Table B12 {
+  older_min int
+  older_max int
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table Fol {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+Table Pan {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+Table Bio {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table ViC {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table Nat {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table Esa {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table Kal {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table Cal {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table Mag {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table Pho {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table Iro {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table Zin {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table Cop {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table Man {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table Iod {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table Sel {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table Chr {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table Mol {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+

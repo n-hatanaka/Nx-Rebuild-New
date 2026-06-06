@@ -1,0 +1,90 @@
+﻿@* @using Microsoft.AspNetCore.Components.Authorization
+@using MudBlazor
+@using NxRebuild.Client.Pages.NxPrograms.MDI
+@inject WindowManagerBase Manager
+
+<!-- ▼ サイドバー（MudMenu を入れない） -->
+<div class="@NavMenuCssClass nav-scrollable">
+    <!-- ★ トップバーは main の中に置く（これが重要） -->
+<nav class="nav flex-column">
+<div class="nav-item px-3">
+            <button class="nav-link w-100 text-start border-0 bg-transparent mdi-btn-reset" 
+                    @onclick="@(() => _menuOpen = !_menuOpen)">
+                <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span>
+                <span class="flex-grow-1">ウィンドウ (@Manager.Windows.Count)</span>
+            </button>
+
+            @* 実際のメニュー。ボタンの位置を狙って Popover を飛ばす 
+            <MudMenu @bind-Open="_menuOpen"
+                     AnchorOrigin="Origin.BottomRight"
+                     TransformOrigin="Origin.TopLeft"
+                     Style="display:none;"
+                     PopoverClass="mdi-window-popover">
+                @if (Manager.Windows.Count == 0)
+                {
+                    <MudMenuItem Disabled="true">ウィンドウなし</MudMenuItem>
+                }
+                else
+                {
+                    @foreach (var w in Manager.Windows)
+                    {
+                        <MudMenuItem OnClick="@(() => Manager.Restore(w.Id))">
+                            @w.Title @(w.IsMinimized ? "(最小化)" : "")
+                        </MudMenuItem>
+                    }
+                }
+            </MudMenu>
+        </div>
+
+        <AuthorizeView>
+            <Authorized>
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
+                        <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> Home
+                    </NavLink>
+                </div>
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="counter">
+                        <span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true"></span> Counter
+                    </NavLink>
+                </div>
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="weather">
+                        <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Weather
+                    </NavLink>
+                </div>
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="logout">
+                        <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> ログアウト
+                    </NavLink>
+                </div>
+            </Authorized>
+
+            <NotAuthorized>
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="login">
+                        <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> ログイン
+                    </NavLink>
+                </div>
+            </NotAuthorized>
+        </AuthorizeView>
+    </nav>
+</div>
+
+@code {
+    private bool _menuOpen;
+
+    private bool collapseNavMenu = true;
+
+    private string? NavMenuCssClass => collapseNavMenu ? "collapse" : null;
+
+    protected override void OnInitialized()
+    {
+        Manager.OnWindowsChanged += StateHasChanged;
+    }
+
+    private void ToggleNavMenu()
+    {
+        collapseNavMenu = !collapseNavMenu;
+    }
+} *@

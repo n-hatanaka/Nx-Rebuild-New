@@ -1,0 +1,108 @@
+﻿@using Microsoft.AspNetCore.Components.Authorization
+@inherits LayoutComponentBase
+@inject IJSRuntime JS
+@using MudBlazor
+@using NxRebuild.Client.Pages.NxPrograms.MDI
+@inject WindowManagerBase Manager
+
+<MudThemeProvider />
+<MudPopoverProvider />
+
+<MudLayout>
+
+    <!-- AppBar -->
+    <MudPaper Class="d-flex align-center"
+              Style="
+        width:100vw;
+        height:64px;
+        background-color:var(--mud-palette-primary);
+        color:white;
+        position:fixed;
+        top:0;
+        left:0;
+        overflow: visible;
+        z-index:1201;
+        "
+              Elevation="4">
+
+        <MudButton Color="Color.Inherit"
+                   Class="ml-4"
+                   StartIcon="@Icons.Material.Filled.Menu"
+                   OnClick="@ToggleDrawer">
+            メニュー
+        </MudButton>
+
+        <MudSpacer />
+
+        <div @ref="_windowActivator" style="position: relative;">
+            <MudButton Color="Color.Inherit"
+                       EndIcon="@Icons.Material.Filled.ArrowDropDown"
+                       OnClick="@ToggleWindowMenu">
+                ウィンドウ
+            </MudButton>
+
+            <MudPopover Open="_windowMenuOpen"
+                        Activator="_windowActivator"
+                        Fixed="true"
+                        CloseOnOutsideClick="true"
+                        AnchorOrigin="Origin.BottomCenter"
+                        TransformOrigin="Origin.TopCenter"
+                        Class="pa-0">
+                <MudPaper Elevation="4" Style="min-width:120px;">
+                    <MudList T="string" Dense="true">
+                        @if (Manager.Windows.Count == 0)
+                        {
+                            <MudListItem Text="ウィンドウなし" />
+                        }
+                        else
+                        {
+                            @foreach (var w in Manager.Windows)
+                            {
+                                <MudListItem OnClick="@(() => Manager.Restore(w.Id))">
+                                    @w.Title @(w.IsMinimized ? "(最小化)" : "")
+                                </MudListItem>
+                            }
+                        }
+                    </MudList>
+                </MudPaper>
+            </MudPopover>
+        </div>
+    </MudPaper>
+
+    <!-- Drawer -->
+    <MudDrawer @bind-Open="_drawerOpen"
+               Variant="DrawerVariant.Persistent"
+               Style="margin-top: 64px;"
+               Elevation="1">
+        <MudNavMenu>
+            <AuthorizeView>
+                <Authorized>
+                    <MudText Typo="Typo.h6" Class="px-4">Material</MudText>
+                    <MudText Typo="Typo.body2" Class="px-4 mud-text-secondary">Icons</MudText>
+                    <MudDivider Class="my-2" />
+
+                    <MudNavLink Href="logout" Icon="@Icons.Material.Filled.Dashboard">ログアウト</MudNavLink>
+                </Authorized>
+
+                <NotAuthorized>
+                    <MudNavLink Href="login" Icon="@Icons.Material.Filled.Dashboard">ログイン</MudNavLink>
+                </NotAuthorized>
+            </AuthorizeView>
+        </MudNavMenu>
+    </MudDrawer>
+
+    <!-- Main Content -->
+    <MudMainContent Style="padding-top: 64px;">
+            @Body
+    </MudMainContent>
+
+</MudLayout>
+
+@code {
+    private ElementReference _windowActivator;
+    private bool _windowMenuOpen = false;
+    private bool _drawerOpen = true;
+
+    private void ToggleWindowMenu() => _windowMenuOpen = !_windowMenuOpen;
+    private void ToggleDrawer() => _drawerOpen = !_drawerOpen;
+}

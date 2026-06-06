@@ -1,0 +1,22 @@
+﻿@page "/logout"
+@using Microsoft.AspNetCore.Components.Authorization;
+@using System.Security.Claims;
+@using NxRebuild.Client.Pages.Auth
+@inject AuthenticationStateProvider AuthProvider
+@inject NavigationManager Nav
+
+@inject IJSRuntime JS
+@inject AuthenticationStateProvider AuthProvider
+@inject NavigationManager Nav
+
+<h3>ログアウト中...</h3>
+
+
+@code {
+    protected override async Task OnInitializedAsync()
+    {
+        await JS.InvokeVoidAsync("sessionStorage.removeItem", "authToken");
+        ((CustomAuthStateProvider)AuthProvider).NotifyUserLogout();
+        Nav.NavigateTo("/");
+    }
+}

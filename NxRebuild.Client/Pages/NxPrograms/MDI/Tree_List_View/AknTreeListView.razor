@@ -1,0 +1,110 @@
+﻿@inherits AknTreeListViewBase
+@using MudBlazor
+
+<style>
+    /* 画面全体のレイアウト（左右並び・隙間・高さ） */
+    .app-container {
+        display: flex;
+        flex-direction: row;
+        gap: 10px;
+        flex: 1; /* ← ウインドウに合わせて伸縮 */
+        min-height: 0; /* ← はみ出し防止 */
+        min-width: 0;
+        width: 100%; /* ← これで flex の誤判定を完全に防ぐ */
+        overflow: hidden;
+        color: black;
+        padding: 5px; /* ← 上下左右すべてに余白 */
+        box-sizing: border-box;
+    }
+
+    /* 画面が狭い時のレスポンシブ制御（上下並び替え、器の大きさ調整） */
+    @@media (max-width: 700px) {
+        .app-container {
+            flex-direction: column;
+        }
+
+        .tree-pane {
+            flex: 0 0 25% !important;
+            width: 100% !important;
+            max-height: 25% !important;
+        }
+
+        .grid-pane {
+            flex: 1 !important;
+            width: 100% !important;
+        }
+    }
+
+    /* スクロール領域の基本枠（中身の配置とスクロール可否） */
+    .scroll-pane {
+        background-color: white;
+        border: 1px solid #ccc;
+        padding: 10px;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        overflow-y: auto;
+        overflow-x: auto;
+    }
+
+    .tree-pane {
+        flex: 0 0 300px;
+        min-width: 250px;
+        min-height: 0; /* ← 必須 */
+    }
+
+    .grid-pane {
+        flex: 2;
+        min-width: 0;
+        min-height: 0; /* ← 必須 */
+    }
+</style>
+
+<div class="app-container">
+    @* A. ツリーコンポーネント (イベント処理を外部結合) *@
+    <AknTreeView TreeData="TreeData"
+                OnNodeSelected="HandleNodeSelection"
+                OnNodeDropped="HandleNodeDrop"
+                @ref = "_treeview"/>
+
+    @* B. グリッドコンポーネント (イベント処理を外部結合) *@
+    @* ソート機能を無効化する場合（AllowSorting="false" を渡す） *@
+    <AknListView ListDataItems="GridDataItems"
+                Columns="Columns"
+                AllowSorting="true"
+                OnRowClicked="HandleGridClick"
+                OnRowDoubleClicked="HandleGridDoubleClick"
+                OnRowDropped="HandleGridReorder"
+                OnSortRequested="HandleSortRequest"
+                @ref = "_listview"/>
+</div>
+
+@code {
+
+
+    // コンポーネント初期化
+    protected override void OnInitialized()
+    {
+        var root = new MyTreeData { Text = "プロジェクトRoot", IsExpanded = true };
+        root.Children.Add(new MyTreeData { Text = "配合データ" });
+        TreeData.Add(root);
+
+        Columns = new List<GridColumn> {
+            new GridColumn { Caption = "区分", DataKey = "Category", AlignClass = "grid-cell-left", Format = "0", Width = 100 },
+            new GridColumn { Caption = "数値 (kg)", DataKey = "Value", AlignClass = "grid-cell-right", Format = "0.0", Width = 100 }
+        };
+
+        GridDataItems.Add(new MyDataObj
+        {
+            Name = "zairyou",
+            ExtraData = new Dictionary<string, object> { { "Category", 1 }, { "Value", 2000 } }
+        });
+
+        GridDataItems.Add(new MyDataObj
+        {
+            Name = "zairyou2",
+            ExtraData = new Dictionary<string, object> { { "Category", 2 }, { "Value", 3000 } }
+        });
+    }
+
+}

@@ -1,0 +1,163 @@
+﻿@page "/Home"
+
+@inject IJSRuntime JS 
+
+@* ★ AuthenticationHeaderValue のために必要 *@
+@using System.Net.Http.Headers 
+
+@using MudBlazor
+@using NxRebuild.Client.Pages.NxPrograms.MDI
+@using NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View
+@inject WindowManagerBase Manager
+
+@using System.Diagnostics
+
+@using Microsoft.AspNetCore.Components.Authorization
+@using Dapper
+@inject AuthenticationStateProvider AuthProvider
+@inject HttpClient Http
+@using NxRebuild.Client.Pages.NxPrograms.DB
+@* ★ステート管理サービスを注入 *@
+@inject InMemoryDatabaseState DbState 
+
+<h3>MainWnd</h3>
+<hr />
+@if (DbState.IsInitialized)
+{
+    <p style="color:green">インメモリDB準備完了！</p>
+}
+else
+{
+    <p>データベース初期化中</p>
+}
+<div>Hash: @Manager.GetHashCode()</div>
+
+<WindowManager Manager="Manager" />
+
+@* <MudButton OnClick="@(() => Manager.Open<__Main>("プロジェクト編集"))"> *@
+<MudButton OnClick="@(() => Manager.Open<AknTreeListView>("プロジェクト編集"))">
+    プロジェクト編集を開く
+</MudButton>
+
+<MudCard Class="mt-4 pa-4" Style="background-color: #fafafa; border: 1px dashed #ccc;">
+    <MudText Typo="Typo.h6" Color="Color.Primary">👁 目隠し解除：簡易SQLコンソール</MudText>
+    <MudText Typo="Typo.caption">※インメモリDBに対して任意のSQL（SELECTなど）を実行できます。</MudText>
+
+    <MudTextField @bind-Value="sqlQuery" Label="SQLクエリを入力" Variant="Variant.Outlined" Lines="3" Class="mt-2" />
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ExecuteQuery" Class="mt-2">SQL実行</MudButton>
+
+    @if (!string.IsNullOrEmpty(queryError))
+    {
+        <MudText Color="Color.Error" Class="mt-2">⚠️ @queryError</MudText>
+    }
+
+    @if (queryResult != null && queryResult.Any())
+    {
+        <div style="overflow-x: auto; max-height: 300px; margin-top: 15px;">
+            <table style="width: 100%; border-collapse: collapse; background-color: white; font-size: 13px;">
+                <thead>
+                    <tr style="background-color: #e0e0e0;">
+                        @foreach (var header in headers)
+                        {
+                            <th style="border: 1px solid #ccc; padding: 6px; text-align: left;">@header</th>
+                        }
+                    </tr>
+                </thead>
+                <tbody>                   
+                    @foreach (var row in queryResult)
+                    {
+                        <tr>
+                            @foreach (var header in headers)
+                            {
+                                <td style="border: 1px solid #ccc; padding: 6px;">
+                                    @row[header]?.ToString()
+                                </td>
+                            }
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</MudCard>
+
+@code {
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var user = state.User;
+
+        if (user.Identity is { IsAuthenticated: true } && !DbState.IsInitialized)
+        {
+            try
+            {
+                // 1. JSONスキーマを取得して、インメモリDBのテーブル群（器）を作る
+                var jsonResult = await Http.GetStringAsync("api/GetScm");
+                DbState.Initialize(jsonResult);
+
+                // 2. ★同期したいマスタテーブルのリストを用意する（ハードコード）
+                var masterTables = new List<string> { "Zmst", 
+                                                      "tan_m", 
+                                                      "ColName",
+                                                      "gun_m"
+                                                    };
+
+                // 3. ★マスタデータの同期を一括実行！
+                await DbState.SyncMasterDataAsync(Http, masterTables);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"初期化・同期エラー: {ex.Message}");
+            }
+        }
+    }
+
+    
+    // デバッグ用!!!!、SQLiteに存在するテーブルの一覧を取得するSQLをセットしておきます
+    private string sqlQuery = "SELECT name, tbl_name FROM sqlite_master WHERE type='table';";
+    private string queryError = string.Empty;
+    private List<IDictionary<string, object>>? queryResult;
+    private List<string> headers = new();
+
+    // ボタンを押したときに実行される処理
+    private async Task ExecuteQuery()
+    {
+        if (DbState.Connection == null)
+        {
+            queryError = "データベースが初期化されていません。";
+            return;
+        }
+
+        queryError = string.Empty;
+        queryResult = null;
+        headers.Clear();
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();// ★計測開始
+        try
+        {
+            // 1. Dapper で任意のクエリを実行し、動的オブジェクトとして取得
+            var rawResult = DbState.Connection.Query(sqlQuery);
+
+            // 2. 扱いやすいように C# の Dictionary（辞書型）のリストに変換
+            queryResult = rawResult.Select(x => (IDictionary<string, object>)x).ToList();
+
+            if (queryResult.Any())
+            {
+                // テーブルの「ヘッダー（列名一覧）」を自動取得
+                headers = queryResult.First().Keys.ToList();
+            }
+            else
+            {
+                queryError = "クエリは成功しましたが、結果は0件でした。";
+            }
+        }
+        catch (Exception ex)
+        {
+            queryError = $"SQLエラー: {ex.Message}";
+        }
+        // ------------------------------------
+        sw.Stop(); // ★計測終了
+        Console.WriteLine($"★ [DEBUG] C#のデータ取得と変換にかかった時間: {sw.ElapsedMilliseconds} ms");
+        // ------------------------------------
+    }
+}

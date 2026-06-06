@@ -1,0 +1,38 @@
+﻿@inject IJSRuntime JS
+
+@if (Manager is null)
+{
+    <text>Loading...</text>
+    return;
+}
+
+@foreach (var w in Manager.Windows)
+{
+    <WindowComponent Info="w" Manager="Manager" />
+}
+
+
+@code {
+    [Parameter] public WindowManagerBase Manager { get; set; } = default!;
+
+    protected override void OnInitialized()
+    {
+        Manager.OnWindowsChanged += StateHasChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            var size = await JS.InvokeAsync<BrowserSize>("mdi.getScreenSize");
+            Manager.ScreenWidth = size.Width;
+            Manager.ScreenHeight = size.Height;
+        }
+    }
+
+    public class BrowserSize
+    {
+        public double Width { get; set; }
+        public double Height { get; set; }
+    }
+}

@@ -1,0 +1,322 @@
+@using MudBlazor
+
+<style>
+    .grid-table {
+        width: max-content;
+    }
+
+    .grid-row {
+        display: flex;
+        flex-wrap: nowrap;
+        width: max-content;
+        align-items: center;
+        border-bottom: 1px solid #eee;
+        cursor: grab;
+        touch-action: manipulation;
+    }
+
+    .grid-row.selected {
+        background-color: #e3f2fd;
+    }
+
+    .grid-row.editing {
+        cursor: default;
+    }
+
+    /* ドラッグハンドルの操作性を維持 */
+    .drag-handle {
+        pointer-events: auto !important;
+        width: 30px;
+        text-align: center;
+        color: #ccc;
+    }
+
+    /* セル（右寄せ・左寄せ） */
+    .grid-cell {
+        padding: 8px;
+        flex-shrink: 0;
+        box-sizing: border-box;
+    }
+
+    .grid-cell-left {
+        text-align: left;
+    }
+
+    .grid-cell-right {
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+    }
+
+    /* ヘッダー固有：ソートのために子要素のクリックを許可 */
+    .grid-header {
+        font-weight: bold;
+        background-color: #eee;
+        border-bottom: 2px solid #ccc;
+    }
+    
+    .grid-header * {
+        pointer-events: auto !important;
+    }
+
+    /* セル内のテキストなどのクリック透過 */
+    .grid-row:not(.editing) > *:not(.drag-handle) {
+        pointer-events: none;
+    }
+
+    /* 編集用インプット */
+    .grid-edit-input {
+        width: 100%;
+        border: 1px solid #594ae2;
+        background: white;
+        color: black;
+        outline: none;
+        padding: 2px 4px;
+        font-size: 0.9rem;
+    }
+</style>
+
+<div class="scroll-pane grid-pane">
+    <MudText Typo="Typo.subtitle2">データ一覧</MudText>
+    <div class="grid-table" style="margin-top: 8px;">
+        @* --- ヘッダー部分 --- *@
+        <div class="grid-row grid-header">
+            <div style="width: 30px; flex-shrink: 0;"></div>
+            
+            @* --- 項目名ヘッダー (クラスを動的に判定) --- *@
+            <div class="grid-cell @GetNameAlignClass()" 
+                 style="width: 200px; min-width: 200px; flex-shrink: 0; user-select: none; @(AllowSorting ? "cursor: pointer;" : "cursor: default;")"
+                 @onclick='() => Sort("Name")'>
+                項目名 @(AllowSorting ? GetSortIcon("Name") : "")
+            </div>
+
+            @* 動的カラムヘッダー *@
+            @foreach (var col in Columns.Where(c => c.DataKey != "Name")) {
+                <div class="grid-cell @col.AlignClass" 
+                     style="width: @(col.Width)px; min-width: @(col.Width)px; flex-shrink: 0; user-select: none; @(AllowSorting ? "cursor: pointer;" : "cursor: default;")"
+                     @onclick='() => Sort(col.DataKey)'>
+                    @col.Caption @(AllowSorting ? GetSortIcon(col.DataKey) : "")
+                </div>
+            }
+        </div>
+
+        @* --- 明細部分 --- *@
+        @foreach (var (item, index) in GridDataItems.Select((v, i) => (v, i))) {
+            @if (item.IsEditing) {
+                <div class="grid-row editing" draggable="false"
+                     @onclick:stopPropagation="true" @onmousedown:stopPropagation="true" @ondblclick:stopPropagation="true">
+                    
+                    <div class="drag-handle" style="opacity: 0.3; cursor: default; width: 30px; flex-shrink: 0;">
+                        <MudIcon Icon="@Icons.Material.Filled.DragIndicator" Size="Size.Small"/>
+                    </div>
+
+                    @* 項目名編集セル (配置を動的に解決) *@
+                    <div class="grid-cell @GetNameAlignClass()" style="width: 200px; min-width: 200px; flex-shrink: 0;">
+                        <input @ref="_gridInputRef" @key="@($"gridedit-{item.GetHashCode()}")"
+                               @bind="item.Name" @bind:event="oninput" class="grid-edit-input" autofocus
+                               @onfocusout="() => { item.IsEditing = false; StateHasChanged(); }"
+                               @onkeyup='(e) => { if(e.Key == "Enter" || e.Key == "Escape") { item.IsEditing = false; StateHasChanged(); } }' />
+                    </div>
+
+                    @foreach (var col in Columns.Where(c => c.DataKey != "Name")) {
+                        <div class="grid-cell @col.AlignClass" style="width: @(col.Width)px; min-width: @(col.Width)px; flex-shrink: 0; color: #999;">
+                            @(item.ExtraData.ContainsKey(col.DataKey) ? item.ExtraData[col.DataKey] : "-")
+                        </div>
+                    }
+                </div>
+            } else {
+                <div class="grid-row @(item.IsSelected ? "selected" : "")" draggable="true"
+                     @ondragstart="() => DraggingState.DraggingGridItem = item"
+                     @ondrop="() => DropRow(index)"
+                     @ondragover:preventDefault="true"
+                     @onclick="(e) => HandleClick(item, e)"
+                     @ondblclick="() => HandleDoubleClick(item)"
+                     @ondblclick:stopPropagation="true">
+                    
+                    <div class="drag-handle" style="width: 30px; flex-shrink: 0;">
+                        <MudIcon Icon="@Icons.Material.Filled.DragIndicator" Size="Size.Small"/>
+                    </div>
+
+                    @* 項目名表示セル (配置を動的に解決) *@
+                    <div class="grid-cell @GetNameAlignClass()" style="width: 200px; min-width: 200px; flex-shrink: 0;">
+                        <span>@item.Name</span>
+                    </div>
+
+                    @foreach (var col in Columns.Where(c => c.DataKey != "Name")) {
+                        <div class="grid-cell @col.AlignClass" style="width: @(col.Width)px; min-width: @(col.Width)px; flex-shrink: 0;">
+                            @if (item.ExtraData.ContainsKey(col.DataKey)) {
+                                @FormatValue(item.ExtraData[col.DataKey], col.Format)
+                            } else {
+                                @("-")
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        }
+    </div>
+</div>
+
+@code {
+
+    
+    [Parameter] public List<MyDataObj> GridDataItems { get; set; } = new(); // 表示するデータ一覧
+    [Parameter] public List<GridColumn> Columns { get; set; } = new(); // カラム定義リスト
+    [Parameter] public bool AllowSorting { get; set; } = true; // データのソートを許可するかどうか
+    [Parameter] public bool DisableRowDragDrop { get; set; } = false; // 行のドラッグ・ドロップ機能を無効化するかどうか
+    [Parameter] public EventCallback<(MyDataObj Item, MouseEventArgs Args)> OnRowClicked { get; set; } // 行クリックイベントコールバック
+    [Parameter] public EventCallback<MyDataObj> OnRowDoubleClicked { get; set; } // 行ダブルクリックイベントコールバック
+    [Parameter] public EventCallback<(int TargetIndex, MyDataObj? DraggedItem)> OnRowDropped { get; set; } // 行ドロップイベントコールバック
+    [Parameter] public EventCallback<(string Key, bool IsAscending)> OnSortRequested { get; set; } // ソートリクエストイベントコールバック
+
+    private bool _isDoubleClicking = false; // ダブルクリック処理中かどうかのフラグ
+    private string _currentSortKey = ""; // 現在ソート対象のキー
+    private bool _isAscending = true; // 昇順か降順かのフラグ
+    private DateTime _lastClickTime = DateTime.MinValue; // 最終クリック時間
+    private MyDataObj? _lastClickedItem; // 最後にクリックされたアイテム
+    private ElementReference _gridInputRef; // 入力フィールドへの参照
+
+
+    // 「項目名」の列配置を解決するメソッド
+    // もし親で "Name" という DataKey のカラム定義が存在すればその配置クラスを使い、
+    // なければデフォルトで "grid-cell-left" を返す
+    private string GetNameAlignClass()
+    {
+        var nameCol = Columns.FirstOrDefault(c => c.DataKey == "Name");
+        return nameCol != null && !string.IsNullOrEmpty(nameCol.AlignClass)
+               ? nameCol.AlignClass
+               : "grid-cell-left";
+    }
+
+    private void Sort(string key)
+    {
+        if (!AllowSorting || GridDataItems == null || !GridDataItems.Any()) return; // ソートを許可されていない、またはデータが空なら何もしない
+
+        if (_currentSortKey == key)
+        {
+            _isAscending = !_isAscending; // 既にソート対象のキーなら、順序を反転
+        }
+        else
+        {
+            _currentSortKey = key; // 新しいソート対象のキーを設定し、順序を初期化
+            _isAscending = true;
+        }
+
+        List<MyDataObj> sortedList;
+        if (key == "Name")
+        { // 「項目名」でソートする場合
+            sortedList = _isAscending
+                ? GridDataItems.OrderBy(i => i.Name).ToList() // 昇順に並べ替え
+                : GridDataItems.OrderByDescending(i => i.Name).ToList(); // 降順に並べ替え
+        }
+        else
+        { // 数値でソートする場合
+            Func<MyDataObj, object> keySelector = i =>
+            {
+                if (!i.ExtraData.TryGetValue(key, out var val) || val == null)
+                {
+                    return string.Empty; // データが空なら空文字を返す
+                }
+                if (decimal.TryParse(val.ToString(), out decimal num))
+                {
+                    return num; // 数値ならその数値を返す
+                }
+                return val.ToString() ?? string.Empty; // 文字ならその文字を返す
+            };
+
+            sortedList = _isAscending
+                ? GridDataItems.OrderBy(keySelector).ToList() // 昇順に並べ替え
+                : GridDataItems.OrderByDescending(keySelector).ToList(); // 降順に並べ替え
+        }
+
+        GridDataItems.Clear();
+        GridDataItems.AddRange(sortedList); // ソート後のリストを反映
+
+        StateHasChanged(); // 状態が変更されたことを通知
+    }
+
+    private string GetSortIcon(string key)
+    {
+        if (!AllowSorting || _currentSortKey != key) return ""; // ソートを許可されていない、またはソート対象のキーと異なるなら空文字を返す
+        return _isAscending ? " ▲" : " ▼"; // 昇順なら↑、降順なら↓のアイコンを返す
+    }
+
+    private async Task HandleClick(MyDataObj item, MouseEventArgs e)
+    {
+        var now = DateTime.Now;
+        if (item == _lastClickedItem && (now - _lastClickTime).TotalMilliseconds < 300)
+        { // ダブルクリック処理中なら何もしない
+            _lastClickTime = DateTime.MinValue; // 最終クリック時間をリセット
+            _lastClickedItem = null;
+
+            if (OnRowDoubleClicked.HasDelegate)
+            {
+                await OnRowDoubleClicked.InvokeAsync(item); // ダブルクリックイベントを呼び出す
+            }
+            return;
+        }
+
+        _lastClickTime = now; // 最終クリック時間を更新
+        _lastClickedItem = item; // 最後にクリックされたアイテムを保存
+
+        await Task.Delay(300); // 0.3秒の遅延
+        if (_lastClickedItem != item) return; // クリックがキャンセルされたなら何もしない
+
+        if (item.IsSelected)
+        {
+            await StartEditingGridItem(item); // 選択されているアイテムを編集モードに遷移
+        }
+        else
+        {
+            if (OnRowClicked.HasDelegate)
+            {
+                await OnRowClicked.InvokeAsync((item, e)); // 行クリックイベントを呼び出す
+            }
+        }
+    }
+
+    private async Task HandleDoubleClick(MyDataObj item)
+    {
+        _isDoubleClicking = true; // ダブルクリック処理中に設定
+
+        if (OnRowDoubleClicked.HasDelegate)
+        {
+            await OnRowDoubleClicked.InvokeAsync(item); // ダブルクリックイベントを呼び出す
+        }
+    }
+
+    private async Task DropRow(int targetIndex)
+    {
+        if (!DisableRowDragDrop && OnRowDropped.HasDelegate)
+        { // 行ドラッグ・ドロップが有効で、ドロップイベントコールバックがあるなら
+            await OnRowDropped.InvokeAsync((targetIndex, DraggingState.DraggingGridItem)); // ドロップイベントを呼び出す
+        }
+    }
+
+    private async Task StartEditingGridItem(MyDataObj item)
+    {
+        foreach (var i in GridDataItems) i.IsEditing = false; // すべてのアイテムの編集モードをリセット
+        item.IsEditing = true; // クリックされたアイテムの編集モードに設定
+
+        StateHasChanged(); // 状態が変更されたことを通知
+
+        await Task.Delay(50); // 0.05秒の遅延
+        if (_gridInputRef.Context != null)
+        {
+            await _gridInputRef.FocusAsync(); // フォーカスを設定
+        }
+    }
+
+    private string FormatValue(object val, string format)
+    { // 値をフォーマットするメソッド
+        if (val == null) return "-"; // 値が空なら"-"
+        if (string.IsNullOrEmpty(format)) return val.ToString(); // フォーマットが空なら元の値を返す
+
+        if (decimal.TryParse(val.ToString(), out decimal num))
+        { // 数値ならフォーマットして返す
+            return num.ToString(format);
+        }
+
+        return val.ToString(); // それ以外は元の値を返す
+    }
+
+}

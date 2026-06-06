@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="NxRebuild.Api/NxRebuild.Api.csproj" />
+  <Project Path="NxRebuild.Client/NxRebuild.Client.csproj">
+    <BuildDependency Project="NxRebuild.Api/NxRebuild.Api.csproj" />
+  </Project>
+  <Project Path="NxRebuild.shared/NxRebuild.shared.csproj" Id="e8d75a20-1080-46bc-a1a9-4d92ee7b1581" />
+</Solution>

@@ -1,0 +1,6 @@
+[*.cs]
+# 波カッコ（中カッコ）の改行ルールを「同じ行（SameLine）」に統一
+csharp_new_line_before_open_brace = none
+csharp_new_line_before_else = false
+csharp_new_line_before_catch = false
+csharp_new_line_before_finally = false

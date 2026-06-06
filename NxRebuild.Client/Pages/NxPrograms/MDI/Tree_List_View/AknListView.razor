@@ -1,0 +1,171 @@
+﻿@inherits AknListViewBase
+@using MudBlazor
+
+<style>
+    .list-table {
+        width: max-content;
+    }
+
+    .list-row {
+        display: flex;
+        flex-wrap: nowrap;
+        width: max-content;
+        align-items: center;
+        border-bottom: 1px solid #eee;
+        cursor: grab;
+        touch-action: manipulation;
+    }
+
+        .list-row.selected {
+            background-color: #e3f2fd;
+        }
+
+        .list-row.editing {
+            cursor: default;
+        }
+
+    /* ドラッグハンドルの操作性を維持 */
+    .drag-handle {
+        pointer-events: auto !important;
+        width: 30px;
+        text-align: center;
+        color: #ccc;
+    }
+
+    /* セル（右寄せ・左寄せ） */
+    .list-cell {
+        padding: 8px;
+        flex-shrink: 0;
+        box-sizing: border-box;
+    }
+
+    .list-cell-left {
+        text-align: left;
+    }
+
+    .list-cell-right {
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+    }
+
+    /* ヘッダー固有：ソートのために子要素のクリックを許可 */
+    .list-header {
+        font-weight: bold;
+        background-color: #eee;
+        border-bottom: 2px solid #ccc;
+    }
+
+        .list-header * {
+            pointer-events: auto !important;
+        }
+
+    /* セル内のテキストなどのクリック透過 */
+    .list-row:not(.editing) > *:not(.drag-handle) {
+        pointer-events: none;
+    }
+
+    /* 編集用インプット */
+    .list-edit-input {
+        width: 100%;
+        border: 1px solid #594ae2;
+        background: white;
+        color: black;
+        outline: none;
+        padding: 2px 4px;
+        font-size: 0.9rem;
+    }
+</style>
+
+<div class="scroll-pane list-pane">
+    <MudText Typo="Typo.subtitle2">データ一覧</MudText>
+    <div class="list-table" style="margin-top: 8px;">
+        @* --- ヘッダー部分 --- *@
+        <div class="list-row list-header">
+            <div style="width: 30px; flex-shrink: 0;"></div>
+
+            @* --- 項目名ヘッダー (クラスを動的に判定) --- *@
+            <div class="list-cell @GetNameAlignClass()"
+                 style="width: 200px; min-width: 200px; flex-shrink: 0; user-select: none; @(AllowSorting ? "cursor: pointer;" : "cursor: default;")"
+                 @onclick='() => Sort("Name")'>
+                項目名 @(AllowSorting ? GetSortIcon("Name") : "")
+            </div>
+
+            @* 動的カラムヘッダー *@
+            @foreach (var col in Columns.Where(c => c.DataKey != "Name"))
+            {
+                <div class="list-cell @col.AlignClass"
+                     style="width: @(col.Width)px; min-width: @(col.Width)px; flex-shrink: 0; user-select: none; @(AllowSorting ? "cursor: pointer;" : "cursor: default;")"
+                     @onclick='() => Sort(col.DataKey)'>
+                    @col.Caption @(AllowSorting ? GetSortIcon(col.DataKey) : "")
+                </div>
+            }
+        </div>
+
+        @* --- 明細部分 --- *@
+        @foreach (var (item, index) in ListDataItems.Select((v, i) => (v, i)))
+        {
+            @if (item.IsEditing)
+            {
+                <div class="list-row editing" draggable="false"
+                     @onclick:stopPropagation="true" @onmousedown:stopPropagation="true" @ondblclick:stopPropagation="true">
+
+                    <div class="drag-handle" style="opacity: 0.3; cursor: default; width: 30px; flex-shrink: 0;">
+                        <MudIcon Icon="@Icons.Material.Filled.DragIndicator" Size="Size.Small" />
+                    </div>
+
+                    @* 項目名編集セル (配置を動的に解決) *@
+                    <div class="list-cell @GetNameAlignClass()" style="width: 200px; min-width: 200px; flex-shrink: 0;">
+                        <input @ref="_listInputRef" @key="@($"listedit-{item.GetHashCode()}")"
+                               @bind="item.Name" @bind:event="oninput" class="list-edit-input" autofocus
+                               @onfocusout="() => { item.IsEditing = false; StateHasChanged(); }"
+                               @onkeyup='(e) => { if (e.Key == "Enter" || e.Key == "Escape") { item.IsEditing = false; StateHasChanged(); } }' />
+                    </div>
+
+                    @foreach (var col in Columns.Where(c => c.DataKey != "Name"))
+                    {
+                        <div class="list-cell @col.AlignClass" style="width: @(col.Width)px; min-width: @(col.Width)px; flex-shrink: 0; color: #999;">
+                            @(item.ExtraData.ContainsKey(col.DataKey) ? item.ExtraData[col.DataKey] : "-")
+                        </div>
+                    }
+                </div>
+            }
+            else
+            {
+                <div class="list-row @(item.IsSelected ? "selected" : "")" draggable="true"
+                     @ondragstart="() => DraggingState.DraggingGridItem = item"
+                     @ondrop="() => DropRow(index)"
+                     @ondragover:preventDefault="true"
+                     @onclick="(e) => HandleClick(item, e)"
+                     @ondblclick="() => HandleDoubleClick(item)"
+                     @ondblclick:stopPropagation="true">
+
+                    <div class="drag-handle" style="width: 30px; flex-shrink: 0;">
+                        <MudIcon Icon="@Icons.Material.Filled.DragIndicator" Size="Size.Small" />
+                    </div>
+
+                    @* 項目名表示セル (配置を動的に解決) *@
+                    <div class="list-cell @GetNameAlignClass()" style="width: 200px; min-width: 200px; flex-shrink: 0;">
+                        <span>@item.Name</span>
+                    </div>
+
+                    @foreach (var col in Columns.Where(c => c.DataKey != "Name"))
+                    {
+                        <div class="list-cell @col.AlignClass" style="width: @(col.Width)px; min-width: @(col.Width)px; flex-shrink: 0;">
+                            @if (item.ExtraData.ContainsKey(col.DataKey))
+                            {
+                                @FormatValue(item.ExtraData[col.DataKey], col.Format)
+                            }
+                            else
+                            {
+                                @("-")
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        }
+    </div>
+</div>
+@code {
+
+}
