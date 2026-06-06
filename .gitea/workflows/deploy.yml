@@ -6,7 +6,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: dotnet10 #runs-on ubuntu-latest
 
     steps:
       # 1. Gitea 内部からソースを取得（LAN 完結）
