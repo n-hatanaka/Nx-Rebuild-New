@@ -8,7 +8,7 @@ jobs:
   build:
     runs-on: dotnet10
 
-    steps:
+      #      fetch-depth: 0
       # 1. Gitea 内部からソースを取得（LAN 完結）
       #  - name: Checkout (Gitea internal)
       #    uses: actions/checkout@v3
@@ -16,42 +16,27 @@ jobs:
       #      repository: akino/NxRebuild
       #      fetch-depth: 0
       #
-      - name: Checkout
+      #
         uses: actions/checkout@v4
 
       - name: Sync to NAS
         run: |
           # Runnerの最新ソースをNASへ強制同期
-          rsync -av --delete ./ /share/Dockerpython/WebPj/NxR_source/
+          # Runnerの最新ソースをNASへ強制同期
 
       - name: Install Genuine Docker CLI
         run: |
           echo "=== Runnerの中に本物のDockerコマンドを叩き込みます ==="
           # Gitea Runnerの生身（Alpine Linux）に、公式のdockerコマンドだけを入れる
-          apk add --no-cache docker-cli
+          # Gitea Runnerの生身（Alpine Linux）に、公式のdockerコマンドだけを入れる
 
       - name: Build WASM in dotnet-sdk via Socket
         run: |
           echo "=== ビルド環境の整備 ==="
             # 1. まずは dotnet_sdk コンテナの中に Python3 を強制インストールしてコンパイラを無敵にする！
-            docker exec dotnet_sdk bash -c "apt-get update && apt-get install -y python3"
+            # 1. まずは dotnet_sdk コンテナの中に Python3 を強制インストールしてコンパイラを無敵にする！
 
             # 2. 不足している wasm-tools ワークロードを復元
-            docker exec dotnet_sdk bash -c "cd /src && dotnet workload restore"
+            # 2. 不足している wasm-tools ワークロードを復元
 
           echo "=== WASMビルド開始 dotnet_sdkを直接叩きます ==="
-            # 本物のコマンド + 特権 + ソケット通信で、待ち構えている dotnet_sdk を直接動かす！
-            docker exec dotnet_sdk bash -c "cd /src && dotnet publish NxRebuild.Client/NxRebuild.Client.csproj -c debug -o /src/output"
-      # 3. 【大修正】ホストの特権（Dockerパワー）を使って、コンテナの中で安全にコピーさせる！
-      - name: Deploy to Nginx
-        run: |
-          echo "=== 完璧に仕上がった成果物をNginxへデプロイ ==="
-          # コピー命令も dotnet_sdk コンテナの中から実行させて、繋がっている /deploy へ一気に流し込みます！
-          docker exec dotnet_sdk bash -c "rm -rf /deploy/* && cp -r /src/output/wwwroot/* /deploy/"
-      # 3. publish 出力を nginx の wwwroot にデプロイ
-      # - name: Deploy to Nginx
-      #   run: |
-      #     rm -rf /share/Dockerpython/WebPj/NxRebuild/wwwroot/*
-      #     cp -r /share/Dockerpython/WebPj/NxR_source/output/wwwroot/* \
-      #           /share/Dockerpython/WebPj/NxRebuild/wwwroot/
-      #     cp -r ./output/wwwroot/* /deploy/

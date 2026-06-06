@@ -32,10 +32,11 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
 
     // グリッドデータのオブジェクト
     public class MyDataObj {
+        
         public string Name { get; set; } = "";
         public bool IsEditing { get; set; }
 
-        public bool IsLocked { get }
+        public bool IsLocked { get; set; }
         public DataObj ItemData { get; set; }
         public Dictionary<string, object> ExtraData { get; set; } = new();
         public bool IsSelected { get; set; }

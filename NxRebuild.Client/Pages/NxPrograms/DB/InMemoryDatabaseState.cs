@@ -3,11 +3,26 @@ using Microsoft.Data.Sqlite;
 using NxRebuild.shared;
 using System.Data;
 using System.Data.Common;
+using System.Net.Http.Json; // GetFromJsonAsync用
 using System.Text.Json;
 using static MudBlazor.CategoryTypes;
-using System.Net.Http.Json; // GetFromJsonAsync用
 
 namespace NxRebuild.Client.Pages.NxPrograms.DB{
+    public class ColNameRecord {
+        public Guid Group_ID { get; set; }
+        public int No { get; set; }
+        public int SortNo { get; set; }
+        public string Col { get; set; }
+        public string Name { get; set; }
+        public string Format { get; set; }
+        public int Digit { get; set; }
+        public bool Visible { get; set; }
+        public bool Nutrition { get; set; }
+        public string PName1 { get; set; }
+        public string PName2 { get; set; }
+        public string PName3 { get; set; }
+        public string PTanni { get; set; }
+    }
 
     public class InMemoryDatabaseState : IDisposable{
         private IDbConnection? _connection;
@@ -17,6 +32,8 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB{
 
         // すでにDBが初期化されているかどうかのフラグ
         public bool IsInitialized => _connection != null;
+
+        public List<ColNameRecord> NutritionPropertys { get; set; }
 
         /// <summary>
         /// JSONスキーマを基にインメモリDBを初期化します。すでに初期化済みの場合は何もしません。
@@ -86,15 +103,14 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB{
         /// <summary>
         /// 指定されたマスタテーブルのデータをサーバーから取得し、ローカルのインメモリDBに丸ごとコピー。
         /// </summary>
-        public async Task SyncMasterDataAsync(HttpClient http, List<string> masterTableNames)
+        public async Task SyncMasterDataAsync(HttpClient http, List<string> masterTableNames, string groupCode)
         {
             if (_connection == null) throw new InvalidOperationException("DBが初期化されていません。");
 
             foreach (var tableName in masterTableNames){
                 // 1. サーバーから、指定テーブルの全データを「辞書のリスト」として取得する
                 // (カラム名 -> 値 のマップのリストになります)
-                var rows = await http.GetFromJsonAsync<List<Dictionary<string, object>>>($"api/GetScm/data/{tableName}");
-
+                var rows = await http.GetFromJsonAsync<List<Dictionary<string, object>>>($"api/GetScm/data/{tableName}/{groupCode}");
                 if (rows == null || rows.Count == 0) continue;
 
                 InsertMaster(tableName, rows);
@@ -141,6 +157,12 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB{
             return;
         }
 
+
+        public void  SyncNutritionPropertys() {
+            const string sql = "SELECT * FROM ColName";
+            NutritionPropertys = _connection.Query<ColNameRecord>(sql).ToList();
+            return;
+        }
 
         // -------------------------------------------------------------
         // JsonElement を C# の「生データ型」に変換するヘルパー関数

@@ -1,5 +1,6 @@
 ﻿using Dapper;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore.Metadata.Internal;
 using NxRebuild.shared;
 using System.Data;
 using static Npgsql.EntityFrameworkCore.PostgreSQL.Query.Expressions.Internal.PgTableValuedFunctionExpression;
@@ -20,8 +21,8 @@ namespace NxRebuild.Api.Controllers
         // -------------------------------------------------------------
         //指定されたテーブル名のデータを丸ごとJSONで返す
         // -------------------------------------------------------------
-        [HttpGet("data/{tableName}")]
-        public async Task<IActionResult> GetTableData(string tableName)
+        [HttpGet("data/{tableName}/{group_id}")]
+        public async Task<IActionResult> GetTableData(string tableName, string group_id)
         {
             // セキュリティ対策：怪しいテーブル名は弾く（英数字とアンダースコアのみ許可）
             if (!System.Text.RegularExpressions.Regex.IsMatch(tableName, @"^[a-zA-Z0-9_]+$"))
@@ -29,11 +30,29 @@ namespace NxRebuild.Api.Controllers
                 return BadRequest("不正なテーブル名です。");
             }
 
+            if (string.IsNullOrEmpty(group_id)) {
+                return BadRequest("不正なIDです。");
+            }
+
             try
             {
+                var sql = @"SELECT EXISTS (
+                                SELECT 1
+                                FROM information_schema.columns
+                                WHERE table_name = @TableName
+                                  AND column_name = 'Group_ID' 
+                                  AND table_schema = 'public'
+                            );";
+
+                var IsGrouping = _dbConnection.ExecuteScalar<bool>(sql, new { TableName = tableName});
+        
+
                 // 指定されたテーブルから「SELECT *」で全データを取得
                 // Dapperの「dynamic（動的）」型で読み出します
-                var sql = $"SELECT * FROM \"{tableName}\"";
+                if (IsGrouping)                    
+                    sql = $"SELECT * FROM \"{tableName}\" WHERE Group_ID =\"{group_id}\"";
+                else
+                    sql = $"SELECT * FROM \"{tableName}\"";
                 IEnumerable<dynamic> data = await _dbConnection.QueryAsync(sql);
 
                 // そのままJSONとしてクライアントへ返却

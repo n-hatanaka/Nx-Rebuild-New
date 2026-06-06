@@ -81,11 +81,12 @@ else
     }
 </MudCard>
 
-@code {
+    @code {
     protected override async Task OnInitializedAsync()
     {
         var state = await AuthProvider.GetAuthenticationStateAsync();
         var user = state.User;
+        var groupCode = (await AuthProvider.GetAuthenticationStateAsync()).User.FindFirst("group_code")?.Value;
 
         if (user.Identity is { IsAuthenticated: true } && !DbState.IsInitialized)
         {
@@ -103,7 +104,9 @@ else
                                                     };
 
                 // 3. ★マスタデータの同期を一括実行！
-                await DbState.SyncMasterDataAsync(Http, masterTables);
+                await DbState.SyncMasterDataAsync(Http, masterTables, groupCode);
+
+                DbState.SyncNutritionPropertys();
             }
             catch (Exception ex)
             {
