@@ -64,23 +64,36 @@ builder.Services.AddOpenApi();
 var app = builder.Build();
 
 // 最初のテストユーザー作成
+//リリースするときはここをDBから取るように修正する事。
 using (var scope = app.Services.CreateScope())
 {
     var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
 
     var email = "test@example.com";
     var password = "Test123!";
-
-    if (await userManager.FindByEmailAsync(email) == null)
+    var user = await userManager.FindByEmailAsync(email);
+    if (user == null)
     {
-        var user = new ApplicationUser
+        user = new ApplicationUser
         {
             UserName = email,
             Email = email
             // Id と GroupCode はコンストラクタで UUIDv7 自動生成
         };
 
-        await userManager.CreateAsync(user, password);
+        var result = await userManager.CreateAsync(user, password);
+        if (result.Succeeded) {
+            user.GroupCode = "00000000-0001-7000-8000-000000000000";
+            await userManager.UpdateAsync(user);
+            Console.WriteLine("testユーザーを作成しました。");
+
+        }
+    } else {
+        // 存在する場合はグループコードが固定されているか確認（必要に応じて更新）
+        if (user.GroupCode != "00000000-0001-7000-8000-000000000000") {
+            user.GroupCode = "00000000-0001-7000-8000-000000000000";
+            await userManager.UpdateAsync(user);
+        }
     }
 }
 

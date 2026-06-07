@@ -45,15 +45,21 @@ namespace NxRebuild.Api.Controllers
                             );";
 
                 var IsGrouping = _dbConnection.ExecuteScalar<bool>(sql, new { TableName = tableName});
-        
+
 
                 // 指定されたテーブルから「SELECT *」で全データを取得
                 // Dapperの「dynamic（動的）」型で読み出します
-                if (IsGrouping)                    
-                    sql = $"SELECT * FROM \"{tableName}\" WHERE Group_ID =\"{group_id}\"";
-                else
+                IEnumerable<dynamic> data;
+                if (IsGrouping) {
+                    var guidValue = Guid.Parse(group_id);
+
+                    // パラメータを @Group_ID のように指定し、第二引数に匿名オブジェクトを渡す
+                    sql = $"SELECT * FROM \"{tableName}\" WHERE \"Group_ID\" = @Group_ID";
+                    data = await _dbConnection.QueryAsync(sql, new { Group_ID = guidValue });
+                } else {
                     sql = $"SELECT * FROM \"{tableName}\"";
-                IEnumerable<dynamic> data = await _dbConnection.QueryAsync(sql);
+                    data = await _dbConnection.QueryAsync(sql);
+                }
 
                 // そのままJSONとしてクライアントへ返却
                 return Ok(data);

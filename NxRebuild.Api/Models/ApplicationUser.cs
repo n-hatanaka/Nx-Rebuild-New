@@ -14,5 +14,7 @@ public class ApplicationUser : IdentityUser
 
         // グループコードも UUIDv7
         GroupCode = Uuid7.NewUuid7().ToString();
+
+
     }
 }
