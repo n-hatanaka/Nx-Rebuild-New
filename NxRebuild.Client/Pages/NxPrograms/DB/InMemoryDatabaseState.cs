@@ -157,9 +157,9 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB{
             return;
         }
 
-
+        //栄養素カラム情報を取得。インメモリデータベースから取得するのでここではグループコードはとらなくていい
         public void  SyncNutritionPropertys() {
-            const string sql = "SELECT * FROM ColName";
+            const string sql = "SELECT * FROM ColName ORDER BY sortNo;";
             NutritionPropertys = _connection.Query<ColNameRecord>(sql).ToList();
             return;
         }
