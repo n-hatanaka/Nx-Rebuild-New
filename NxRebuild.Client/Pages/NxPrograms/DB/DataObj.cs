@@ -22,24 +22,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
     }
 
-    public class TFileInfo {
-        public DataobjMgr thisMgr { get; init; }
-        public Guid Data_ID { get; init; }
-        public string DataName { get; init; }
-        public DateTime Date { get; init; }
-        public NxDataType DataType { get; init; }
-        public DataObj<Guid> ObjParent { get; init; }
-        public Guid ParentCode { get; init; }
-        public DateTime Update_at { get; init; }
-        public Guid Rocked_by { get; init; }
-        public DateTime Locked_at { get; init; }
-
-        public int SortNo { get; init; }
-        public Dictionary<string, float> ExtData { get; init; } // 拡張情報
-    }
-
-
-    public class DataObj<TKey> {
+    public abstract class DataObj<TKey> {
         //データのID　Guidの場合とIntの場合があるので継承先で指定しなおす事
         protected TKey _dataID;
         protected string _dataName = "";
@@ -70,29 +53,32 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         public Guid LockerID { get => _locker_ID; set { _locker_ID = value; }}
         public DateTime LockedAt { get=>_locked_at; set { _locked_at = value; }}
 
-        private InMemoryDatabaseState _dbstate;
+        protected InMemoryDatabaseState _dbstate;
 
-        private AuthenticationStateProvider _authProv;
+        protected AuthenticationStateProvider _authProv;
         protected InMemoryDatabaseState dbState { get => _dbstate; }
         protected AuthenticationStateProvider authProv { get => _authProv; }
 
+        //コンストラクタ：派生先で引数が変わった時は,
+        //DataObjMgrも派生先でCreateInstanceメソッドを修正する事
         public DataObj(InMemoryDatabaseState db, AuthenticationStateProvider auth) {
             _dbstate = db;
             _authProv = auth;
             Initialize();
         }
 
-        protected virtual void Initialize() {
 
-        }
+        //この中は派生先で実装する事。
+        //ここで固定のテーブル名やNameカラム名などのプロパティを設定する
+        protected abstract void Initialize();
 
         //渡されたレコードの内容をプロパティに反映
         //一応書いたけど継承先で書き直す事
         public virtual void SetPropertys(IDictionary<string, object> record) {
-            _dataID = (TKey?)record["ID"];
+            _dataID = (TKey?)record[_idColName];
             _dataName = (string)record[_nameColName];
             _update_at = (DateTime)record["update_at"];
-            _locker_ID = (Guid)record["edit_by"];
+            _locker_ID = (Guid)record["locked_by"];
             _locked_at = (DateTime)record["locked_at"];
         }
     }
