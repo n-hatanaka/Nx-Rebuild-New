@@ -11,7 +11,7 @@ using System.Text.Json;
 namespace NxRebuild.Client.Pages.NxPrograms.DB.Zmst {
     public class ZmstObj : DataObj<int> {       
         public string Z_code { get; set; }
-        public Dictionary<string, object> ZmstExtData  { get; set; }
+        public KeyedList<string, object> ZmstExtData  { get; set; }
 
         public ZmstObj(InMemoryDatabaseState db, AuthenticationStateProvider auth) : base(db, auth) {
         }
@@ -22,7 +22,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB.Zmst {
             _datatype = NxDataType.Zairyou;
         }
 
-        public override void SetPropertys(IDictionary<string, object> record) {
+        public override void SetPropertys(KeyedList<string, object> record) {
             base.SetPropertys(record);
             if ((bool)record["deleted"]) return;//論理削除済のデータはロードしない
 
