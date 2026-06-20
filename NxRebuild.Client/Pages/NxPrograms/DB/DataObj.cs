@@ -7,6 +7,7 @@ using System.Data;
 using System.Data.Common;
 using System.Net.Http.Json; // GetFromJsonAsync用
 using System.Text.Json;
+using NxRebuild.shared;
 
 namespace NxRebuild.Client.Pages.NxPrograms.DB {
     [Flags] public enum NxDataType {
@@ -30,7 +31,6 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         protected string _nameColName; //テーブルのデータ名カラムのカラム名
         protected string _idColName;//テーブルのIDカラムのカラム名
 
-
         protected string _tblName;　//データ名等基本データが格納されるテーブル名
         protected string _s_tblName;//材料など詳細データが格納されるテーブル名
         protected string _infoTbl;//_tblNameに加え栄養素などの集計結果が入っているテーブル
@@ -43,6 +43,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         protected Guid _locker_ID;
         protected DateTime _locked_at;
 
+        protected HttpClient _http;
 
 
         public TKey DataID { get => _dataID; }
@@ -61,7 +62,10 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
         //コンストラクタ：派生先で引数が変わった時は,
         //DataObjMgrも派生先でCreateInstanceメソッドを修正する事
-        public DataObj(InMemoryDatabaseState db, AuthenticationStateProvider auth) {
+        public DataObj(HttpClient Http, 
+                        InMemoryDatabaseState db, 
+                        AuthenticationStateProvider auth) {
+            _http = Http;
             _dbstate = db;
             _authProv = auth;
             Initialize();
@@ -72,14 +76,25 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         //ここで固定のテーブル名やNameカラム名などのプロパティを設定する
         protected abstract void Initialize();
 
+
+        protected async Task<string> GetGroupCodeAsync() {
+            var authState = await _authProv.GetAuthenticationStateAsync();
+            return authState.User.FindFirst("group_code")?.Value;
+        }
+
         //渡されたレコードの内容をプロパティに反映
         //一応書いたけど継承先で書き直す事
-        public virtual void SetPropertys(IDictionary<string, object> record) {
+        public virtual void SetPropertys(KeyedList<string, object> record) {
             _dataID = (TKey?)record[_idColName];
             _dataName = (string)record[_nameColName];
             _update_at = (DateTime)record["update_at"];
             _locker_ID = (Guid)record["locked_by"];
             _locked_at = (DateTime)record["locked_at"];
         }
+
+        public abstract Task<LockStatus> DataOpen();
+
+
+        
     }
 }
