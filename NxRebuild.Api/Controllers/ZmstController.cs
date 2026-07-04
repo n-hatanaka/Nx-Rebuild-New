@@ -47,10 +47,10 @@ namespace NxRebuild.Api.Controllers {
             if ((lockSt.IsLocked) && (lockSt.LockedByUserId == _userID)) {
                 //ロック成功
                 if (result == null)
-                    //更新データあり
+                    //更新データなし
                     return Ok();
                 else
-                    //更新データなし
+                    //更新データあり
                     return Ok(result);
             } else {
                 return Conflict("このデータは現在他のユーザーによってロックされています。");
