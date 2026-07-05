@@ -69,6 +69,7 @@ namespace NxRebuild.shared {
             foreach (var record in records) {
                 T readData = CreateDataObj();
                 readData.DBcon = DBcon;
+                readData.TenantCode = TenatCode; 
                 readData.SetPropertys(record);
                 _dataList.Add(readData);
             }

@@ -51,7 +51,7 @@ namespace NxRebuild.Api.Controllers {
             if (result == null || result.locked_at == null)
                 return new LockStatus { 
                         IsLocked = false, 
-                        Update_at = (DateTime)result.Update_at 
+                        Locked_at = (DateTime)result.Update_at 
                 };
 
             bool isLocked = (DateTime.UtcNow - (DateTime)result.locked_at).TotalMinutes < 10;
@@ -65,7 +65,7 @@ namespace NxRebuild.Api.Controllers {
                 IsLocked = true,
                 LockedByUserId = result.UserId,
                 LockedByUserName = userName,
-                Update_at = result.Update_at
+                Locked_at = result.Update_at
             };
         }
 

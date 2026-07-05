@@ -8,21 +8,6 @@ using System.Text.Json;
 using static MudBlazor.CategoryTypes;
 
 namespace NxRebuild.Client.Pages.NxPrograms.DB{
-    public class ColNameRecord {
-        public Guid Group_ID { get; set; }
-        public int No { get; set; }
-        public int SortNo { get; set; }
-        public string Col { get; set; }
-        public string Name { get; set; }
-        public string Format { get; set; }
-        public int Digit { get; set; }
-        public bool Visible { get; set; }
-        public bool Nutrition { get; set; }
-        public string PName1 { get; set; }
-        public string PName2 { get; set; }
-        public string PName3 { get; set; }
-        public string PTanni { get; set; }
-    }
 
     public class InMemoryDatabaseState : IDisposable{
         private IDbConnection? _connection;
