@@ -35,67 +35,94 @@ namespace NxRebuild.shared {
         DbError        // システムエラー
     }
 
-    public abstract class BaseDataObj<TKey> {
-        //データのID　Guidの場合とIntの場合があるので継承先で指定しなおす事
-        protected TKey _dataID;
-        protected string _dataName = "";
-
+    public abstract class BaseDataObj<TKey>
+    {
+        // --- 既存のメンバ（必要に応じてコメントアウト） ---
+        // protected TKey _dataID;
+        // protected string _dataName = "";
+        // protected DateTime _update_at;
+        // protected Guid _locker_ID;
+        // protected DateTime _locked_at;
+        
+        // 【変更】レコード内容をJSON（辞書）として保持するメンバを追加
+        protected Dictionary<string, object> _rawData = new();
+    
         protected string _nameColName; //テーブルのデータ名カラムのカラム名
         protected string _idColName;//テーブルのIDカラムのカラム名
-
-        protected string _tblName;　//データ名等基本データが格納されるテーブル名
+    
+        protected string _tblName; //データ名等基本データが格納されるテーブル名
         protected string _s_tblName;//材料など詳細データが格納されるテーブル名
         protected string _infoTbl;//_tblNameに加え栄養素などの集計結果が入っているテーブル
-
+    
         protected string _w_tblName;
         protected string _ws_tblName;
-
+    
         protected NxDataType _datatype;
-        protected DateTime _update_at;
-        protected Guid _locker_ID;
-        protected DateTime _locked_at;
-
-        //テナントコード取得用。サーバー側ではこれを使う
-        //protected readonly UserManager<ApplicationUser> _userMgr;
-
-        //テナントコード、認証JWT取得用。クライアント側ではこれを使う
-        //private CustomAuthStateProvider _authProv;
-
-        public TKey DataID { get => _dataID; }
-        public string DataName {
-            get => _dataName;
-        }
-
-        public NxDataType DataType { get => _datatype; }
-
-        public DateTime Update_at { get => _update_at; }
-        public Guid LockerID { get => _locker_ID; }
-        public DateTime LockedAt { get => _locked_at;}
-
-        //BaseDataObjMgr<BaseDataObj<TKey>, TKey> SelfObjMgr { get; set; }
-        //↑の型指定でプロパティ定義できないのでオブジェクト型で持たせる。
-        //使うときはTypedDataObjMgrを使う。
+        protected DateTime _update_at; // 既存のメンバ
+        protected Guid _locker_ID; // 既存のメンバ
+        protected DateTime _locked_at; // 既存のメンバ
+    
+        // --- 既存のメンバ ---
         public IBaseDataObjMgr SelfObjMgr { get; set; }
         public string TenantCode { get; set; }
-
         public IDbConnection DBcon { get; set; }
-
-        //public BaseDataObj(IDbConnection dbcon) {
-        //    _dbcon = dbcon;
-        //}
-
-        //この中は派生先で実装する事。
+    
+        // --- 【変更】プロパティ実装：変数からJSON（_rawData）への参照へ切り替え ---
+    
+        public TKey DataID 
+        { 
+            get => (TKey)_rawData[_idColName]; 
+            set => _rawData[_idColName] = value!; 
+        }
+    
+        public string DataName 
+        { 
+            get => (string)_rawData[_nameColName]; 
+            set => _rawData[_nameColName] = value; 
+        }
+    
+        public NxDataType DataType => _datatype; // ※_datatypeはメタデータ側管理ならそのままでOK
+    
+        public DateTime Update_at 
+        { 
+            get => (DateTime)_rawData["update_at"]; 
+            set => _rawData["update_at"] = value; 
+        }
+        
+        public Guid LockerID 
+        { 
+            get => (Guid)_rawData["locked_by"]; 
+            set => _rawData["locked_by"] = value; 
+        }
+        
+        public DateTime LockedAt 
+        { 
+            get => (DateTime)_rawData["locked_at"]; 
+            set => _rawData["locked_at"] = value; 
+        }
+    
+        // この中は派生先で実装する事。
         //ここで固定のテーブル名やNameカラム名などのプロパティを設定する
         protected abstract void Initialize();
-
-
-        public virtual void SetPropertys(KeyedList<string, object> record) {
-            _dataID = (TKey?)record[_idColName];
-            _dataName = (string)record[_nameColName];
-            _update_at = (DateTime)record["update_at"];
-            _locker_ID = (Guid)record["locked_by"];
-            _locked_at = (DateTime)record["locked_at"];
+    
+        public virtual void SetPropertys(KeyedList<string, object> record)
+        {
+            // 【変更】recordをそのまま _rawData として保持する設計に移行
+            // ※KeyedListとDictionaryの互換性がある前提ですが、
+            // 必要に応じてここでコピーまたは変換を行ってください。
+            _rawData = record.ToDictionary(x => x.Key, x => x.Value);
+    
+            // 既存のフィールド個別セットは不要になるため、実質上記の一行で完結します。
+            // 個別にプロパティへセットしていた古い実装はここで終了します。
+            
+            // --- コメントアウトした元実装の意図 ---
+            // _dataID = (TKey?)record[_idColName];
+            // _dataName = (string)record[_nameColName];
+            // _update_at = (DateTime)record["update_at"];
+            // _locker_ID = (Guid)record["locked_by"];
+            // _locked_at = (DateTime)record["locked_at"];
         }
+ 
 
         public abstract Task<LockStatus> DataOpen();
 

@@ -21,36 +21,56 @@ namespace NxRebuild.shared {
     }
 
     public class ZmstDataObj:BaseDataObj<int> {
-        public string Z_code { get; set; }
-        public KeyedList<string, object> ZmstExtData { get; set; }
-
+            
+        public string Z_code 
+        { 
+            get => (string)_rawData["Z_code"]; 
+            set => _rawData["Z_code"] = value; 
+        }
+    
+     // 書き込み・読み込みを禁止するカラムのリスト
+         protected HashSet<string> _restrictedColumns = new();
+     
+         // 禁止リストへの追加（Initializeやコンストラクタで呼ぶ想定）
+         protected void AddRestrictedColumn(string colName) => _restrictedColumns.Add(colName);
+     
+         public float GetNutrient(string colName)
+         {
+             // 禁止されているキーなら例外を投げる
+             if (_restrictedColumns.Contains(colName))
+                 throw new UnauthorizedAccessException($"Invalid: カラム '{colName}' への読み込みは許可されていません。");
+     
+             if (!_rawData.ContainsKey(colName))
+                 return 0.0f; // または例外
+     
+             return Convert.ToSingle(_rawData[colName]);
+         }
+     
+         public void SetNutrient(string colName, float value)
+         {
+             // 禁止されているキーなら例外を投げる
+             if (_restrictedColumns.Contains(colName))
+                 throw new UnauthorizedAccessException($"Invalid: カラム '{colName}' への書き込みは許可されていません。");
+     
+             _rawData[colName] = value;
+         }
 
         protected override void Initialize() {
             _idColName = "LocalCode";
             _nameColName = "Z_name";
             _tblName = "Zmst";
             _datatype = NxDataType.Zairyou;
+            AddRestrictedColumn(_idColName);
+            AddRestrictedColumn(_nameColName);
+            
+            AddRestrictedColumn("Z_code");
+            AddRestrictedColumn("LocalCode");
+            AddRestrictedColumn("update_at");
+            AddRestrictedColumn("locked_by");
+            AddRestrictedColumn("locked_at");
         }
 
-        public override void SetPropertys(KeyedList<string, object> record) {
-            base.SetPropertys(record);
-            if ((bool)record["deleted"]) return;//論理削除済のデータはロードしない
-
-            ZmstExtData["Z_code"] = (string)record["Z_code"];
-            ZmstExtData["gun_cd"] = (int)record["gun_cd"];
-            ZmstExtData["Tou_cd"] = (int)record["Tou_cd"];
-            ZmstExtData["Zin_cd"] = (int)record["Zin_cd"];
-            ZmstExtData["D_S"] = (int)record["D_S"];
-            ZmstExtData["iss"] = (float)record["iss"];
-            ZmstExtData["Wca"] = (float)record["Wca"];
-            ZmstExtData["Txt"] = (string)record["Txt"];
-            foreach (ColNameRecord NutProp in dbcon.NutritionPropertys) {
-                if (NutProp.Nutrition)
-                    ZmstExtData[NutProp.Col] = (float)record[NutProp.Col];
-            }
-
-        }
-
+        
         public override async Task<LockStatus> DataOpen() {
             throw new NotImplementedException();
         }
