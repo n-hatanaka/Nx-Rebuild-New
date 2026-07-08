@@ -122,7 +122,38 @@ namespace NxRebuild.shared {
             // _locker_ID = (Guid)record["locked_by"];
             // _locked_at = (DateTime)record["locked_at"];
         }
- 
+    // テーブルからデータを取得してJSON文字列にする
+        public string LoadDataAsJson()
+        {
+            string sql = $@"SELECT t.*, '{_tblName}' as _table_type FROM {_tblName} t 
+                            WHERE t.id = @dataID AND t.tenant_code = @tenantCode
+                            UNION ALL
+                            SELECT s.*, '{_s_tblName}' as _table_type FROM {_s_tblName} s 
+                            WHERE s.parent_id = @dataID";
+        
+            // これで、各レコードに自動的に "_table_type" というキーが追加される
+            var result = _dbCon.Query<dynamic>(sql, new { dataID = _dataID, tenantCode = _tenantCode });
+            return JsonSerializer.Serialize(result);
+        }
+        // JSONを受け取ってテーブルに保存（Delete & Insert）
+        foreach (var record in records)
+        {
+            // どのテーブルに属するかを判定するプロパティ(例: "_table_type")があると仮定
+            string targetTable = record.ContainsKey("_table_type") ? record["_table_type"].ToString() : _tblName;
+        
+            // 1. Delete: 対象テーブルに応じて適切なIDで削除
+            string deleteSql = targetTable == _tblName 
+                ? $"DELETE FROM {_tblName} WHERE id = @id" 
+                : $"DELETE FROM {_s_tblName} WHERE parent_id = @id";
+            
+            _dbCon.Execute(deleteSql, new { id = record["id"] }, transaction);
+        
+            // 2. Insert: targetTable に対して動的Insert
+            var columns = string.Join(", ", record.Keys);
+            var values = string.Join(", ", record.Keys.Select(k => "@" + k));
+            
+            _dbCon.Execute($"INSERT INTO {targetTable} ({columns}) VALUES ({values})", record, transaction);
+        }
 
         public abstract Task<LockStatus> DataOpen();
 
