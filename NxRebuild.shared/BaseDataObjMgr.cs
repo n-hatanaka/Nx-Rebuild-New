@@ -74,6 +74,66 @@ namespace NxRebuild.shared {
                 _dataList.Add(readData);
             }
         }
+        
+        public string LoadMultipleDataAsJson(List<TKey> idList)
+        {
+            var jsonResults = new List<string>();
+        
+            foreach (var id in idList)
+            {
+                // 1. DataList から該当するオブジェクトを特定
+                // 既存の DataList（Object型）を T にキャストして検索
+                var dataObj = DataList.FirstOrDefault(d => d.ID.Equals(id));
+        
+                if (dataObj != null)
+                {
+                    // 2. 各オブジェクトの LoadDataAsJson() を呼ぶ
+                    // （BaseDataObj側でID等のプロパティがセットされている前提）
+                    jsonResults.Add(dataObj.LoadDataAsJson());
+                }
+            }
+        
+            // 3. 個別のJSON文字列を結合して一つのJSON配列にする
+            // 各jsonResultsの要素は既に文字列化されているため、
+            // 単純にカンマで繋いで [] で囲みます。
+            return "[" + string.Join(",", jsonResults) + "]";
+        }
+        
+        
+        public void DistributeJsonData(string json)
+        {
+            // 1. JSON全体をレコードのリストにパース
+            var allRecords = JsonSerializer.Deserialize<List<Dictionary<string, object>>>(json);
+            
+            // 2. IDごとにレコードをグループ化する
+            // 親データだけでなく、子データも混ざっているため、親ID（parent_id または id）でまとめる
+            var groupedRecords = allRecords.GroupBy(r => 
+                r.ContainsKey("parent_id") ? r["parent_id"] : r["id"]
+            );
+        
+            foreach (var group in groupedRecords)
+            {
+                var id = (TKey)Convert.ChangeType(group.Key, typeof(TKey));
+                
+                // 3. IDに対応するオブジェクトを探す
+                var obj = DataList.FirstOrDefault(d => d.ID.Equals(id));
+                
+                if (obj == null)
+                {
+                    // 存在しなければ新規作成
+                    obj = CreateDataObj();
+                    obj.ID = id; // IDをセット
+                    _dataList.Add(obj);
+                }
+        
+                // 4. そのオブジェクト専用のJSONを作成して渡す
+                // グループ化したレコードを再度JSON文字列にして、個別のSaveJsonDataへ流し込む
+                string individualJson = JsonSerializer.Serialize(group.ToList());
+                obj.SaveJsonData(individualJson);
+            }
+            
+            _refreshed_at = DateTime.Now;
+        }
     }
 }
 }

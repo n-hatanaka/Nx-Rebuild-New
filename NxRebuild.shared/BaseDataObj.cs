@@ -135,24 +135,28 @@ namespace NxRebuild.shared {
             var result = _dbCon.Query<dynamic>(sql, new { dataID = _dataID, tenantCode = _tenantCode });
             return JsonSerializer.Serialize(result);
         }
-        // JSONを受け取ってテーブルに保存（Delete & Insert）
-        foreach (var record in records)
+                
+        public void SaveJsonData(string json)
         {
-            // どのテーブルに属するかを判定するプロパティ(例: "_table_type")があると仮定
-            string targetTable = record.ContainsKey("_table_type") ? record["_table_type"].ToString() : _tblName;
-        
-            // 1. Delete: 対象テーブルに応じて適切なIDで削除
-            string deleteSql = targetTable == _tblName 
-                ? $"DELETE FROM {_tblName} WHERE id = @id" 
-                : $"DELETE FROM {_s_tblName} WHERE parent_id = @id";
-            
-            _dbCon.Execute(deleteSql, new { id = record["id"] }, transaction);
-        
-            // 2. Insert: targetTable に対して動的Insert
-            var columns = string.Join(", ", record.Keys);
-            var values = string.Join(", ", record.Keys.Select(k => "@" + k));
-            
-            _dbCon.Execute($"INSERT INTO {targetTable} ({columns}) VALUES ({values})", record, transaction);
+            var records = JsonSerializer.Deserialize<List<Dictionary<string, object>>>(json);
+           // JSONを受け取ってテーブルに保存（Delete & Insert）
+           foreach (var record in records)
+           {
+               // どのテーブルに属するかを判定するプロパティ(例: "_table_type")があると仮定
+               string targetTable = record.ContainsKey("_table_type") ? record["_table_type"].ToString() : _tblName;
+           
+               // 1. Delete: 対象テーブルに応じて適切なIDで削除
+               string deleteSql = targetTable == _tblName 
+                   ? $"DELETE FROM {_tblName} WHERE id = @id" 
+                   : $"DELETE FROM {_s_tblName} WHERE parent_id = @id";
+               
+               _dbCon.Execute(deleteSql, new { id = record["id"] }, transaction);
+           
+               // 2. Insert: targetTable に対して動的Insert
+               var columns = string.Join(", ", record.Keys);
+               var values = string.Join(", ", record.Keys.Select(k => "@" + k));
+               
+               _dbCon.Execute($"INSERT INTO {targetTable} ({columns}) VALUES ({values})", record, transaction);
         }
 
         public abstract Task<LockStatus> DataOpen();
