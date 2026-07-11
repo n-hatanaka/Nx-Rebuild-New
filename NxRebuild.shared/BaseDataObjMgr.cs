@@ -83,7 +83,7 @@ namespace NxRebuild.shared {
             {
                 // 1. DataList から該当するオブジェクトを特定
                 // 既存の DataList（Object型）を T にキャストして検索
-                var dataObj = DataList.FirstOrDefault(d => d.ID.Equals(id));
+                var dataObj = DataList.FirstOrDefault(d => d.DataID.Equals(id));
         
                 if (dataObj != null)
                 {
@@ -116,13 +116,13 @@ namespace NxRebuild.shared {
                 var id = (TKey)Convert.ChangeType(group.Key, typeof(TKey));
                 
                 // 3. IDに対応するオブジェクトを探す
-                var obj = DataList.FirstOrDefault(d => d.ID.Equals(id));
+                var obj = DataList.FirstOrDefault(d => d.DataID.Equals(id));
                 
                 if (obj == null)
                 {
                     // 存在しなければ新規作成
                     obj = CreateDataObj();
-                    obj.ID = id; // IDをセット
+                    obj.DataID = id; // IDをセット
                     _dataList.Add(obj);
                 }
         

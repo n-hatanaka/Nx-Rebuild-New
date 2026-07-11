@@ -45,7 +45,7 @@ namespace NxRebuild.shared {
         // protected DateTime _locked_at;
         
         // 【変更】レコード内容をJSON（辞書）として保持するメンバを追加
-        protected Dictionary<string, object> _rawData = new();
+        protected KeyedList<string, object> _rawData = new(x => ((dynamic)x).Id.ToString());
     
         protected string _nameColName; //テーブルのデータ名カラムのカラム名
         protected string _idColName;//テーブルのIDカラムのカラム名
@@ -110,7 +110,7 @@ namespace NxRebuild.shared {
             // 【変更】recordをそのまま _rawData として保持する設計に移行
             // ※KeyedListとDictionaryの互換性がある前提ですが、
             // 必要に応じてここでコピーまたは変換を行ってください。
-            _rawData = record.ToDictionary(x => x.Key, x => x.Value);
+            _rawData = record;
     
             // 既存のフィールド個別セットは不要になるため、実質上記の一行で完結します。
             // 個別にプロパティへセットしていた古い実装はここで終了します。
@@ -132,7 +132,7 @@ namespace NxRebuild.shared {
                             WHERE s.parent_id = @dataID";
         
             // これで、各レコードに自動的に "_table_type" というキーが追加される
-            var result = _dbCon.Query<dynamic>(sql, new { dataID = _dataID, tenantCode = _tenantCode });
+            var result = DBcon.Query<dynamic>(sql, new { dataID = DataID, tenantCode = TenantCode });
             return JsonSerializer.Serialize(result);
         }
                 
@@ -149,14 +149,14 @@ namespace NxRebuild.shared {
                string deleteSql = targetTable == _tblName 
                    ? $"DELETE FROM {_tblName} WHERE id = @id" 
                    : $"DELETE FROM {_s_tblName} WHERE parent_id = @id";
-               
-               _dbCon.Execute(deleteSql, new { id = record["id"] }, transaction);
+
+                DBcon.Execute(deleteSql, new { id = record["id"] }, transaction);
            
                // 2. Insert: targetTable に対して動的Insert
                var columns = string.Join(", ", record.Keys);
                var values = string.Join(", ", record.Keys.Select(k => "@" + k));
-               
-               _dbCon.Execute($"INSERT INTO {targetTable} ({columns}) VALUES ({values})", record, transaction);
+
+                DBcon.Execute($"INSERT INTO {targetTable} ({columns}) VALUES ({values})", record, transaction);
         }
 
         public abstract Task<LockStatus> DataOpen();
@@ -168,7 +168,7 @@ namespace NxRebuild.shared {
                  FROM {_tblName} 
                  WHERE group_code = @groupCode AND {_idColName} = @dataID";
 
-            var result = await DBcon.QueryFirstOrDefaultAsync<dynamic>(sql, new { TenantCode, _dataID });
+            var result = await DBcon.QueryFirstOrDefaultAsync<dynamic>(sql, new { TenantCode, DataID });
 
             // デフォルト値を設定
             bool isLocked = false;
@@ -288,7 +288,7 @@ namespace NxRebuild.shared {
                 int affectedRows = await DBcon.ExecuteAsync(sql, new {
                     userId = lockStatus.LockedByUserId,
                     lockedAt = DateTime.UtcNow,
-                    dataID = _dataID,
+                    dataID = DataID,
                     tenantCode = TenantCode,
                     expiryTime = expiryTime
                 });
@@ -333,7 +333,7 @@ namespace NxRebuild.shared {
 
             // 4. ロックされていなければ実行
             if (await ReNameQueryExec(newName)) {
-                this._dataName = newName;
+                this.DataName = newName;
                 return true;
             }
 
@@ -344,7 +344,7 @@ namespace NxRebuild.shared {
             string sql = $"UPDATE {_tblName} SET {_nameColName} = @name WHERE {_idColName} = @id AND group_code = {TenantCode}";
 
             // 成功したら true が返る
-            return await DBcon.ExecuteAsync(sql, new { name = newName, id = _dataID }) > 0;
+            return await DBcon.ExecuteAsync(sql, new { name = newName, id = DataID }) > 0;
 
         }
 
