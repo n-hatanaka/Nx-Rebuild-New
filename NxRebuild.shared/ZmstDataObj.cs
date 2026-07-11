@@ -1,6 +1,9 @@
-﻿using System;
+﻿using Dapper;
+using System;
 using System.Collections.Generic;
+using System.Data;
 using System.Text;
+using System.Text.Json;
 
 namespace NxRebuild.shared {
 
@@ -70,28 +73,53 @@ namespace NxRebuild.shared {
             AddRestrictedColumn("locked_at");
         }
 
-        
+
         public override async Task<LockStatus> DataOpen() {
-            throw new NotImplementedException();
+            // ロック確認
+            if (!await CheckLockAsync(DataID)) {
+                return LockStatus.LockedByOther;
+            }
+
+            // データを開くためのSQLを実行
+            string sql = "SELECT * FROM Zmst WHERE id = @id AND group_code = @tenantCode";
+            var result = await DBcon.QueryFirstOrDefaultAsync(sql, new { id = DataID, tenantCode = TenantCode });
+            SetPropertys(result);
+
+            return LockStatus.Success;
         }
 
-        public override async Task<bool> DeleteQueryExec() {
+        public override async Task<bool> DeleteQueryExec(IDbTransaction transaction) {
+            // ロック確認
+            if (!await CheckLockAsync(DataID)) {
+                return false;
+            }
 
-            throw new NotImplementedException();
-
+            // 削除用のSQLを実行
+            string sql = "DELETE FROM Zmst WHERE id = @id";
+            return await DBcon.ExecuteAsync(sql, new { id = DataID }) > 0;
         }
 
         public override async Task<bool> SaveQueryExec() {
-            throw new NotImplementedException();
+
+            // データ保存用のSQLを実行
+            if (DataID == 0) {
+                string sql = "INSERT INTO Zmst (Z_code, Z_name, update_at, locked_by, locked_at)" +
+                            " VALUES (@Z_code, @Z_name, @update_at, @locked_by, @locked_at)";
+                return await DBcon.ExecuteAsync(sql, this) > 0;
+            } else {
+                string sql = "UPDATE Zmst SET Z_code = @Z_code, Z_name = @Z_name WHERE id = @id";
+                return await DBcon.ExecuteAsync(sql, this) > 0;
+            }
         }
 
         public override async Task<string> TbltoJson() {
-            throw new NotImplementedException();
+
+            // テーブルデータをJSON形式で取得
+            string sql = "SELECT * FROM Zmst WHERE id = @id AND group_code = @tenantCode";
+            var result = await DBcon.QueryFirstOrDefaultAsync(sql, new { id = DataID, tenantCode = TenantCode });
+            return JsonSerializer.Serialize(result);
         }
 
-        public override async Task<bool> JsonToTable(string Json) {
-            throw new NotImplementedException();
-        }
-    }
+   }
 
 }

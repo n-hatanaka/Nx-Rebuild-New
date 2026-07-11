@@ -45,7 +45,7 @@ namespace NxRebuild.shared {
         // protected DateTime _locked_at;
         
         // 【変更】レコード内容をJSON（辞書）として保持するメンバを追加
-        protected KeyedList<string, object> _rawData = new(x => ((dynamic)x).Id.ToString());
+        protected Dictionary<string, object> _rawData = new();
     
         protected string _nameColName; //テーブルのデータ名カラムのカラム名
         protected string _idColName;//テーブルのIDカラムのカラム名
@@ -58,9 +58,10 @@ namespace NxRebuild.shared {
         protected string _ws_tblName;
     
         protected NxDataType _datatype;
-        protected DateTime _update_at; // 既存のメンバ
-        protected Guid _locker_ID; // 既存のメンバ
-        protected DateTime _locked_at; // 既存のメンバ
+        protected DateTime _update_at; 
+        protected Guid _locker_ID; 
+        protected DateTime _locked_at;
+
     
         // --- 既存のメンバ ---
         public IBaseDataObjMgr SelfObjMgr { get; set; }
@@ -101,11 +102,16 @@ namespace NxRebuild.shared {
             set => _rawData["locked_at"] = value; 
         }
     
+        //参照しているユーザーのID
+        //インスタンス作成後に必ずセットする事
+        public Guid CurrUsrID { get; set;  }
+
+
         // この中は派生先で実装する事。
         //ここで固定のテーブル名やNameカラム名などのプロパティを設定する
         protected abstract void Initialize();
     
-        public virtual void SetPropertys(KeyedList<string, object> record)
+        public virtual void SetPropertys(Dictionary<string, object> record)
         {
             // 【変更】recordをそのまま _rawData として保持する設計に移行
             // ※KeyedListとDictionaryの互換性がある前提ですが、
@@ -125,38 +131,51 @@ namespace NxRebuild.shared {
     // テーブルからデータを取得してJSON文字列にする
         public string LoadDataAsJson()
         {
-            string sql = $@"SELECT t.*, '{_tblName}' as _table_type FROM {_tblName} t 
-                            WHERE t.id = @dataID AND t.tenant_code = @tenantCode
-                            UNION ALL
-                            SELECT s.*, '{_s_tblName}' as _table_type FROM {_s_tblName} s 
-                            WHERE s.parent_id = @dataID";
-        
-            // これで、各レコードに自動的に "_table_type" というキーが追加される
+            string sql = CreateJSONsql();
             var result = DBcon.Query<dynamic>(sql, new { dataID = DataID, tenantCode = TenantCode });
             return JsonSerializer.Serialize(result);
         }
-                
-        public void SaveJsonData(string json)
+        protected abstract string CreateJSONsql();
+        //{ JSON生成用のビュー。以下実装例
+        // 各レコードに自動的に "_table_type" というキーが追加される
+        //return $@"SELECT t.*, '{_tblName}' as _table_type FROM {_tblName} t
+        //        WHERE t.id = @dataID AND t.tenant_code = @tenantCode
+        //        UNION ALL
+        //        SELECT s.*, '{_s_tblName}' as _table_type FROM {_s_tblName} s
+        //        WHERE s.parent_id = @dataID";
+        //}
+
+        public async Task<bool> SaveJsonData(string json)
         {
             var records = JsonSerializer.Deserialize<List<Dictionary<string, object>>>(json);
-           // JSONを受け取ってテーブルに保存（Delete & Insert）
-           foreach (var record in records)
-           {
-               // どのテーブルに属するかを判定するプロパティ(例: "_table_type")があると仮定
-               string targetTable = record.ContainsKey("_table_type") ? record["_table_type"].ToString() : _tblName;
-           
-               // 1. Delete: 対象テーブルに応じて適切なIDで削除
-               string deleteSql = targetTable == _tblName 
-                   ? $"DELETE FROM {_tblName} WHERE id = @id" 
-                   : $"DELETE FROM {_s_tblName} WHERE parent_id = @id";
+            // JSONを受け取ってテーブルに保存（Delete & Insert）
+            var transaction = DBcon.BeginTransaction();
+            // 1. Delete: 対象テーブル削除
+            var result = await DeleteQueryExec(transaction);
+            if (!result) {
+                transaction.Rollback();
+                return false;
+            }
 
-                DBcon.Execute(deleteSql, new { id = record["id"] }, transaction);
-           
-               // 2. Insert: targetTable に対して動的Insert
-               var columns = string.Join(", ", record.Keys);
-               var values = string.Join(", ", record.Keys.Select(k => "@" + k));
+            try {
+                foreach (var record in records) {
+                    // どのテーブルに属するかを判定するプロパティ(例: "_table_type")があると仮定
+                    string targetTable = record.ContainsKey("_table_type") ? record["_table_type"].ToString() : _tblName;
 
-                DBcon.Execute($"INSERT INTO {targetTable} ({columns}) VALUES ({values})", record, transaction);
+                    // 2. Insert: targetTable に対して動的Insert
+                    var columns = string.Join(", ", record.Keys);
+                    var values = string.Join(", ", record.Keys.Select(k => "@" + k));
+
+                    DBcon.Execute($"INSERT INTO {targetTable} ({columns}) VALUES ({values})", record, transaction);
+                    
+                }
+                transaction.Commit();
+                return true;
+
+            } catch (Exception ex) {
+                transaction.Rollback();
+                return false;
+            }
         }
 
         public abstract Task<LockStatus> DataOpen();
@@ -312,7 +331,7 @@ namespace NxRebuild.shared {
             }
         }
 
-        public abstract Task<bool> DeleteQueryExec();
+        public abstract Task<bool> DeleteQueryExec(IDbTransaction transaction);
 
         // 名前変更の検証メソッド
         // 必要に応じて派生クラスでオーバーライドできるように virtual にしておくと
@@ -344,16 +363,16 @@ namespace NxRebuild.shared {
             string sql = $"UPDATE {_tblName} SET {_nameColName} = @name WHERE {_idColName} = @id AND group_code = {TenantCode}";
 
             // 成功したら true が返る
-            return await DBcon.ExecuteAsync(sql, new { name = newName, id = DataID }) > 0;
+            return await DBcon.ExecuteAsync(sql, new { name = newName, id = DataID, TenantCode }) > 0;
 
         }
+        public abstract Task<bool> JsonToTable(string Json);
 
         //インメモリDB内での処理でのみ使用
-        public abstract Task<bool> SaveQueryExec();
+        public abstract Task<bool> SaveQueryExec(IDbTransaction transaction);
 
         public abstract Task<string> TbltoJson();
 
-        public abstract Task<bool> JsonToTable(string Json);
 
         
 
