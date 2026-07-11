@@ -12,6 +12,7 @@ using System.Net.Http.Json; // GetFromJsonAsync用
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
+using System.Xml.Linq;
 
 namespace NxRebuild.shared {
     [Flags]
@@ -366,6 +367,8 @@ namespace NxRebuild.shared {
             return await DBcon.ExecuteAsync(sql, new { name = newName, id = DataID, TenantCode }) > 0;
 
         }
+
+        public abstract Task<bool> SaveAsync();
         public abstract Task<bool> JsonToTable(string Json);
 
         //インメモリDB内での処理でのみ使用

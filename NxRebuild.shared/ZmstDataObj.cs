@@ -1,9 +1,11 @@
 ﻿using Dapper;
+using Npgsql.Replication.PgOutput.Messages;
 using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Text;
 using System.Text.Json;
+using System.Transactions;
 
 namespace NxRebuild.shared {
 
@@ -75,41 +77,50 @@ namespace NxRebuild.shared {
 
 
         public override async Task<LockStatus> DataOpen() {
-            // ロック確認
-            if (!await CheckLockAsync(DataID)) {
-                return LockStatus.LockedByOther;
-            }
 
             // データを開くためのSQLを実行
             string sql = "SELECT * FROM Zmst WHERE id = @id AND group_code = @tenantCode";
             var result = await DBcon.QueryFirstOrDefaultAsync(sql, new { id = DataID, tenantCode = TenantCode });
             SetPropertys(result);
 
-            return LockStatus.Success;
+            return LockStatus;
         }
 
         public override async Task<bool> DeleteQueryExec(IDbTransaction transaction) {
-            // ロック確認
-            if (!await CheckLockAsync(DataID)) {
-                return false;
-            }
 
             // 削除用のSQLを実行
-            string sql = "DELETE FROM Zmst WHERE id = @id";
-            return await DBcon.ExecuteAsync(sql, new { id = DataID }) > 0;
+            string sql = "DELETE FROM Zmst WHERE id = @id AND group_code = @tenantCode";
+            return await DBcon.ExecuteAsync(sql, new { id = DataID , tenantCode = TenantCode },transaction) > 0;
         }
 
-        public override async Task<bool> SaveQueryExec() {
+
+        //注）クライアントの処理でのみ使うメソッド
+        public override async Task<bool> SaveAsync() {
+
+            IDbTransaction transaction = DBcon.BeginTransaction();
+            try {
+                bool result = await DeleteQueryExec(transaction);
+                if (!result)
+                    result = await SaveQueryExec(transaction);
+                if (!result) {
+                    transaction.Commit();
+                    return true;
+                } else
+                    return false;
+            } catch (Exception ex) {
+                transaction.Rollback();
+                return false;
+            }
+        }
+
+        public override async Task<bool> SaveQueryExec(IDbTransaction transaction) {
 
             // データ保存用のSQLを実行
-            if (DataID == 0) {
-                string sql = "INSERT INTO Zmst (Z_code, Z_name, update_at, locked_by, locked_at)" +
-                            " VALUES (@Z_code, @Z_name, @update_at, @locked_by, @locked_at)";
-                return await DBcon.ExecuteAsync(sql, this) > 0;
-            } else {
-                string sql = "UPDATE Zmst SET Z_code = @Z_code, Z_name = @Z_name WHERE id = @id";
-                return await DBcon.ExecuteAsync(sql, this) > 0;
-            }
+            var columns = this._rawData.Keys.Select(key => $"\"{key}\"");
+            var columnList = string.Join(", ", columns);
+            var values = string.Join(", ", _rawData.Keys.Select(key => "@" + key));
+            string sql = $"INSERT INTO Zmst ({columnList}) VALUES ({values})";
+            return await DBcon.ExecuteAsync(sql, _rawData, transaction) > 0;
         }
 
         public override async Task<string> TbltoJson() {
