@@ -8,7 +8,44 @@ namespace NxRebuild.shared {
     /// データオブジェクトのインターフェースです。
     /// </summary>
     public interface IDataObj<Key> {
-        Key Id { get; }
+
+        IDbConnection DBCon { get; }
+
+        string LoadDataAsJson();
+        Task<bool> SaveAsync();
+        TKey DataID { get; }
+        string DataName { get; set; }
+        NxDataType DataType { get; }
+        DateTime Update_at { get; set; }
+        Guid LockerID { get; set; }
+        DateTime LockedAt { get; set; }
+        string TenantCode { get; set; }
+
+        string NameColName { get; }
+        string IdColName { get; }
+        string TblName { get; }
+        string S_TblName { get; }
+        string InfoTbl { get; }
+        string W_TblName { get; }
+        string Ws_TblName { get; }
+
+        Task<LockStatus> DataOpen();
+        Task<bool> ReName(string newName);
+        static Task<bool> ReNameQueryExec(string newName);
+        Task<LockStatus> SetLockAsync(LockStatus lockStatus);
+
+        protected virtual async Task<bool> ValidateNewName(string newName);
+        private protected virtual async Task CheckLockStatusAndExecuteRename(string newName);
+        protected virtual async Task<(bool, string)> TryExecuteRenameQuery(string newName);
+        protected virtual async Task UpdateDataPropertiesAfterRenaming();
+
+        protected virtual LockResult CheckExistingLockAndReturnStatus(LockStatus lockStatus);
+        private protected virtual bool IsNewRecordForLocking(TenantCode tenantCode, DataID dataID);
+
+        protected virtual async Task<LockResult> AttemptToWriteLockInfo(LockStatus lockStatus);
+        protected virtual async Task<(bool, string)> ExecuteReNameQuery(string newName);
+
+        protected virtual LockResult CheckAndUpdateLockStatusIfExpired();
     }
 
     /// <summary>
@@ -22,6 +59,38 @@ namespace NxRebuild.shared {
     /// データオブジェクト管理のためのインターフェースです。
     /// </summary>
     public interface IDataObjMgr<Key> {
+
+        protected string _tblName { get; }
+        protected string _s_tblName { get; }
+        protected string _infoTbl { get; }
+        protected string _w_tblName { get; }
+        protected string _ws_tblName { get; }
+
+        protected List<Object> _dataList { get; }
+        protected NxDataType _datatype { get; }
+        protected DateTime _refreshed_at { get; }
+
+        protected HttpClient _http { get; }
+
+        // Virtual methods that can be implemented by the deriving class
+
+        protected virtual T CreateInstans(InMemoryDatabaseState db, CustomAuthStateProvider auth);
+
+        protected virtual Task Initialize(string strWhere = "") { }
+
+        // Public properties (can be accessed outside this interface via an implementation of IDataObjMgr)
+
+        public IEnumerable<T> DataList { get; }
+
+        protected IDbConnection DBcon { get; }
+
+        protected CustomAuthStateProvider AuthProv { get; }
+
+        // Additional methods
+
+        public virtual async Task<string> GetGroupCodeAsync();
+
+        public virtual async Task Initialize(string strWhere = "");
     }
 
     /// <summary>
