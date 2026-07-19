@@ -16,7 +16,7 @@ namespace NxRebuild.shared {
     //派生先では次のように定義する事
     //public class HaseiObjMgr<T, Guid> : DataObjMgr<T, TKey> where T : HaseiObj<Guid>
 
-    public class BaseDataObjMgr<T, TKey> : IBaseDataObjMgr where T : BaseDataObj<TKey>, new() {
+    public abstract class BaseDataObjMgr<T, TKey> : IBaseDataObjMgr where T : BaseDataObj<TKey>, new() {
         protected string _tblName;　//データ名等基本データが格納されるテーブル名
         protected string _s_tblName;//材料など詳細データが格納されるテーブル名
         protected string _infoTbl;//_tblNameに加え栄養素などの集計結果が入っているテーブル
@@ -33,11 +33,13 @@ namespace NxRebuild.shared {
 
         public string TenatCode { get; set; }
 
+        public Guid CurrentUserID {  get; set; }
+
 
         protected IDbConnection DBcon { get; set; }
      
 
-        protected IEnumerable<T> DataList => _dataList.Cast<T>();
+        protected IEnumerable<IBaseDataObj<TKey>> DataList => _dataList.Cast<IBaseDataObj<TKey>>();
 
         //public DataObjMgr(HttpClient Http, InMemoryDatabaseState db, CustomAuthStateProvider auth) {
         //    _dbstate = db;
@@ -45,12 +47,41 @@ namespace NxRebuild.shared {
 
         //    Initialize();
         //}
-
+        protected abstract TKey GenerateDataID();
 
         //BaseDataObjのインスタンスを作成する
         protected T CreateDataObj() {
             var obj = new T();
             return obj;
+        }
+
+        public T CreateNewDataObj() {
+            var dataObj = new T();
+            dataObj.DBcon = DBcon; 
+            dataObj.TenantCode = TenatCode;
+            dataObj.CurrUsrID = CurrentUserID;
+            dataObj.DataID = GenerateDataID();
+            dataObj.SetPropertys(GetEmptySchema());
+            _dataList.Add(dataObj);
+            return dataObj;
+        }
+
+        //新規レコードの場合に必要になる空のレコードを生成する。
+        protected Dictionary<string, object> GetEmptySchema() {
+            // 1=0 で空の結果を要求し、先頭（というか実質これだけ）を取得
+            // dynamicで受けることでメタデータを保持できる
+            var result = DBcon.QueryFirstOrDefault<dynamic>($"SELECT * FROM {_tblName} WHERE 1 = 0");
+
+            // DapperRowは IDictionary<string, object> にキャスト可能
+            var dictionary = (IDictionary<string, object>)result;
+
+            // もしテーブル名が間違っていたりして null が返る場合に備えてハンドリング
+            if (dictionary == null) {
+                throw new Exception($"テーブル {_tblName} が見つからないか、スキーマを取得できませんでした。");
+            }
+
+            // キーのみ抽出して値をnullで初期化して返す
+            return dictionary.Keys.ToDictionary(key => key, key => (object)null);
         }
 
         //データベースからデータを取得する。(クライアント、サーバー共用）
@@ -64,7 +95,7 @@ namespace NxRebuild.shared {
             }
             sql += ";";
 
-            var records = await DBcon.QueryAsync<KeyedList<string, object>>(sql);
+            var records = await DBcon.QueryAsync<Dictionary<string, object>>(sql);
             
             foreach (var record in records) {
                 T readData = CreateDataObj();
@@ -73,6 +104,26 @@ namespace NxRebuild.shared {
                 readData.SetPropertys(record);
                 _dataList.Add(readData);
             }
+        }
+
+        //指定したデータを削除し、_dataListからオブジェクトを削除
+        public async Task<bool> DeleteDataObj(TKey dataID) {
+            var target = DataList.FirstOrDefault(x => x.DataID.Equals(dataID));
+
+            if (target != null) {
+                // 見つかった場合の処理
+                var transaction = DBcon.BeginTransaction();
+                if (!(await target.DeleteQueryExec(transaction)))
+                    transaction.Rollback();
+                else {
+                    transaction.Commit();
+                    _dataList.Remove(dataID);
+                    
+                    return true;
+                }
+
+            }
+            return false;
         }
         
         public string LoadMultipleDataAsJson(List<TKey> idList)

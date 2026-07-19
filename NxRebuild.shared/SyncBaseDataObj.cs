@@ -4,36 +4,59 @@ using System.Data;
 using System.Text;
 
 namespace NxRebuild.shared {
-    public class SyncBaseDataObj<TKey> {
-        private readonly BaseDataObj<TKey> _dataObj;
 
+    public interface ISyncBaseDataObj<TKey>: IBaseDataObj<TKey> {
+
+        Task<LockStatus> SetLockAsync(LockStatus lockStatus)
+        Task<bool>       SaveJsonData(string json);
+        string           LoadDataAsJson();
+    }
+
+
+    //DataObjのラッパークラス。<br/>サーバーとの同期機能を付与する。
+    //UIからはインターフェース経由でaccessさせる。
+    //オブジェクトの作成と削除はマネージャークラスから行う。
+    public class SyncBaseDataObj<TKey> : ISyncBaseDataObj<TKey> {
+        protected readonly BaseDataObj<TKey> _dataObj;
+
+        public Guid CurrUsrID{ get => _dataObj.CurrUsrID; 
+                                set => _dataObj.CurrUsrID = value; }
         public SyncBaseDataObj(BaseDataObj<TKey> dataObj) {
             _dataObj = dataObj ?? throw new ArgumentNullException(nameof(dataObj));
         }
 
-        protected IDbConnection DBCon => _dataObj.DBcon;
+        public IDbConnection DBcon {
+            get => _dataObj.DBcon;
+            set => _dataObj.DBcon = value;
+        }
 
+        public IBaseDataObjMgr SelfObjMgr { 
+            get => _dataObj.SelfObjMgr;
+            set => _dataObj.SelfObjMgr = value;
+        }
         // DataObjのメソッドへのアクセスラッパー
+        public Task<LockStatus> SetLockAsync(LockStatus lockStatus) => _dataObj.SetLockAsync(lockStatus);
         public string LoadDataAsJson() => _dataObj.LoadDataAsJson();
         public Task<bool> SaveAsync() => _dataObj.SaveAsync();
-        public TKey DataID => _dataObj.DataID;
+
+        public TKey DataID {
+            get => _dataObj.DataID;
+            set => _dataObj.DataID = value;
+        }
+
         public string DataName {
 
             get => _dataObj.DataName;
-            set => _dataObj.DataName = value;
         }
         public NxDataType DataType => _dataObj.DataType;
         public DateTime Update_at {
             get => _dataObj.Update_at;
-            set => _dataObj.Update_at = value;
         }
         public Guid LockerID {
             get => _dataObj.LockerID;
-            set => _dataObj.LockerID = value;
         }
         public DateTime LockedAt {
             get => _dataObj.LockedAt;
-            set => _dataObj.LockedAt = value;
         }
 
 
@@ -59,179 +82,36 @@ namespace NxRebuild.shared {
                 return false;
             }
 
-            // 2. ロック状態を確認
-            LockStatus currentLock = await LockedChkfromTbl();
+            IDbTransaction transaction = DBcon.BeginTransaction();
+            // 2.インンメモリへの保存を実行してみる
+            if (!await _dataObj.ReNameQueryExec(newName, transaction))
+                transaction.Dispose();
+                return false;
 
-            // 3. エクスプローラー仕様のガード
-            // 誰かがロックしていたら（IsLocked == true）、例えそれが自分でもリネーム不可
-            if (currentLock.IsLocked) {
+            // 4.書き込み成功したら
+            //httpリクエストでリネーム
+            //アップデートタイム食い違うがサーバー側が新しくなるので気にしない。
+            //あとで勝手に更新される
+
+            //失敗したらロールバックする
+            if (!false) {
+                transaction.Rollback();
                 return false;
             }
 
-            // 4. ロックされていなければ実行
-            if (await ReNameQueryExec(newName)) {
-                this.DataName = newName;
-                return true;
-            }
-
-            return false;
+            transaction.Commit();
+            return true;
         }
 
-        //DataObjに実装されているReNameQueryExecメソッドにアクセス
-        public static async Task<bool> ReNameQueryExec(string newName) {
-            // TODO: 実際のSQL実行ロジックをここに実装
-            // DataObjのReNameQueryExecメソッドへの委譲
-            return await _dataObj.ReNameQueryExec(newName);
-        }
-        public virtual async Task<LockStatus> SetLockAsync(LockStatus lockStatus) {
-            LockStatus Lockst = await LockedChkfromTbl();
-            Guid parsedGuid;
-            if (Lockst.IsLocked) {
-                //すでにロック済みの場合その情報を返す。
-                //自分のプロパティも更新
-                LockedAt = (DateTime)Lockst.Locked_at;
 
-                // 文字列をGuidに変換する
-                if (Guid.TryParse(Lockst.LockedByUserId, out parsedGuid)) {
-                    LockerID = parsedGuid;
-                } else {
-                    // 万が一、DBにIDではない不正な文字列が入っていた場合の保険
-                    LockerID = Guid.Empty;
-                }
-                return Lockst;
-            } else {
-                //ロック情報書き込み
-                LockResult result = await WriteLockInfoAsync(lockStatus);
-                switch (result) {
-                    case LockResult.Success:
-                        // 書き込み成功後、改めて最新の情報をDBから取得して返す
-                        //自分のプロパティも更新
-                        LockedAt = (DateTime)Lockst.Locked_at;
-
-                        // 文字列をGuidに変換する
-                        if (Guid.TryParse(Lockst.LockedByUserId, out parsedGuid)) {
-                            LockerID = parsedGuid;
-                        } else {
-                            // 万が一、DBにIDではない不正な文字列が入っていた場合の保険
-                            LockerID = Guid.Empty;
-                        }
-                        return await LockedChkfromTbl();
-
-                    case LockResult.RecordNone:
-                        // ロックすべきレコードが無い（新規データ）の場合、
-                        // ロックしたものとしてリクエスト内容を返す
-                        //すでにロック済みの場合その情報を返す。
-                        LockedAt = (DateTime)Lockst.Locked_at;
-
-                        // 文字列をGuidに変換する
-                        if (Guid.TryParse(Lockst.LockedByUserId, out parsedGuid)) {
-                            LockerID = parsedGuid;
-                        } else {
-                            // 万が一、DBにIDではない不正な文字列が入っていた場合の保険
-                            LockerID = Guid.Empty;
-                        }
-                        return lockStatus;
-
-                    case LockResult.DbError:
-                    default:
-                        // エラー（DbError）および想定外のケース（default）の処理
-                        // ロック無し、かつHasErrorを立てて通知する
-                        return new LockStatus {
-                            Exists = false,
-                            IsLocked = false,
-                            LockedByUserId = null,
-                            Locked_at = null,
-                            HasError = true,
-                            ErrorMessage = "DBエラーが発生しました"
-                        };
-                }
-            }
-
-
+        public Task<bool> SaveJsonData(string json) {
+            return _dataObj.SaveJsonData(json);
         }
 
-        protected virtual async Task<LockResult> WriteLockInfoAsync(LockStatus lockStatus) {
-            // 10分経過したものは期限切れとみなす
-            var expiryTime = DateTime.UtcNow.AddMinutes(-10);
 
-            // 1. まず更新を試みる
-            string sql = $@"
-                        UPDATE {TblName} 
-                        SET locked_by = @userId, locked_at = @lockedAt 
-                        WHERE {IdColName} = @dataID 
-                          AND group_code = @tenantCode
-                          AND (locked_at IS NULL OR locked_at < @expiryTime)";
-
-            try {
-                int affectedRows = await DBcon.ExecuteAsync(sql, new {
-                    userId = lockStatus.LockedByUserId,
-                    lockedAt = DateTime.UtcNow,
-                    dataID = DataID,
-                    tenantCode = TenantCode,
-                    expiryTime = expiryTime
-                });
-
-                if (affectedRows > 0) return LockResult.Success;
-
-                // 2. 更新できなかった場合、理由を調べるために再確認
-                // ここでレコードが存在するか確認する
-                var currentStatus = await LockedChkfromTbl();
-
-                // currentStatus.Update_at が MinValue ならレコード無しと判定
-                if (currentStatus.Locked_at == DateTime.MinValue) {
-                    return LockResult.RecordNone;
-                }
-
-                // レコードはあるがIsLockedがtrue＝他人がロック中
-                return LockResult.LockedByOther;
-
-            } catch (Exception ex) {
-                return LockResult.DbError;
-            }
+        public void SetPropertys(Dictionary<string, object> record) {
+            _dataObj).SetPropertys(record);
         }
 
-        //テーブルからロック情報を読み取って返す。ユーザー名はクライアントで
-        protected virtual async Task<LockStatus> LockedChkfromTbl() {
-            // SQLでlocked_atとlocked_byの両方を取得
-            var sql = $@"SELECT locked_at, locked_by as UserId, Update_at  
-                 FROM {TblName} 
-                 WHERE group_code = @groupCode AND {IdColName} = @dataID";
-
-            var result = await DBcon.QueryFirstOrDefaultAsync<dynamic>(sql, new { TenantCode, DataID });
-
-            // デフォルト値を設定
-            bool isLocked = false;
-            string? userId = null;
-            DateTime updateAt = result?.Update_at ?? DateTime.MinValue;
-
-            // レコードが取れなかった場合
-            if (result == null) {
-                return new LockStatus { Exists = false };
-            }
-
-            // レコードがある場合
-            DateTime? lockedAt = result.locked_at as DateTime?;
-            bool locked = lockedAt != null && (DateTime.UtcNow - lockedAt.Value).TotalMinutes < 10;
-
-            LockStatus lockSt = new LockStatus {
-                Exists = true, // レコードあり！
-                IsLocked = locked,
-                LockedByUserId = locked ? (string)result.UserId : null,
-                Locked_at = (DateTime?)result.Update_at
-            };
-            //自分のプロパティも更新
-            Guid parsedGuid;
-            LockedAt = (DateTime)lockSt.Locked_at;
-
-            // 文字列をGuidに変換する
-            if (Guid.TryParse(lockSt.LockedByUserId, out parsedGuid)) {
-                LockerID = parsedGuid;
-            } else {
-                // 万が一、DBにIDではない不正な文字列が入っていた場合の保険
-                LockerID = Guid.Empty;
-            }
-            return lockSt;
-
-        }
     }
 }
