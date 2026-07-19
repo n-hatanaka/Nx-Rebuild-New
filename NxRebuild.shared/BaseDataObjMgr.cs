@@ -9,14 +9,28 @@ using System.Net.Http.Json; // GetFromJsonAsync用
 using System.Text.Json;
 
 namespace NxRebuild.shared {
-    // マネージャの機能だけを外出しするインターフェース（これに型は不要）
-    public interface IBaseDataObjMgr { }
+    public interface IBaseDataObjMgr<T, TKey>  where T : BaseDataObj<TKey> {
+        Guid CurrentUserID { get; set; }
+        IEnumerable<IBaseDataObj<TKey>> DataList { get; }
+        NxDataType DataType { get; set; }
+        IDbConnection DBcon { get; set; }
+        DateTime Refreshed_at { get; set; }
+        string TenatCode { get; set; }
+
+        T CreateNewDataObj();
+        Task<bool> DeleteDataObj(TKey dataID);
+        void DistributeJsonData(string json);
+        Task Initialize(string strWhere = "");
+        string LoadMultipleDataAsJson(List<TKey> idList);
+    }
+
+    // マネージャの機能だけを外出しするインターフェース
 
     //DataObjを管理するクラス
     //派生先では次のように定義する事
     //public class HaseiObjMgr<T, Guid> : DataObjMgr<T, TKey> where T : HaseiObj<Guid>
 
-    public abstract class BaseDataObjMgr<T, TKey> : IBaseDataObjMgr where T : BaseDataObj<TKey>, new() {
+    public abstract class BaseDataObjMgr<T, TKey> : IBaseDataObjMgr<T, TKey> where T : BaseDataObj<TKey>, new() {
         protected string _tblName;　//データ名等基本データが格納されるテーブル名
         protected string _s_tblName;//材料など詳細データが格納されるテーブル名
         protected string _infoTbl;//_tblNameに加え栄養素などの集計結果が入っているテーブル
@@ -24,22 +38,23 @@ namespace NxRebuild.shared {
         protected string _w_tblName;
         protected string _ws_tblName;
 
-        //DataObjのList：派生したDataObjも保持できる様Objectにダウンキャストする。
-        protected List<Object> _dataList = new List<Object>();
-        protected NxDataType _datatype;
-        protected DateTime _refreshed_at;//最後にDBと整合を取った時間
+        public NxDataType DataType { get; set; }
+        public DateTime Refreshed_at { get; set; }
 
-        protected HttpClient _http;
+        public HttpClient _http;
 
         public string TenatCode { get; set; }
 
-        public Guid CurrentUserID {  get; set; }
+        public Guid CurrentUserID { get; set; }
 
 
-        protected IDbConnection DBcon { get; set; }
-     
+        public IDbConnection DBcon { get; set; }
 
-        protected IEnumerable<IBaseDataObj<TKey>> DataList => _dataList.Cast<IBaseDataObj<TKey>>();
+
+        //DataObjのList：派生したDataObjも保持できる様Objectにダウンキャストする。
+        public List<Object> _dataList = new List<Object>();
+
+        public IEnumerable<IBaseDataObj<TKey>> DataList => _dataList.Cast<IBaseDataObj<TKey>>();
 
         //public DataObjMgr(HttpClient Http, InMemoryDatabaseState db, CustomAuthStateProvider auth) {
         //    _dbstate = db;
@@ -57,7 +72,7 @@ namespace NxRebuild.shared {
 
         public T CreateNewDataObj() {
             var dataObj = new T();
-            dataObj.DBcon = DBcon; 
+            dataObj.DBcon = DBcon;
             dataObj.TenantCode = TenatCode;
             dataObj.CurrUsrID = CurrentUserID;
             dataObj.DataID = GenerateDataID();
@@ -96,11 +111,11 @@ namespace NxRebuild.shared {
             sql += ";";
 
             var records = await DBcon.QueryAsync<Dictionary<string, object>>(sql);
-            
+
             foreach (var record in records) {
                 T readData = CreateDataObj();
                 readData.DBcon = DBcon;
-                readData.TenantCode = TenatCode; 
+                readData.TenantCode = TenatCode;
                 readData.SetPropertys(record);
                 _dataList.Add(readData);
             }
@@ -108,7 +123,7 @@ namespace NxRebuild.shared {
 
         //指定したデータを削除し、_dataListからオブジェクトを削除
         public async Task<bool> DeleteDataObj(TKey dataID) {
-            var target = DataList.FirstOrDefault(x => x.DataID.Equals(dataID));
+            var target = (BaseDataObj<TKey>)_dataList.FirstOrDefault(x => ((BaseDataObj<TKey>)x).DataID.Equals(dataID));
 
             if (target != null) {
                 // 見つかった場合の処理
@@ -118,71 +133,64 @@ namespace NxRebuild.shared {
                 else {
                     transaction.Commit();
                     _dataList.Remove(dataID);
-                    
+
                     return true;
                 }
 
             }
             return false;
         }
-        
-        public string LoadMultipleDataAsJson(List<TKey> idList)
-        {
+
+        public string LoadMultipleDataAsJson(List<TKey> idList) {
             var jsonResults = new List<string>();
-        
-            foreach (var id in idList)
-            {
+
+            foreach (var id in idList) {
                 // 1. DataList から該当するオブジェクトを特定
                 // 既存の DataList（Object型）を T にキャストして検索
                 var dataObj = DataList.FirstOrDefault(d => d.DataID.Equals(id));
-        
-                if (dataObj != null)
-                {
+
+                if (dataObj != null) {
                     // 2. 各オブジェクトの LoadDataAsJson() を呼ぶ
-                    // （BaseDataObj側でID等のプロパティがセットされている前提）
                     jsonResults.Add(dataObj.LoadDataAsJson());
                 }
             }
-        
+
             // 3. 個別のJSON文字列を結合して一つのJSON配列にする
             // 各jsonResultsの要素は既に文字列化されているため、
             // 単純にカンマで繋いで [] で囲みます。
             return "[" + string.Join(",", jsonResults) + "]";
         }
-        
-        
-        public void DistributeJsonData(string json)
-        {
+
+
+        public void DistributeJsonData(string json) {
             // 1. JSON全体をレコードのリストにパース
             var allRecords = JsonSerializer.Deserialize<List<Dictionary<string, object>>>(json);
-            
+
             // 2. IDごとにレコードをグループ化する
             // 親データだけでなく、子データも混ざっているため、親ID（parent_id または id）でまとめる
-            var groupedRecords = allRecords.GroupBy(r => 
+            var groupedRecords = allRecords.GroupBy(r =>
                 r.ContainsKey("parent_id") ? r["parent_id"] : r["id"]
             );
-        
-            foreach (var group in groupedRecords)
-            {
+
+            foreach (var group in groupedRecords) {
                 var id = (TKey)Convert.ChangeType(group.Key, typeof(TKey));
-                
+
                 // 3. IDに対応するオブジェクトを探す
                 var obj = DataList.FirstOrDefault(d => d.DataID.Equals(id));
-                
-                if (obj == null)
-                {
+
+                if (obj == null) {
                     // 存在しなければ新規作成
                     obj = CreateDataObj();
                     obj.DataID = id; // IDをセット
                     _dataList.Add(obj);
                 }
-        
+
                 // 4. そのオブジェクト専用のJSONを作成して渡す
                 // グループ化したレコードを再度JSON文字列にして、個別のSaveJsonDataへ流し込む
                 string individualJson = JsonSerializer.Serialize(group.ToList());
                 obj.SaveJsonData(individualJson);
             }
-            
+
             _refreshed_at = DateTime.Now;
         }
     }

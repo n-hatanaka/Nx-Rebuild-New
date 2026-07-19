@@ -48,7 +48,7 @@ namespace NxRebuild.shared {
         Guid LockerID { get; }
         string NameColName { get; }
         string S_TblName { get; }
-        IBaseDataObjMgr SelfObjMgr { get; set; }
+        IBaseDataObjMgr<BaseDataObj<TKey>, TKey> SelfObjMgr { get; set; }
         string TblName { get; }
         string TenantCode { get; set; }
         DateTime Update_at { get;  }
@@ -91,7 +91,7 @@ namespace NxRebuild.shared {
         protected DateTime _locked_at;
 
 
-        public IBaseDataObjMgr SelfObjMgr { get; set; }
+        public IBaseDataObjMgr<BaseDataObj<TKey>, TKey> SelfObjMgr { get; set; }
         public string TenantCode { get; set; }
         public IDbConnection DBcon { get; set; }
 
