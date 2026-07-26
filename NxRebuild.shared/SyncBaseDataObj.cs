@@ -7,7 +7,7 @@ namespace NxRebuild.shared {
 
     public interface ISyncBaseDataObj<TKey>: IBaseDataObj<TKey> {
 
-        Task<LockStatus> SetLockAsync(LockStatus lockStatus)
+        Task<LockStatus> SetLockAsync(LockStatus lockStatus);
         Task<bool>       SaveJsonData(string json);
         string           LoadDataAsJson();
     }
@@ -30,7 +30,7 @@ namespace NxRebuild.shared {
             set => _dataObj.DBcon = value;
         }
 
-        public IBaseDataObjMgr SelfObjMgr { 
+        public IBaseDataObjMgr<BaseDataObj<TKey>,TKey> SelfObjMgr { 
             get => _dataObj.SelfObjMgr;
             set => _dataObj.SelfObjMgr = value;
         }

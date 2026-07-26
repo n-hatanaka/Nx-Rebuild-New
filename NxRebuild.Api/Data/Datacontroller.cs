@@ -1,8 +1,8 @@
-public class LockStatus {
-    public bool IsLocked { get; set; }
-    public string LockedByUserId { get; set; }
-    public string LockedByUserName { get; set; }
-}
+//public class LockStatus {
+//    public bool IsLocked { get; set; }
+//    public string LockedByUserId { get; set; }
+//    public string LockedByUserName { get; set; }
+//}
 
 // Services/ZmstLockChecker.cs
 public class ZmstLockChecker : ILockChecker {
