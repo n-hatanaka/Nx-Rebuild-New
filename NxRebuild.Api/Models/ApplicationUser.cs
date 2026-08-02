@@ -5,7 +5,7 @@ namespace NxRebuild.Api.Models;
 
 public class ApplicationUser : IdentityUser
 {
-    public string GroupCode { get; set; } = string.Empty;
+    public string TenantCode { get; set; } = string.Empty;
 
     public ApplicationUser()
     {
@@ -13,7 +13,7 @@ public class ApplicationUser : IdentityUser
         Id = Uuid7.NewUuid7().ToString();
 
         // グループコードも UUIDv7
-        GroupCode = Uuid7.NewUuid7().ToString();
+        TenantCode = Uuid7.NewUuid7().ToString();
 
 
     }

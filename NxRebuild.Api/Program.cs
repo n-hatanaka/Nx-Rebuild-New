@@ -83,15 +83,15 @@ using (var scope = app.Services.CreateScope())
 
         var result = await userManager.CreateAsync(user, password);
         if (result.Succeeded) {
-            user.GroupCode = "00000000-0001-7000-8000-000000000000";
+            user.TenantCode = "00000000-0001-7000-8000-000000000000";
             await userManager.UpdateAsync(user);
             Console.WriteLine("testユーザーを作成しました。");
 
         }
     } else {
         // 存在する場合はグループコードが固定されているか確認（必要に応じて更新）
-        if (user.GroupCode != "00000000-0001-7000-8000-000000000000") {
-            user.GroupCode = "00000000-0001-7000-8000-000000000000";
+        if (user.TenantCode != "00000000-0001-7000-8000-000000000000") {
+            user.TenantCode = "00000000-0001-7000-8000-000000000000";
             await userManager.UpdateAsync(user);
         }
     }

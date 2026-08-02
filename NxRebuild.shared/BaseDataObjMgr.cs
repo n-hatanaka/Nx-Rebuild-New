@@ -15,13 +15,25 @@ namespace NxRebuild.shared {
         NxDataType DataType { get; set; }
         IDbConnection DBcon { get; set; }
         DateTime Refreshed_at { get; set; }
-        string TenatCode { get; set; }
+        Guid TenantCode { get; set; }
+
+        string TblName { get; set; }
+        string S_TblName { get; set; }
+        string InfoTbl { get; set; }
+
+        string W_TblName { get; set; }
+        string Ws_TblName { get; set; }
 
         T CreateNewDataObj();
         Task<bool> DeleteDataObj(TKey dataID);
+        Task<List<TKey>> DeleteData(IEnumerable<TKey> dataIDs);
+
+        void RemoveFromList(BaseDataObj<TKey> obj);
+
         void DistributeJsonData(string json);
         Task Initialize(string strWhere = "");
         string LoadMultipleDataAsJson(List<TKey> idList);
+        
     }
 
     // マネージャの機能だけを外出しするインターフェース
@@ -31,19 +43,24 @@ namespace NxRebuild.shared {
     //public class HaseiObjMgr<T, Guid> : DataObjMgr<T, TKey> where T : HaseiObj<Guid>
 
     public abstract class BaseDataObjMgr<T, TKey> : IBaseDataObjMgr<T, TKey> where T : BaseDataObj<TKey>, new() {
-        protected string _tblName;　//データ名等基本データが格納されるテーブル名
-        protected string _s_tblName;//材料など詳細データが格納されるテーブル名
-        protected string _infoTbl;//_tblNameに加え栄養素などの集計結果が入っているテーブル
+        protected string _tblName;　
+        protected string _s_tblName;
+        protected string _infoTbl;
 
         protected string _w_tblName;
         protected string _ws_tblName;
+        public string TblName { get; set; }//データ名等基本データが格納されるテーブル名
+        public string S_TblName { get; set; }//明細データが格納されるサブテーブル名
+        public string InfoTbl { get; set; }//TblNameに加え栄養素などの集計結果が入っているテーブル(プロパティをビューから取得したいときはこれを使う
+
+        public string W_TblName { get; set; }
+        public string Ws_TblName { get; set; }
 
         public NxDataType DataType { get; set; }
         public DateTime Refreshed_at { get; set; }
 
-        public HttpClient _http;
 
-        public string TenatCode { get; set; }
+        public Guid TenantCode { get; set; }
 
         public Guid CurrentUserID { get; set; }
 
@@ -56,12 +73,13 @@ namespace NxRebuild.shared {
 
         public IEnumerable<IBaseDataObj<TKey>> DataList => _dataList.Cast<IBaseDataObj<TKey>>();
 
-        //public DataObjMgr(HttpClient Http, InMemoryDatabaseState db, CustomAuthStateProvider auth) {
-        //    _dbstate = db;
-        //    _authProv = auth;
+        public BaseDataObjMgr(DbConnection db , Guid tenantCode , Guid currUserID) {
+            DBcon = db;
+            TenantCode = tenantCode;
+            CurrentUserID = currUserID;
 
-        //    Initialize();
-        //}
+            //Initialize()はインスタンス生成元が呼び出す事
+        }
         protected abstract TKey GenerateDataID();
 
         //BaseDataObjのインスタンスを作成する
@@ -73,7 +91,7 @@ namespace NxRebuild.shared {
         public T CreateNewDataObj() {
             var dataObj = new T();
             dataObj.DBcon = DBcon;
-            dataObj.TenantCode = TenatCode;
+            dataObj.TenantCode = TenantCode;
             dataObj.CurrUsrID = CurrentUserID;
             dataObj.DataID = GenerateDataID();
             dataObj.SetPropertys(GetEmptySchema());
@@ -115,11 +133,25 @@ namespace NxRebuild.shared {
             foreach (var record in records) {
                 T readData = CreateDataObj();
                 readData.DBcon = DBcon;
-                readData.TenantCode = TenatCode;
+                readData.TenantCode = TenantCode;
                 readData.SetPropertys(record);
                 _dataList.Add(readData);
             }
         }
+        // 指定したID群を順次削除し、削除に失敗したIDを返す。
+        // 返り値のリストが空なら全件成功。
+        // UIはこの返り値を観測して成功／部分失敗を判断する。
+        public async Task<List<TKey>> DeleteData(IEnumerable<TKey> dataIDs) {
+            var failedLst = new List<TKey>();
+
+            foreach (var id in dataIDs) {
+                if (!await DeleteDataObj(id))
+                    failedLst.Add(id);
+            }
+
+            return failedLst;
+        }
+
 
         //指定したデータを削除し、_dataListからオブジェクトを削除
         public async Task<bool> DeleteDataObj(TKey dataID) {
@@ -141,6 +173,10 @@ namespace NxRebuild.shared {
             return false;
         }
 
+        public void RemoveFromList(BaseDataObj<TKey> obj) {
+            _dataList.Remove(obj);
+        }
+
         public string LoadMultipleDataAsJson(List<TKey> idList) {
             var jsonResults = new List<string>();
 
@@ -151,7 +187,7 @@ namespace NxRebuild.shared {
 
                 if (dataObj != null) {
                     // 2. 各オブジェクトの LoadDataAsJson() を呼ぶ
-                    jsonResults.Add(dataObj.LoadDataAsJson());
+                    jsonResults.Add(dataObj.TblToJson());
                 }
             }
 
@@ -188,11 +224,10 @@ namespace NxRebuild.shared {
                 // 4. そのオブジェクト専用のJSONを作成して渡す
                 // グループ化したレコードを再度JSON文字列にして、個別のSaveJsonDataへ流し込む
                 string individualJson = JsonSerializer.Serialize(group.ToList());
-                obj.SaveJsonData(individualJson);
+                obj.JsonToTbl(individualJson);
             }
 
             _refreshed_at = DateTime.Now;
         }
     }
-}
 }

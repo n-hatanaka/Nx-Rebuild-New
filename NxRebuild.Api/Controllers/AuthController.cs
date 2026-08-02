@@ -35,7 +35,7 @@ public class AuthController : ControllerBase
 
         return Ok(new {
             token,
-            GroupCode = user.GroupCode
+            TenantCode = user.TenantCode
         });
     }
 
@@ -45,7 +45,7 @@ public class AuthController : ControllerBase
         {
             new Claim(JwtRegisteredClaimNames.Sub, user.Id),
             new Claim(JwtRegisteredClaimNames.Email, user.Email!),
-            new Claim("group_code", user.GroupCode)
+            new Claim("tenant_code", user.TenantCode)
         };
 
         var key = new SymmetricSecurityKey(

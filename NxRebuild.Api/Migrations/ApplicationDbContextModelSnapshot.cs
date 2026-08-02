@@ -173,7 +173,7 @@ namespace NxRebuild.Api.Migrations
                     b.Property<bool>("EmailConfirmed")
                         .HasColumnType("boolean");
 
-                    b.Property<string>("GroupCode")
+                    b.Property<string>("tenant_code")
                         .IsRequired()
                         .HasColumnType("text");
 

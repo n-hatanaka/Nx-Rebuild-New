@@ -50,13 +50,13 @@ namespace NxRebuild.shared {
         string S_TblName { get; }
         IBaseDataObjMgr<BaseDataObj<TKey>, TKey> SelfObjMgr { get; set; }
         string TblName { get; }
-        string TenantCode { get; set; }
+        Guid TenantCode { get; set; }
         DateTime Update_at { get;  }
         string W_TblName { get; }
         string Ws_TblName { get; }
 
         Task<LockStatus> DataOpen();
-        string LoadDataAsJson();
+        string TblToJson();
         Task<bool> ReName(string newName);
         Task<bool> SaveAsync();
     }
@@ -64,7 +64,7 @@ namespace NxRebuild.shared {
     public abstract class BaseDataObj<TKey> : IBaseDataObj<TKey> {
 
         // 【変更】レコード内容をJSON（辞書）として保持するメンバ
-        protected Dictionary<string, object> _rawData = new();
+        public Dictionary<string, object> _rawData = new();
 
         protected string _nameColName; //テーブルのデータ名カラムのカラム名
         protected string _idColName;//テーブルのIDカラムのカラム名
@@ -92,7 +92,7 @@ namespace NxRebuild.shared {
 
 
         public IBaseDataObjMgr<BaseDataObj<TKey>, TKey> SelfObjMgr { get; set; }
-        public string TenantCode { get; set; }
+        public Guid TenantCode { get; set; }
         public IDbConnection DBcon { get; set; }
 
         // --- 【変更】プロパティ実装：変数からJSON（_rawData）への参照へ切り替え ---
@@ -129,6 +129,8 @@ namespace NxRebuild.shared {
         public Guid CurrUsrID { get; set; }
 
 
+
+
         // この中は派生先で実装する事。
         //ここで固定のテーブル名やNameカラム名などのプロパティを設定する
         protected abstract void Initialize();
@@ -150,7 +152,7 @@ namespace NxRebuild.shared {
             // _locked_at = (DateTime)record["locked_at"];
         }
         // テーブルからデータを取得してJSON文字列にする
-        public string LoadDataAsJson() {
+        public string TblToJson() {
             string sql = CreateJSONsql();
             var result = DBcon.Query<dynamic>(sql, new { dataID = DataID, tenantCode = TenantCode });
             return JsonSerializer.Serialize(result);
@@ -165,7 +167,7 @@ namespace NxRebuild.shared {
         //        WHERE s.parent_id = @dataID";
         //}
 
-        public async Task<bool> SaveJsonData(string json) {
+        public async Task<bool> JsonToTbl(string json) {
             var records = JsonSerializer.Deserialize<List<Dictionary<string, object>>>(json);
             // JSONを受け取ってテーブルに保存（Delete & Insert）
             var transaction = DBcon.BeginTransaction();
@@ -203,9 +205,22 @@ namespace NxRebuild.shared {
 
 
         public abstract Task<bool> DeleteQueryExec(IDbTransaction transaction);
+        // データベースからエンティティを物理削除する。
+        // 派生先では TblName テーブルおよび関連するサブテーブル（s_tblName など）を完全削除すること。
+
+        public abstract Task<bool> SoftDeleteQueryExec(IDbTransaction transaction);
+        // ※ API 層からのみ呼び出す。
+        // 論理削除を実装する：
+        //   - TblName テーブルのレコードを「削除済み」と扱える状態にする
+        //     （例：Name をクリア、Parent カラムを NULL にする、Updated_at を更新する）。
+        //   - サブテーブル以下の関連レコードは物理削除する。
+        // UI では、この論理削除状態を参照して「削除済みデータ」を判定する。
+        // 実装時は挙動に注意すること。
+
+
 
         // 名前変更の検証メソッド
-        // 必要に応じて派生クラスでオーバーライドできるように virtual にしておくと
+        // 必要に応じて派生クラスでオーバーライドできるように virtual にしておく
         public virtual async Task<bool> ReName(string newName) {
             // 1. バリデーション
             if (string.IsNullOrWhiteSpace(newName) || newName.Length > 20) {
@@ -215,7 +230,7 @@ namespace NxRebuild.shared {
             IDbTransaction transaction = DBcon.BeginTransaction();
             if (await ReNameQueryExec(newName, transaction)) {
                 transaction.Commit();
-                _rawData[_nameColName] = newName;
+                await UpdatePropertys();
                 return true;
             }
             transaction.Rollback();
@@ -230,6 +245,17 @@ namespace NxRebuild.shared {
             // 成功したら true が返る
             return await DBcon.ExecuteAsync(sql, new { name = newName, id = DataID, update_at = DateTime.UtcNow ,tenantCode = TenantCode }, dbTransaction) > 0;
 
+        }
+
+        public virtual async Task UpdatePropertys() {
+            string sql =
+                $"SELECT * FROM {_tblName} WHERE {_idColName} = '{DataID}' AND tenant_code = '{TenantCode}'";
+
+            var record = await DBcon.QueryFirstOrDefaultAsync<Dictionary<string, object>>(sql);
+
+            if (record != null) {
+                SetPropertys(record);
+            }
         }
 
         public abstract Task<bool> SaveAsync();
@@ -309,10 +335,6 @@ namespace NxRebuild.shared {
                         };
                 }
             }
-
-
-
-
         }
         //
         protected virtual async Task<LockResult> WriteLockInfoAsync(LockStatus lockStatus, IDbTransaction transaction) {
@@ -357,7 +379,7 @@ namespace NxRebuild.shared {
         }
 
 
-        //テーブルからロック情報を読み取って返す。ユーザー名はクライアントで
+        //テーブルからロック情報を読み取って返す。ユーザー名はクライアントで取得して
         protected virtual async Task<LockStatus> LockedChkfromTbl(IDbTransaction transaction) {
             // SQLでlocked_atとlocked_byの両方を取得
             var sql = $@"SELECT locked_at, locked_by as UserId, Update_at  
