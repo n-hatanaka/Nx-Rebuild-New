@@ -1,3 +1,7 @@
+For the past 20 years, enterprise applications have largely followed the same layered pattern—controllers, services, repositories, DTOs, validators, and the glue code connecting them.
+Nx‑Rebuild‑New does not “replace” this tradition; it introduces a different structural model where client and server share a unified object representation.
+CRUD becomes declarative, schema changes propagate automatically, and large‑scale systems maintain structural stability.
+
 
 Nx‑Rebuild‑New — Architecture Based on the “Nexus UI–DB Transformation Model”
 
