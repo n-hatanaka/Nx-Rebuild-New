@@ -93,6 +93,60 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             //InfoTableName = _baseDataObjMgr.InfoTbl;
 
         }
+        
+        public async Task<bool> SyncData()
+        {
+            DateTime refreshed_at =Refreshed_at;
+            // ① API に世界線同期点を渡す
+            var url = $"api/sync/{refreshed_at:O}";
+            var response = await _http.GetAsync(url);
+        
+            if (!response.IsSuccessStatusCode)
+                return false;
+        
+            // ② JSON を受け取る
+            var json = await response.Content.ReadAsStringAsync();
+        
+            // ③ パース（あなたの構造に合わせて）
+            var syncResult = JsonSerializer.Deserialize<SyncAllResult>(json);
+        
+            if (syncResult?.Items == null)
+                return false;
+        
+            // ④ ループして DataObjMgr の世界線を更新
+            foreach (var item in syncResult.Items)
+            {
+                var dataId = item.Key;
+                var dataJson = item.Data;
+        
+                // ⑤ 既存 DataObj を探す
+                var target = _baseDataObjMgr.DataList
+                    .FirstOrDefault(x => x.DataID.Equals(dataId));
+        
+                if (target != null)
+                {
+                    // ⑥ 既存オブジェクトに世界線を流し込む
+                    await target.JsonToTbl(dataJson);
+                }
+                else
+                {
+                    // ⑦ 新規作成
+                    var newObj = _baseDataObjMgr.CreateNewDataObj();
+        
+                    // DataID をセット（必要なら）
+                    newObj.DataID = dataId;
+        
+                    // ⑧ 世界線を流し込む
+                    await newObj.JsonToTbl(dataJson);
+        
+                    // ⑨ DataList に追加
+                    _baseDataObjMgr.AddDataObj(newObj);
+                }
+            }
+        
+            return true;
+        }
+        
         public async Task<List<TKey>> DeleteData(IEnumerable<TKey> dataIDs)
        {
            var url = $"{ApiRoute}/Delete";

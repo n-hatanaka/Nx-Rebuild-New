@@ -62,7 +62,33 @@ namespace NxRebuild.Api.Controllers {
         //     // ★DataList やテーブル情報を読み込む
         //     _dataObjMgr.Initialize();
         // }
-
+        
+        [HttpGet("sync/{refreshedAt}")]
+        public async Task<IActionResult> SyncAll(DateTime refreshedAt)
+        {
+            // DataObjMgr を取得（あなたの構造に合わせて）
+            await CreateObjMgr(); 
+            var mgr = _dataObjMgr;
+        
+            var resultList = new List<object>();
+        
+            foreach (var obj in mgr.DataList)
+            {
+                // 世界線同期済みの SyncBaseDataObj<TKey>
+                var json = await obj.TblToJson();   // ここはあなたの実装名に合わせる
+        
+                resultList.Add(new {
+                    Key = obj.Key,
+                    Data = json
+                });
+            }
+        
+            // ひとまとめにして返す
+            return Ok(new {
+                Refreshed_at = refreshedAt,
+                Items = resultList
+            });
+        }
 
         [HttpPost("Delete")]
         public async Task<IActionResult> Delete([FromBody] List<TKey> dataLst) {
