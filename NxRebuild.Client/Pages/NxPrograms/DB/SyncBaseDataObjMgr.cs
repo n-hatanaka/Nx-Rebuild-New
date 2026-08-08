@@ -73,69 +73,47 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             //InfoTableName = _baseDataObjMgr.InfoTbl;
 
         }
-
-
-        public async Task<bool> DeleteDataObj(TKey dataID) {
-            // ★対象オブジェクト取得
-            var target = (BaseDataObj<TKey>)DataList
-                .FirstOrDefault(x => ((BaseDataObj<TKey>)x).DataID.Equals(dataID));
-
-            if (target == null)
-                return false;
-
-            // ★まずロックを取る（SetLockAsync は内部でトランザクション管理）
-            var lockStatus = await target.SetLockAsync(new LockStatus {
-                IsLocked = true,
-                LockedByUserId = CurrentUserID.ToString()  // ← NxDataController でセット済み
-            });
-
-            // ★ロックが取れなかった場合（他ユーザーがロック中）
-            if (!lockStatus.IsLocked || lockStatus.LockedByUserId != CurrentUserID.ToString()) {
-                return false;
-            }
-
-            // ★ロックが自分のものなので削除処理へ
-            var transaction = DBcon.BeginTransaction();
-
-            if (!(await target.DeleteQueryExec(transaction))) {
-                transaction.Rollback();
-
-                // ★ロック解除（失敗時も必ず）
-                await target.SetLockAsync(new LockStatus {
-                    IsLocked = false,
-                    LockedByUserId = null
-                });
-
-                return false;
-            }
-
-            // ★削除成功
-            transaction.Commit();
-
-            // ★DataList から削除
-            _baseDataObjMgr._dataList.Remove(target);
-
-            // ★ロック解除（成功時も必ず）
-            await target.SetLockAsync(new LockStatus {
-                IsLocked = false,
-                LockedByUserId = null
-            });
-
-            return true;
-        }
-        // 指定したID群を順次削除し、削除に失敗したIDを返す。
-        // 返り値のリストが空なら全件成功。
-        // UIはこの返り値を観測して成功／部分失敗を判断する。
-        public async Task<List<TKey>> DeleteData(IEnumerable<TKey> dataIDs) {
-            var failedLst = new List<TKey>();
-
-            foreach (var id in dataIDs) {
-                if (!await DeleteDataObj(id))
-                    failedLst.Add(id);
-            }
-
-            return failedLst;
-        }
+        public async Task<List<TKey>> DeleteData(IEnumerable<TKey> dataIDs)
+       {
+           var url = $"{ApiRoute}/Delete";
+       
+           HttpResponseMessage response;
+       
+           try {
+               response = await Http.PostAsJsonAsync(url, dataIDs);
+           }
+           catch {
+               return dataIDs.ToList(); // 通信失敗 → 全件失敗
+           }
+       
+           if (!response.IsSuccessStatusCode) {
+               return dataIDs.ToList(); // API側失敗 → 全件失敗
+           }
+       
+           // ★ API は List<string> を返す
+           var failedStrLst = await response.Content.ReadFromJsonAsync<List<string>>();
+       
+           if (failedStrLst == null)
+               return dataIDs.ToList(); // 想定外レスポンス
+       
+           // ★ TKey に変換（UUIDv7 でも int でもここで吸収）
+           var failedLst = failedStrLst
+               .Select(x => (TKey)Convert.ChangeType(x, typeof(TKey)))
+               .ToList();
+       
+           // ★ 成功した ID をローカル側でも削除
+           foreach (var id in dataIDs) {
+               if (!failedLst.Contains(id)) {
+                   await DeleteDataObj(id); // ローカルリストから削除
+               }
+           }
+       
+           return failedLst;
+       }
+       
+       public async Task<bool> DeleteDataObj(TKey dataID) {
+           return _baseDataObjMgr.DeleteDataObj(dataID);
+       }
 
 
         public string LoadMultipleDataAsJson(List<TKey> idList) => _baseDataObjMgr.LoadMultipleDataAsJson(idList);

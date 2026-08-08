@@ -119,11 +119,10 @@ namespace NxRebuild.Api.Controllers {
                     LockedByUserId = null
                 });
             }
+            
+            // ⑦ 結果返却（List<TKey> をそのまま返す）
+            return Ok(failedIds);
 
-            // ⑦ 結果返却
-            return Ok(new {
-                failedIds = failedIds
-            });
         }
 
 
