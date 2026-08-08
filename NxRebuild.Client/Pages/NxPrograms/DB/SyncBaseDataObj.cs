@@ -94,6 +94,8 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
         public virtual async Task UpdatePropertys() => await _dataObj.UpdatePropertys();
 
+
+
         public async Task<LockStatus> DataOpen() => await _dataObj.DataOpen();
 
 

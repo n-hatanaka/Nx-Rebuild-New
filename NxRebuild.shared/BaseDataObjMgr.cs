@@ -57,8 +57,6 @@ namespace NxRebuild.shared {
         public string Ws_TblName { get; set; }
 
         public NxDataType DataType { get; set; }
-        public DateTime Refreshed_at { get; set; }
-
 
         public Guid TenantCode { get; set; }
 

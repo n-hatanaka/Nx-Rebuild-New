@@ -48,6 +48,26 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             }
         }
 
+        public DateTime Refreshed_at {
+            get {
+                DateTime latestUpdate = DateTime.MinValue;
+                DateTime latestLocked = DateTime.MinValue;
+        
+                foreach (var obj in DataList) {
+                    // DataList は ISyncBaseDataObj<TKey> を返すのでそのまま使える
+                    if (obj.Update_at > latestUpdate)
+                        latestUpdate = obj.Update_at;
+        
+                    if (obj.Locked_at > latestLocked)
+                        latestLocked = obj.Locked_at;
+                }
+        
+                // 古い方を返す
+                return latestUpdate < latestLocked
+                    ? latestUpdate
+                    : latestLocked;
+            }
+        }
 
 
         public SyncBaseDataObjMgr( DbConnection db, HttpClient http, CustomAuthStateProvider auth, Guid tenantCode, Guid currentUserId) {
