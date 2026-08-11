@@ -24,15 +24,16 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
     //UIからはインターフェース経由でaccessさせる。
     //オブジェクトの作成と削除はマネージャークラスから行う。
     public abstract class SyncBaseDataObj<TKey> : ISyncBaseDataObj<TKey> {
-        protected readonly BaseDataObj<TKey> _dataObj;
+        protected BaseDataObj<TKey> _dataObj;
+
+        protected BaseDataObj<TKey> DataObj { get => _dataObj;}
 
         public HttpClient Http { get; set; }
         public CustomAuthStateProvider Auth {  get; set; }
         public abstract string ApiRoute { get; } //←派生先で設定する事。
         public Guid CurrUsrID{ get => _dataObj.CurrUsrID; 
                                 set => _dataObj.CurrUsrID = value; }
-        public SyncBaseDataObj(BaseDataObj<TKey> dataObj) {
-            _dataObj = dataObj ?? throw new ArgumentNullException(nameof(dataObj));
+        public SyncBaseDataObj() {
         }
 
         public IDbConnection DBcon {
@@ -94,7 +95,9 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
         public virtual async Task UpdatePropertys() => await _dataObj.UpdatePropertys();
 
-
+        public virtual void SetBaseDataObj(BaseDataObj<TKey> baseObj) {
+            _dataObj = baseObj ?? throw new ArgumentNullException(nameof(baseObj));
+        }
 
         public async Task<LockStatus> DataOpen() => await _dataObj.DataOpen();
 

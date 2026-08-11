@@ -10,10 +10,19 @@ using System.Net.Http.Json; // GetFromJsonAsync用
 using System.Text.Json;
 
 namespace NxRebuild.Client.Pages.NxPrograms.DB {
-    public class SyncBaseDataObjMgr<T, TKey> where T : BaseDataObj<TKey> , IBaseDataObjMgr<T, TKey>, new() {
-        protected BaseDataObjMgr<T, TKey> _baseDataObjMgr;
+    //public class SyncBaseDataObjMgr<T, TKey> where T : BaseDataObj<TKey> , IBaseDataObjMgr<T, TKey>, new()
+    public interface ISyncBaseDataObjMgr<TSync, TKey>
+                                        where TSync : SyncBaseDataObj<TKey> {
+     
+    }
+    public class SyncBaseDataObjMgr<TBase, TSync, TKey>
+                                        where TBase : BaseDataObj<TKey>, new()
+                                        where TSync : SyncBaseDataObj<TKey>, new() {
+        protected BaseDataObjMgr<TBase, TKey> _baseDataObjMgr;
 
         protected HttpClient _http;
+
+        protected string ApiRoute { get; set; } // 派生先で設定する事。
 
         protected CustomAuthStateProvider _auth;
 
@@ -24,7 +33,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         public string WarehouseSupplyTableName { get; set; }
 
         public NxDataType DataType { get => _baseDataObjMgr.DataType; set => _baseDataObjMgr.DataType = value; }
-        public DateTime RefreshedAt { get => _baseDataObjMgr.Refreshed_at; set => _baseDataObjMgr.Refreshed_at = value; }
+        public DateTime RefreshedAt { get => _baseDataObjMgr.Refreshed_at; }
 
 
         public Guid TenantCode { get => _baseDataObjMgr.TenantCode; set => _baseDataObjMgr.TenantCode = value; }
@@ -48,26 +57,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             }
         }
 
-        public DateTime Refreshed_at {
-            get {
-                DateTime latestUpdate = DateTime.MinValue;
-                DateTime latestLocked = DateTime.MinValue;
-        
-                foreach (var obj in DataList) {
-                    // DataList は ISyncBaseDataObj<TKey> を返すのでそのまま使える
-                    if (obj.Update_at > latestUpdate)
-                        latestUpdate = obj.Update_at;
-        
-                    if (obj.Locked_at > latestLocked)
-                        latestLocked = obj.Locked_at;
-                }
-        
-                // 古い方を返す
-                return latestUpdate < latestLocked
-                    ? latestUpdate
-                    : latestLocked;
-            }
-        }
+
 
 
         public SyncBaseDataObjMgr( DbConnection db, HttpClient http, CustomAuthStateProvider auth, Guid tenantCode, Guid currentUserId) {
@@ -76,6 +66,8 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
             //_http = http;
             //_auth = auth;
+
+            //_apiRoute = "ハードコードする";
 
             //次のメソッドの中でテーブル名などの基本的な情報をハードコード
             //DataObjはSyncDataObjとして次のメソッドの中で生成するように派生したDataObjMgrで実装する事。
@@ -94,11 +86,42 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
         }
         
+        protected virtual TSync CreateNewSyncDataObj(TBase baseDataOjb) {
+            //本来はabustractにすべきだが実装例として書いておく。具象クラスで適宜修正する事。
+            var newSyncObj = new TSync();
+            newSyncObj.SetBaseDataObj(baseDataOjb);
+            newSyncObj.Http = _http;
+            newSyncObj.Auth = _auth;
+            return newSyncObj;
+        }
+
+        //データベースからデータを取得する。(クライアント、サーバー共用）
+        //コンストラクタで呼び出す事。コンストラクタはサーバー、クライアントそれぞれの派生先で内容変える。
+        public virtual async Task Initialize(string strWhere = "") {
+
+            string sql = $"SELECT * FROM \"{TableName}\"";
+            if (!string.IsNullOrWhiteSpace(strWhere)) {
+                sql += $" WHERE {strWhere}";
+            }
+            sql += ";";
+
+            var records = await DBcon.QueryAsync<Dictionary<string, object>>(sql);
+
+            foreach (var record in records) {
+                T readData = _baseDataObjMgr.CreateNewDataObj();
+                readData.DBcon = DBcon;
+                readData.TenantCode = TenantCode;
+                readData.SetPropertys(record);
+                var readSyncData = CreateNewSyncDataObj(readData);
+                _baseDataObjMgr._dataList.Add(readSyncData);
+            }
+        }
+
         public async Task<bool> SyncData()
         {
-            DateTime refreshed_at =Refreshed_at;
+            DateTime refreshed_at = _baseDataObjMgr.Refreshed_at;
             // ① API に世界線同期点を渡す
-            var url = $"api/sync/{refreshed_at:O}";
+            var url = $"{ApiRoute}/sync/{refreshed_at:O}";
             var response = await _http.GetAsync(url);
         
             if (!response.IsSuccessStatusCode)
@@ -107,7 +130,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             // ② JSON を受け取る
             var json = await response.Content.ReadAsStringAsync();
         
-            // ③ パース（あなたの構造に合わせて）
+            // ③ パース（API の返却構造に合わせた型を使用）
             var syncResult = JsonSerializer.Deserialize<SyncAllResult>(json);
         
             if (syncResult?.Items == null)
@@ -138,9 +161,12 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         
                     // ⑧ 世界線を流し込む
                     await newObj.JsonToTbl(dataJson);
+
+
         
                     // ⑨ DataList に追加
-                    _baseDataObjMgr.AddDataObj(newObj);
+                    _baseDataObjMgr.DataList.Add(newObj);
+                    
                 }
             }
         
@@ -154,7 +180,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
            HttpResponseMessage response;
        
            try {
-               response = await Http.PostAsJsonAsync(url, dataIDs);
+               response = await _http.PostAsJsonAsync(url, dataIDs);
            }
            catch {
                return dataIDs.ToList(); // 通信失敗 → 全件失敗
@@ -186,9 +212,20 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
        }
        
        public async Task<bool> DeleteDataObj(TKey dataID) {
-           return _baseDataObjMgr.DeleteDataObj(dataID);
+           return await _baseDataObjMgr.DeleteDataObj(dataID);
        }
 
+
+        // API の返却 JSON に合わせた内部型
+        protected class SyncAllResult {
+            public DateTime Refreshed_at { get; set; }
+            public List<SyncItem> Items { get; set; }
+        }
+
+        protected class SyncItem {
+            public TKey Key { get; set; }
+            public string Data { get; set; }
+        }
 
         public string LoadMultipleDataAsJson(List<TKey> idList) => _baseDataObjMgr.LoadMultipleDataAsJson(idList);
 

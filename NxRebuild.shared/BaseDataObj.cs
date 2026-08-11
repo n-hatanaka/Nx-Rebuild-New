@@ -57,6 +57,7 @@ namespace NxRebuild.shared {
 
         Task<LockStatus> DataOpen();
         string TblToJson();
+        Task<bool> JsonToTbl(string json);
         Task<bool> ReName(string newName);
         Task<bool> SaveAsync();
     }

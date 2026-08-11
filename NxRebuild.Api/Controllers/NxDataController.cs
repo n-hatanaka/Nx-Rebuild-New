@@ -75,10 +75,10 @@ namespace NxRebuild.Api.Controllers {
             foreach (var obj in mgr.DataList)
             {
                 // 世界線同期済みの SyncBaseDataObj<TKey>
-                var json = await obj.TblToJson();   // ここはあなたの実装名に合わせる
+                var json = obj.TblToJson();   // ここはあなたの実装名に合わせる
         
                 resultList.Add(new {
-                    Key = obj.Key,
+                    Key = obj.DataID,
                     Data = json
                 });
             }
@@ -120,7 +120,7 @@ namespace NxRebuild.Api.Controllers {
                 // ④ 削除処理
                 var transaction = _db.BeginTransaction();
 
-                if (!(await dataObj.softDeleteQueryExec(transaction))) {
+                if (!(await dataObj.SoftDeleteQueryExec(transaction))) {
                     transaction.Rollback();
 
                     // ロック解除（失敗時も必ず）

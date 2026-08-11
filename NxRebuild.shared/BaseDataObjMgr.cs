@@ -14,7 +14,7 @@ namespace NxRebuild.shared {
         IEnumerable<IBaseDataObj<TKey>> DataList { get; }
         NxDataType DataType { get; set; }
         IDbConnection DBcon { get; set; }
-        DateTime Refreshed_at { get; set; }
+        DateTime Refreshed_at { get; }
         Guid TenantCode { get; set; }
 
         string TblName { get; set; }
@@ -30,7 +30,7 @@ namespace NxRebuild.shared {
 
         void RemoveFromList(BaseDataObj<TKey> obj);
 
-        void DistributeJsonData(string json);
+        Task DistributeJsonData(string json);
         Task Initialize(string strWhere = "");
         string LoadMultipleDataAsJson(List<TKey> idList);
         
@@ -70,6 +70,26 @@ namespace NxRebuild.shared {
         public List<Object> _dataList = new List<Object>();
 
         public IEnumerable<IBaseDataObj<TKey>> DataList => _dataList.Cast<IBaseDataObj<TKey>>();
+        public DateTime Refreshed_at {
+            get {
+                DateTime latestUpdate = DateTime.MinValue;
+                DateTime latestLocked = DateTime.MinValue;
+
+                foreach (var obj in DataList) {
+                    // DataList は ISyncBaseDataObj<TKey> を返すのでそのまま使える
+                    if (obj.Update_at > latestUpdate)
+                        latestUpdate = obj.Update_at;
+
+                    if (obj.LockedAt > latestLocked)
+                        latestLocked = obj.LockedAt;
+                }
+
+                // 古い方を返す
+                return latestUpdate < latestLocked
+                    ? latestUpdate
+                    : latestLocked;
+            }
+        }
 
         public BaseDataObjMgr(DbConnection db , Guid tenantCode , Guid currUserID) {
             DBcon = db;
@@ -195,8 +215,9 @@ namespace NxRebuild.shared {
             return "[" + string.Join(",", jsonResults) + "]";
         }
 
-
-        public void DistributeJsonData(string json) {
+        //APIから取得したJSONをDataObjに振り分ける
+        //APIからのみ使用する。
+        public async Task DistributeJsonData(string json) {
             // 1. JSON全体をレコードのリストにパース
             var allRecords = JsonSerializer.Deserialize<List<Dictionary<string, object>>>(json);
 
@@ -220,12 +241,10 @@ namespace NxRebuild.shared {
                 }
 
                 // 4. そのオブジェクト専用のJSONを作成して渡す
-                // グループ化したレコードを再度JSON文字列にして、個別のSaveJsonDataへ流し込む
+                // グループ化したレコードを再度JSON文字列にして、個別のJsonToTblへ流し込む
                 string individualJson = JsonSerializer.Serialize(group.ToList());
-                obj.JsonToTbl(individualJson);
+                await obj.JsonToTbl(individualJson);
             }
-
-            _refreshed_at = DateTime.Now;
         }
     }
 }
