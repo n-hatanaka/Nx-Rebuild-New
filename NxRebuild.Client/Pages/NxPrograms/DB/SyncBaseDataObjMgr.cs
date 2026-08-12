@@ -162,10 +162,10 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                     // ⑧ 世界線を流し込む
                     await newObj.JsonToTbl(dataJson);
 
+                    var newSyncObj = CreateNewSyncDataObj(newObj);
 
-        
                     // ⑨ DataList に追加
-                    _baseDataObjMgr.DataList.Add(newObj);
+                    _baseDataObjMgr._dataList.Add((object)newSyncObj);
                     
                 }
             }

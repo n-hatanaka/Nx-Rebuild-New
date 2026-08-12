@@ -1,0 +1,3 @@
+DELETE FROM "tan_m";
+
+COPY "tan_m" FROM STDIN WITH CSV HEADER;

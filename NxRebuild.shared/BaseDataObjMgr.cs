@@ -195,6 +195,8 @@ namespace NxRebuild.shared {
             _dataList.Remove(obj);
         }
 
+        //idListに含まれるIDのDataObjを順次Json化して返す。
+        //API,Cliant双方での使用を想定している。
         public string LoadMultipleDataAsJson(List<TKey> idList) {
             var jsonResults = new List<string>();
 
@@ -215,7 +217,10 @@ namespace NxRebuild.shared {
             return "[" + string.Join(",", jsonResults) + "]";
         }
 
-        //APIから取得したJSONをDataObjに振り分ける
+        //クライアントから送られたJSONをDataObjに振り分ける
+            //リアルセーブ（＝サーバー側の永続化）ができない限り、
+            //インメモリ世界線は“正本”になれない。
+            //だから巨大 JSON を分配して BaseObj に流し込むメソッドが必要になる。
         //APIからのみ使用する。
         public async Task DistributeJsonData(string json) {
             // 1. JSON全体をレコードのリストにパース

@@ -1,0 +1,1399 @@
+
+// --- 材料・栄養素マスター系 (Zmst) ---
+
+Table Zmst {
+  tenant_code uuid 
+  Z_code varchar
+  LocalCode integer [note:'システム固有ID']
+  gun_cd integer
+  Tou_cd integer
+  Zin_cd integer
+  Z_name varchar
+  D_S integer [note: '動物性植物性']
+  lss float [note: '廃棄率']
+  
+  // 栄養素：すべて計算誤差のないdecimalへ
+  Enj float [note: "エネルギーKj"]
+  Ene float [note: "エネルギーkcal"]
+  Wat float [note: "水分"]
+  Ami float [note: "アミノ酸組成によるたんぱく質"]
+  Pro float [note: "たんぱく質"]
+  Tri float [note: "トリアシルグリセロール当量"]
+  Cho float [note: "コレステロール"]
+  Lip float [note: "脂質"]
+  Fac float [note: "脂肪酸総量"]
+  Sat float [note: "飽和脂肪酸"]
+  Mon float [note: "一価不飽和脂肪酸"]
+  Pol float [note: "多価不飽和脂肪酸"]
+  Pn3 float [note: "N3系多価不飽和脂肪酸"]
+  Pn6 float [note: "N6系多価不飽和脂肪酸"]
+  Ara float [note: "アラキドン酸"]
+  Epa float [note: "イコサペンタエン酸"]
+  Dha float [note: "ドコサヘキサエン酸"]
+  Vlm float [note: "利用可能炭水化物単糖当量"]
+  Cvl float [note: "重量計利用可能炭水化物"]
+  Vld float [note: "差引法利用可能炭水化物"]
+  Tot float [note: "食物繊維総量"]
+  Ply float [note: "糖アルコール"]
+  Car float [note: "炭水化物"]
+  Ora float [note: "有機酸"]
+  Ash float [note: "灰分"]
+  Nat float [note: "ナトリウム"]
+  Kal float [note: "カリウム"]
+  Cal float [note: "カルシウム"]
+  Mag float [note: "マグネシウム"]
+  Pho float [note: "リン"]
+  Iro float [note: "鉄"]
+  Zin float [note: "亜鉛"]
+  Cop float [note: "銅"]
+  Man float [note: "マンガン"]
+  Iod float [note: "ヨウ素"]
+  Sel float [note: "セレン"]
+  Chr float [note: "クロム"]
+  Mol float [note: "モリブデン"]
+  Ret float [note: "レチノール"]
+  Caa float [note: "αカロテン"]
+  Cab float [note: "βカロテン"]
+  Cry float [note: "βクリプトキサンチン"]
+  Bca float [note: "βカロテン当量"]
+  Ere float [note: "レチノール活性当量"]
+  ViD float [note: "ビタミンD"]
+  ToA float [note: "αトコフェロール"]
+  ToB float [note: "βトコフェロール"]
+  ToG float [note: "γトコフェロール"]
+  ToD float [note: "δトコフェロール"]
+  ViK float [note: "ビタミンK"]
+  VB1 float [note: "ビタミンB1"]
+  VB2 float [note: "ビタミンB2"]
+  Nia float [note: "ナイアシン"]
+  Eni float [note: "ナイアシン当量"]
+  VB6 float [note: "ビタミンB6"]
+  B12 float [note: "ビタミンB12"]
+  Fol float [note: "葉酸"]
+  Pan float [note: "パントテン酸"]
+  Bio float [note: "ビオチン"]
+  ViC float [note: "ビタミンC"]
+  Alc float [note: "アルコール"]
+  Esa float [note: "食塩相当量"]
+  Wca float [note: "重量変化率"]
+  Txt text [note: "備考"]
+  deleted integer
+  locked_by uuid
+  locked_at timestamp [note: 'timestamptz(6)']
+  Update_at timestamp [note: 'timestamptz(6)']
+  indexes {
+    (tenant_code, LocalCode) [pk]
+  }
+}
+
+// --- 単位マスター ---
+
+Table tan_m {
+  tenant_code uuid
+  Z_Code varchar
+  LocalCode integer
+  tan_cd integer 
+  tan_Name varchar
+  jun float
+  jyuuryou float
+
+  indexes {
+    (tenant_code, LocalCode, tan_cd) [pk]
+  }
+}
+Ref: tan_m.(tenant_code, LocalCode) > Zmst.(tenant_code, LocalCode) [delete: cascade]
+
+// --- 料理ライブラリ（再利用データ) ---
+
+Table Ry_lib {
+  tenant_code uuid 
+  Ry_Code uuid 
+  Name varchar
+  Type integer [note: '0:献立 / 1:フォルダ']
+  Update_at timestamp
+  Parent uuid [note: '親フォルダのRy_Code']
+  Ninzu integer [default: 1.0]
+  Ry_note text
+
+  locked_by uuid
+  locked_at timestamp [note: 'timestamptz(6)']
+  indexes {
+    (tenant_code, Ry_Code) [pk]
+  }
+}
+
+Table Ry_lib_s {
+  id int [increment]
+  tenant_code uuid
+  Ry_Code uuid 
+  LocalCode integer 
+  sort_no integer
+  Z_code varchar
+  Syoumi float [note: '正味重量']
+  Junbi float [note: '準備重量']
+  tan_cd integer
+  indexes {
+    (id, tenant_code, Ry_Code) [pk]
+    (tenant_code, Ry_Code) [name: "idx_ry_s_parent"] // 料理の展開用
+    (tenant_code, LocalCode, tan_cd) [name: "idx_ry_s_zmst"] // 材料・単位の参照用
+  }
+}
+
+ref: Ry_lib_s.(tenant_code, Ry_Code) > Ry_lib.(tenant_code, Ry_Code) [delete: cascade]
+ref: Ry_lib_s.(tenant_code, LocalCode) > Zmst.(tenant_code, LocalCode)
+ref: Ry_lib_s.(tenant_code, LocalCode, tan_cd) > tan_m.(tenant_code, LocalCode, tan_cd )
+
+// --- 献立ライブラリ(再利用データ) ---
+
+Table Ko_Lib {
+  tenant_code uuid 
+  Ko_Code uuid
+  Name varchar
+  Update_at timestamp
+  Type integer [note: '0:献立 / 1:フォルダ']
+  Parent uuid
+
+  locked_by uuid
+  locked_at timestamp [note: 'timestamptz(6)']
+
+  indexes {
+    (tenant_code, Ko_Code) [pk]
+  }
+}
+
+Table Ko_Lib_Ry {
+  tenant_code uuid 
+  Ko_Code uuid 
+  sort_no integer
+  Ry_Code uuid 
+  M_code integer 
+  Name varchar
+  Ninzu integer [default: 1.0]
+  update_at timestamp
+  Rymemo text
+  indexes {
+    (tenant_code, Ko_Code, Ry_Code) [pk]
+    (tenant_code, Ko_Code) [name: "idx_Ko_lib_ry_parent"] // 献立の展開用
+  }
+}
+
+ref: Ko_Lib_Ry.(tenant_code, Ko_Code) > Ko_Lib.(tenant_code, Ko_Code) [delete: cascade]
+
+Table Ko_Lib_Ry_s {
+  id int [increment, note: 'レコードが一意になる様オートナンバー型を設定、これが無いとソート番号の入れ替えが出来ない']
+  tenant_code uuid 
+  Ko_Code uuid  
+  Ry_Code uuid  
+  M_code uuid 
+  sort_no integer 
+  Z_code varchar
+  LocalCode integer
+  Syoumi float
+  Junbi float
+  tan_cd integer
+
+  indexes {
+    (id, tenant_code, Ko_Code, Ry_Code) [pk]
+    (tenant_code, Ko_Code, Ry_Code) [name: "idx_Ko_Lib_ry_s_parent"] // 料理の展開用
+    (tenant_code, LocalCode, tan_cd) [name: "idx_Ko_Lib_ry_s_zmst"] // 材料・単位の参照用
+  }
+}
+
+ref: Ko_Lib_Ry_s.(tenant_code, Ko_Code, Ry_Code) > Ko_Lib_Ry.(tenant_code, Ko_Code, Ry_Code) [delete: cascade]
+ref: Ko_Lib_Ry_s.(tenant_code, LocalCode) > Zmst.(tenant_code, LocalCode)
+ref: Ko_Lib_Ry_s.(tenant_code, LocalCode, tan_cd) > tan_m.(tenant_code, LocalCode, tan_cd )
+
+
+// カレンダー・日誌管理
+Table Diary {
+  tenant_code uuid 
+  D_Code uuid
+  Name varchar
+  update_at timestamp
+  Type integer
+  Parent uuid [note: '格納フォルダ']
+  SelectDay timestamp [note: '閉じる前に最後に選択された日']
+
+  indexes {
+    (tenant_code, D_Code) [pk]
+  }
+}
+
+//献立日付管理
+Table D_Ko {
+  tenant_code uuid 
+  D_Code uuid [note: 'DiaryテーブルのID']
+  Ko_Day timestamp [note: 'timestamptz(6)']
+  D_Ko_Code uuid
+  Name varchar
+  update_at timestamp
+  Type integer
+  Parent uuid
+
+  indexes {
+    (tenant_code, D_Code, D_Ko_Code) [pk]
+    (tenant_code, D_Code) [name: "idx_D_Ko_parent"] 
+  }
+}
+
+ref: D_Ko.(tenant_code, D_Code) > Diary.(tenant_code, D_Code) [delete: cascade]
+
+// 実際に食べた料理のログ（50万件の主戦場）
+Table D_Ry {
+  tenant_code uuid  
+  D_Code uuid [note: 'カレンダーID']
+  Ko_Code uuid [note: '献立Code']
+  M_code integer
+  sort_no integer
+  D_Ry_Code uuid [note: '料理マスターCode']
+  Name varchar [note: '実行時の料理名']
+  Ninzu integer [note: 'その日の人数']
+  Rymemo text
+  update_at timestamp
+
+  indexes {
+    (tenant_code, D_Code, Ko_Code, D_Ry_Code) [pk]
+    (tenant_code, D_Code, Ko_Code) [name: "idx_D_Ry_parent"] // 料理の展開用
+  }
+}
+ref: D_Ry.(tenant_code, D_Code, Ko_Code) > D_Ko.(tenant_code, D_Code, D_Ko_Code) [delete: cascade]
+
+// 220万件の最終末端テーブル（全栄養計算の源泉）
+Table D_Ry_s {
+  id int [increment]
+  tenant_code uuid
+  D_Code uuid [note: 'カレンダーID']
+  Ko_Code uuid [note: '献立Code']
+  M_code integer 
+  D_Ry_Code uuid [note: 'D_Ryとの紐付け']
+  sort_no integer
+  Z_code varchar [note: '材料コード']
+  LocalCode integer [note: '旧PecNo']
+  Syoumi float [note: '実行時の正味重量']
+  Junbi float [note: '実行時の準備重量']
+  tan_cd integer
+  Note: 'ここをSUMして、Zmstの栄養価を掛ける。220万回のドラマがここに。'
+  indexes {
+    (id, tenant_code, D_Code, Ko_Code, D_Ry_Code) [pk]
+    (tenant_code, D_Code, Ko_Code, D_Ry_Code) [name: "idx_D_Ry_s_parent"] // 料理の展開用
+    (tenant_code, LocalCode, tan_cd) [name: "idx_D_Ry_s_zmst"] // 材料・単位の参照用
+  }
+}
+
+ref: D_Ry_s.(tenant_code, D_Code, Ko_Code, D_Ry_Code) > D_Ry.(tenant_code, D_Code, Ko_Code, D_Ry_Code) [delete: cascade]
+ref: D_Ry_s.(tenant_code, LocalCode) > Zmst.(tenant_code, LocalCode)
+ref: D_Ry_s.(tenant_code, LocalCode, tan_cd) > tan_m.(tenant_code, LocalCode, tan_cd)
+
+
+
+// 給食提供・配分設定（食種・パターンに相当）
+Table ProvideMeal {
+  tenant_code uuid
+  Pro_Code uuid
+  Name varchar
+  update_at timestamp
+  Type integer
+  Parent uuid
+  D_Code uuid [note: '対象となるDiary（グループ）']
+  Parcent float [note: '一日当りの栄養給与提供（%）１食の提供（１日分の食事を提供しない施設向け）']
+  
+  locked_by uuid
+  locked_at timestamp [note: 'timestamptz(6)']
+  indexes {
+    (tenant_code, Pro_Code) [pk]
+  }
+}
+
+ref : ProvideMeal.(tenant_code, D_Code) > Diary.(tenant_code, D_Code)
+
+Table GroupIB {
+  id int [increment]
+  tenant_code uuid
+  Pro_Code uuid
+  Nutrition varchar
+  EAR float
+  RDA float
+  AI float
+  UL float
+  DG float
+  GoalUL float
+  note: "食種ごとの栄養基準マッピング"
+  indexes {
+    (id, tenant_code, Pro_Code) [pk]
+    (tenant_code, Pro_Code) [name: "idx_GroupIB_ProvideMeal"]
+  }
+}
+ref: GroupIB.(tenant_code, Pro_Code) > ProvideMeal.(tenant_code, Pro_Code) [delete: cascade]
+
+// === 食数・集団（運用の現場） ===
+
+Table ParsonCount {
+  id int [increment]
+  tenant_code uuid
+  Pro_Code uuid
+  Ko_Day timestamp 
+  M_code integer
+  type integer [note : '利用者：職員']
+  Count integer
+  note: "日々の提供食数"
+
+  indexes {
+    (id, tenant_code, Pro_Code) [pk]
+    (tenant_code, Pro_Code) [name: "idx_ParsonCount_ProvideMeal"]
+  }
+}
+
+ref: ParsonCount.(tenant_code, Pro_Code) > ProvideMeal.(tenant_code, Pro_Code) [delete: cascade]
+
+Table Groups {
+  id int [increment]
+  tenant_code uuid 
+  Pro_Code uuid
+  Jun integer
+  age integer
+  sex integer
+  mens integer
+  preg integer
+  ActivityLevel integer
+  ParsonCount integer
+  note: "対象集団の属性定義"
+  indexes {
+    (id, tenant_code, Pro_Code) [pk]
+  }
+}
+
+ref: Groups.(tenant_code, Pro_Code) > ProvideMeal.(tenant_code, Pro_Code) [delete: cascade]
+
+Table Meal {
+  tenant_code uuid 
+  M_Code integer 
+  Sort_No integer
+  Name varchar // 朝食、昼食、間食、夕食
+  note: "食事区分"
+}
+
+// === 4. 発注・物流（物理の動脈） ===
+
+Table OrderFile {
+  tenant_code uuid
+  Ord_Code uuid
+  Name varchar
+  update_at timestamp
+  InstName varchar
+  Zip varchar
+  Add varchar
+  Tel varchar
+  Fax varchar
+  
+  locked_by uuid
+  locked_at timestamp [note: 'timestamptz(6)']
+
+  note: "発注データ。および発注書のヘッダー情報"
+  indexes {
+    (tenant_code, Ord_Code) [pk]
+  }
+}
+
+Table OrderGroup{
+  tenant_code uuid  
+  Ord_Code uuid 
+  D_Code uuid
+  note:'OrderFileに対してどのDiaryが紐づいているか'
+  indexes {
+    (tenant_code, Ord_Code, D_Code) [pk]
+  }
+}
+ref: OrderGroup.(tenant_code, D_Code) > Diary.(tenant_code, D_Code) [delete: cascade]
+
+Table Dealers {
+  tenant_code uuid
+  Ord_Code uuid
+  Deal_Code integer
+  Deal_Name varchar
+  t_name varchar [note: '担当者名']
+  yuubin varchar
+  add1 varchar
+  add2 varchar
+  tel varchar
+  fax varchar
+  stop integer [note: '取引停止フラグ']
+  note: "業者マスタ"
+  indexes {
+    (tenant_code, Ord_Code, Deal_Code) [pk]
+  }
+}
+ref: Dealers.(tenant_code, Ord_Code) > OrderFile.(tenant_code, Ord_Code) [delete: cascade]
+
+Table OrderData {
+  id int [increment]
+  tenant_code uuid
+  Ord_Code uuid
+  Pro_Code uuid
+  D_Code uuid
+  Ko_Day uuid 
+  M_Code integer 
+  Z_Code varchar
+  LocalCode integer
+  OrderName varchar
+  Deal_Code integer
+  UserOrder float
+  StaffOrder float
+  tan_cd integer 
+  DeliveryDate timestamp [note:'納入日']
+  note: "発注明細。材料×人数×端数処理の結果"
+  
+  indexes {
+    (id, tenant_code, Ord_Code, Pro_Code, D_Code, Ko_Day) [pk]
+    (tenant_code, Ord_Code, Pro_Code, D_Code, Ko_Day) [name: "idx_OrderData_OrderFile"]
+  }
+}
+ref: OrderData.(tenant_code, Ord_Code) > OrderFile.(tenant_code, Ord_Code) [delete: cascade]
+ref: OrderData.(tenant_code, Pro_Code) > ProvideMeal.(tenant_code, Pro_Code)
+ref: OrderData.(tenant_code, LocalCode) > Zmst.(tenant_code, LocalCode)
+ref: OrderData.(tenant_code, Ord_Code, Deal_Code) > Dealers.(tenant_code, Ord_Code, Deal_Code)
+ref: OrderData.(tenant_code, LocalCode, tan_cd) > tan_m.(tenant_code, LocalCode, tan_cd )
+
+
+
+Table OrderNameList {
+  id int [increment]
+  tenant_code uuid 
+  Ord_Code uuid 
+  ONm_Code integer 
+  Z_Code varchar
+  LocalCode integer
+  OrderName varchar
+  note: "材料呼称変換,全発注書データ共通"
+  
+  indexes {
+    (id, tenant_code, Ord_Code, ONm_Code) [pk]
+    (tenant_code, Ord_Code) [name: "idx_OrderNameList_OrderFile"]
+  }
+}
+ref: OrderNameList.(tenant_code, Ord_Code) > OrderFile.(tenant_code, Ord_Code) [delete: cascade]
+ref: OrderNameList.(tenant_code, LocalCode) > Zmst.(tenant_code, LocalCode)
+
+
+// 計算データメイン
+Table w_CalcData {
+  tenant_code uuid 
+  D_Code uuid 
+  D_Name varchar
+  K_Code uuid
+  K_Name varchar
+  K_Day timestamp
+  RSort_no int
+  M_Code int
+  MealName varchar
+  R_Code uuid
+  R_Name varchar
+  ZSort_no int
+  Z_Code varchar
+  LocalCode int
+  Syoumi float
+  Junbi float [note: 'gで保存すること']
+  tan_cd int [note: '印刷時など、状況に応じて使うこと']
+  TanSyoumi float [note: '単位数量で保存']
+  TanJunbi float [note: '単位数量で保存']
+}
+
+
+Table w_GroupIB {
+  tenant_code uuid 
+  Pro_Code uuid 
+  Jun integer
+  Nutrition varchar
+  EAR float [note: "推定平均必要量"]
+  RDA float [note: "推奨量"]
+  AI float [note: "目安量"]
+  UL float [note: "耐容上限量"]
+  DG float [note: "目安量"]
+  GoalUL float [note: "上限(NLオリジナル) 目標量に下限、上限がある場合使用する"]
+  ParsonCount integer
+}
+
+// 計算データ、メモ
+Table w_CalcDataRymemo {
+  tenant_code uuid
+  D_Code uuid
+  D_Name varchar
+  Ko_Code uuid
+  Ko_Name varchar
+  Ko_Day timestamp
+  RSort_no int
+  M_Code integer
+  MealName varchar
+  Ry_Code uuid
+  Ry_Name varchar
+  Rymemo varchar [note: '長いテキスト']
+}
+
+// 発注準備用ワーク
+Table w_CalcOrderJyunbi {
+  tenant_code uuid
+  Ord_Code uuid
+  Ko_Day timestamp
+  Z_Code varchar
+  LocalCode integer 
+  UserJyunbi float
+  StaffJyunbi float
+}
+
+// 材料マスタ、廃棄率、水分量変更データ
+Table w_chg_zai {
+  tenant_code uuid
+  Z_Code varchar
+  LocalCode integer
+  lss float
+  Wca float
+  EditUserID uuid
+  Update_at timestamp [note: 'timestamptz(6)']
+}
+
+//ダイアリー編集用ワーキングテーブル
+
+Table w_D_Ko {
+  tenant_code uuid 
+  D_Code uuid [note: 'DiaryテーブルのID']
+  Ko_Day timestamp [note: '献立の日付']
+  Ko_Code uuid 
+  Name varchar
+  update_at timestamp
+  Type integer
+  Parent uuid
+  indexes {
+    (tenant_code, D_Code, Ko_Code) [pk]
+  }
+}
+
+Table w_D_Ry {
+  tenant_code uuid 
+  D_Code uuid 
+  Ko_Code uuid 
+  sort_no int
+  Ry_Code uuid [note: '料理識別コード']
+  M_Code int [note: '食事']
+  Name varchar [note: '料理名']
+  Ninzu int
+  update_at timestamp
+  Rymemo varchar [note: '長いテキスト']
+
+  indexes {
+    (tenant_code, D_Code, Ko_Code, Ry_Code) [pk]
+  }
+}
+ref: w_D_Ry.(tenant_code, D_Code, Ko_Code) > w_D_Ko.(tenant_code, D_Code, Ko_Code) [delete: cascade]
+
+Table w_D_Ry_s {
+  id int [increment]
+  tenant_code uuid 
+  D_Code uuid 
+  Ko_Code uuid 
+  M_Code int
+  Ry_Code uuid 
+  sort_no int
+  Z_code varchar
+  LocalCode int
+  Syoumi float
+  Junbi float
+  tan_cd int
+  indexes {
+    (id, tenant_code, D_Code, Ko_Code, Ry_Code) [pk]
+  }
+}
+
+ref: w_D_Ry_s.(tenant_code, D_Code, Ko_Code, Ry_Code) > w_D_Ry.(tenant_code, D_Code, Ko_Code, Ry_Code) [delete: cascade]
+ref: w_D_Ry_s.(tenant_code, LocalCode) > Zmst.(tenant_code, LocalCode)
+ref: w_D_Ry_s.(tenant_code, LocalCode, tan_cd) > tan_m.(tenant_code, LocalCode, tan_cd )
+
+
+//食事画面料理グリッド計算用テーブル
+Table w_Grid_Ry_s {
+  tenant_code uuid 
+  D_Code uuid
+  Ko_Code uuid
+  M_Code integer
+  meal_sort integer
+  Ry_Code uuid
+  ry_sort integer
+  Z_code varchar
+  LocalCode integer
+  z_sort integer
+  Syoumi float
+  tan_cd integer
+}
+
+
+
+//献立ライブラリ用ワーキングテーブル
+Table w_Ko_Lib {
+  tenant_code uuid 
+  Ko_Code uuid 
+  Name varchar
+  update_at timestamp
+  Type integer [note: "0:献立カレンダー / 1:フォルダ"]
+  Parent uuid [note: "格納フォルダ (再帰リレーション用)"]
+  indexes {
+    (tenant_code, Ko_Code) [pk]
+  }
+}
+
+Table w_Ko_Lib_Ry {
+  tenant_code uuid
+  Ko_Code uuid 
+  sort_no integer
+  Ry_Code uuid [note: "料理識別コード"]
+  M_Code integer [note: "食事"]
+  Name varchar [note: "料理名"]
+  Ninzu integer
+  update_at timestamp
+  Rymemo text // 長いテキスト
+  indexes {
+    (tenant_code, Ko_Code, Ry_Code) [pk]
+  }
+}
+ref: w_Ko_Lib_Ry.(tenant_code, Ko_Code) > Ko_Lib.(tenant_code, Ko_Code) [delete: cascade]
+
+Table w_Ko_Lib_Ry_s {
+  id integer [increment]
+  tenant_code uuid
+  Ko_Code uuid
+  M_Code integer
+  Ry_Code uuid 
+  sort_no integer
+  Z_code varchar 
+  LocalCode integer 
+  Syoumi float
+  Junbi float
+  tan_cd integer
+  indexes {
+    (id, tenant_code, Ko_Code, Ry_Code) [pk]
+  }
+}
+
+Ref: w_Ko_Lib_Ry_s.(tenant_code, Ko_Code, Ry_Code) > w_Ko_Lib_Ry.(tenant_code, Ko_Code,Ry_Code) [delete: cascade]
+Ref: w_Ko_Lib_Ry_s.(tenant_code, LocalCode) > Zmst.(tenant_code, LocalCode)
+Ref: w_Ko_Lib_Ry_s.(tenant_code, LocalCode, tan_cd) > tan_m.(tenant_code, LocalCode, tan_cd )
+
+
+//料理ライブラリ用ワーキングテーブル
+Table w_Ry_Lib {
+  tenant_code uuid
+  Ry_Code uuid 
+  Name varchar
+  Ninzu integer
+  update_at timestamp
+  Type integer 
+  Parent uuid [note: "格納フォルダ"]
+  Rymemo text // 長いテキスト
+  indexes {
+    (tenant_code, Ry_Code) [pk]
+  }
+}
+
+Table w_Ry_Lib_s {
+  id integer [increment]
+  tenant_code uuid
+  Ry_Code uuid 
+  sort_no integer
+  Z_code varchar
+  LocalCode integer 
+  Syoumi float
+  Junbi float
+  tan_cd integer 
+  indexes {
+    (id, tenant_code, Ry_Code) [pk]
+  }
+}
+
+ref: w_Ry_Lib_s.(tenant_code, Ry_Code) > w_Ry_Lib.(tenant_code, Ry_Code) [delete: cascade]
+ref: w_Ry_Lib_s.(tenant_code, LocalCode) > Zmst.(tenant_code, LocalCode)
+ref: w_Ry_Lib_s.(tenant_code, LocalCode, tan_cd) > tan_m.(tenant_code, LocalCode, tan_cd )
+
+
+Table w_OrderData {
+  id int 
+  tenant_code uuid 
+  Ord_Code uuid 
+  Pro_Code uuid
+  ko_Day timestamp 
+  M_Code integer
+  Jun integer
+  Z_code varchar 
+  LocalCode integer
+  OrderName varchar
+  UserJyunbi float
+  StaffJyunbi float
+  Deal_Code uuid 
+  UserOrder float
+  StaffOrder float
+  tan_cd integer
+  DeliveryDate timestamp
+  indexes {
+    (id, tenant_code, Ord_Code, Pro_Code, ko_Day) [pk]
+  }
+}
+
+ref: w_OrderData.(tenant_code, LocalCode) > Zmst.(tenant_code, LocalCode) 
+ref: w_OrderData.(tenant_code, LocalCode, tan_cd) > tan_m.(tenant_code, LocalCode, tan_cd )
+
+
+Table w_OrderGroup {
+  tenant_code uuid 
+  Ord_Code uuid 
+  D_Code uuid 
+  indexes {
+    (tenant_code, Ord_Code, D_Code) [pk]
+  }
+}
+ref: w_OrderGroup.(tenant_code, D_Code) > Diary.(tenant_code, D_Code) [delete: cascade]
+
+Table w_ParsonCount {
+  tenant_code uuid 
+  Pro_Code uuid 
+  Ko_Day timestamp
+  M_Code integer
+  type integer
+  Count integer
+  indexes {
+    (tenant_code, Pro_Code, Ko_Day, M_Code) [pk]
+  }
+}
+ref: w_ParsonCount.(tenant_code, Pro_Code) > ProvideMeal.(tenant_code, Pro_Code)
+
+Table w_ParsonCountHT {
+  tenant_code uuid 
+  Ord_Code uuid 
+  Pro_Code uuid 
+  Ko_Day timestamp
+  M_Code integer
+  type integer
+  Count integer
+  indexes {
+    (tenant_code, Ord_Code, Pro_Code, Ko_Day, M_Code) [pk]
+  }
+
+}
+
+ref: w_ParsonCountHT.(tenant_code, Pro_Code) > ProvideMeal.(tenant_code, Pro_Code)
+
+Table GenerationsItem {
+  ID integer [primary key]
+  Generation varchar
+  OlderMin integer
+  OlderMax integer
+  note: "世代・年齢区分マスター"
+}
+
+// Use colors to group related tables
+Table ActivityLevel {
+  older_min float [note: '年齢別の活動レベル（下限）']
+  older_max float
+  Sex int
+  activityLevel int
+  preg int
+  Val float
+}
+
+// 身体活動レベルの定義
+Table ActLevel {
+  ActivityLevel int [note: '身体活動区分']
+  ActivityVal int [note: '身体活動レベル代表値']
+  Oldermin int [note: '対象年齢下限']
+  Oldermax int [note: '対象年齢上限']
+  AVmin int [note: '身体活動レベル下限']
+  AVmax int [note: '身体活動レベル上限']
+  Combo varchar [note: 'コンボボックス用']
+  PrtCaption varchar
+  caption varchar [note: '説明']
+}
+
+Table BaseWeightC {
+  older_min float
+  older_max float
+  Sex int
+  a float [note: '推定平均必要量']
+  b float [note: '推奨量']
+}
+
+// 基礎代謝基準値
+Table BMStandardVal {
+  older_min float [note: '表6の数値']
+  older_max float
+  Sex int
+  preg int
+  BMBase float [note: '基礎代謝基準値(kcal/体重kg/日)']
+  Val float [note: '基礎代謝量(kcal)=基礎代謝基準値＊参照体重 1の位切り上げ']
+}
+
+// 分類・名称定義系
+Table gun_m {
+  tenant_code uuid 
+  jun int
+  dai_cd int
+  dai_name varchar
+  syou_cd int
+  syou_name varchar
+}
+
+Table ColName {
+  tenant_code uuid
+  No int [increment, note: 'オートナンバー型']
+  SortNo int
+  Col varchar
+  Name varchar
+  Format varchar
+  Digit int
+  Visible boolean
+  Nutrition boolean
+  PName1 varchar
+  PName2 varchar
+  PName3 varchar
+  PTanni varchar
+  indexes {
+    (tenant_code, No) [pk]
+  }
+}
+
+Table IBColName {
+  tenant_code uuid
+  No integer [increment, note: 'オートナンバー型']
+  SortNo integer [note: '並び順']
+  Col varchar [note: '列識別子']
+  egNpCol varchar
+  Name varchar [note: '項目名称']
+  Format varchar [note: '表示書式']
+  Digit integer [note: '桁数']
+  ForEnergy integer
+  Visible boolean [note: '表示フラグ']
+  PName1 varchar
+  PName2 varchar
+  PName3 varchar
+  PTanni varchar [note: '単位']
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量（0=目標, 1=目標未満, 2=目標以上, 3=目標以上 目標未満）']
+  UL float [note: '耐容上限量']
+  DG float [note: '目標量']
+  GoalUL float
+  PregCalc integer [note: '妊婦数値計算フラグ（0=加算, 1=交換）']
+  
+  indexes {
+    (tenant_code, No) [pk]
+  }
+}
+
+// 体重増加量基準
+Table IncWeight {
+  older_min float [note: '表10']
+  older_max float
+  Sex int
+  Val float [note: '体重増加量(kg/年)']
+}
+
+// 妊婦区分マスター
+Table PregItem {
+  Preg int [pk]
+  Caption varchar
+}
+
+// たんぱく質（Protein）基礎係数
+Table ProBase {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean
+  preg int
+  C float [note: '体たんぱく質(%)']
+  E float [note: '蓄積効率(%)']
+  F float [note: '維持必要量']
+  G float [note: '利用効率(%)']
+}
+
+
+// 蓄積エネルギー関連（妊婦・授乳婦用など）
+Table StoreUpEnergy {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  DeEnergy float [note: 'エネルギー密度(kcal／g)']
+  UpEnergy float [note: 'エネルギー蓄積量(kcal／日)']
+}
+
+Table Ene {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table Pro {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table ProEne {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table Lip {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table Sat {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table Car {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table Tot {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table Ere {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table ViD {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table ToA {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table ViK {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table VB1 {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table VB2 {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table Nia {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table VB6 {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+// ビタミンB12（または栄養素一般）の基準値
+Table B12 {
+  older_min int
+  older_max int
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table Fol {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+Table Pan {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+Table Bio {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table ViC {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table Nat {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table Esa {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table Kal {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table Cal {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table Mag {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table Pho {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table Iro {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table Zin {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table Cop {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table Man {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table Iod {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table Sel {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table Chr {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+
+Table Mol {
+  older_min float
+  older_max float
+  Sex int
+  mens boolean [note: 'Yes/No型']
+  preg int
+  EAR float [note: '推定平均必要量']
+  RDA float [note: '推奨量']
+  AI float [note: '目安量']
+  UL float [note: '耐容上限量']
+  DG float [note: '目安量']
+  GoalUL float [note: '上限(NLオリジナル) 目標量に下限、上限がある場合使用する']
+}
+

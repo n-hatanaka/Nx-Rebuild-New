@@ -1,0 +1,3 @@
+DELETE FROM "gun_m";
+
+COPY "gun_m" FROM STDIN WITH CSV HEADER;
