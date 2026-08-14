@@ -42,6 +42,7 @@ namespace NxRebuild.shared {
         string DataName { get; }
         NxDataType DataType { get; }
         IDbConnection DBcon { get; set; }
+        IBaseDataObj<TKey>? ParentDataObj { get; set; }
         string IdColName { get; }
         string InfoTbl { get; }
         DateTime LockedAt { get;  }
@@ -77,7 +78,7 @@ namespace NxRebuild.shared {
         protected string _w_tblName;
         protected string _ws_tblName;
 
-
+        public IBaseDataObj<TKey>? ParentDataObj { get; set; }
         public string NameColName => _nameColName;
         public string IdColName => _idColName;
         public string TblName => _tblName;

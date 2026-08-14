@@ -26,6 +26,8 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
     public abstract class SyncBaseDataObj<TKey> : ISyncBaseDataObj<TKey> {
         protected BaseDataObj<TKey> _dataObj;
 
+        public IBaseDataObj<TKey>? ParentDataObj { get; set; }
+
         protected BaseDataObj<TKey> DataObj { get => _dataObj;}
 
         public HttpClient Http { get; set; }
@@ -82,7 +84,6 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
         public Dictionary<string, object> _rawData {
             get => _dataObj._rawData;
-            set => _dataObj._rawData = value;
         }
 
         public string NameColName => _dataObj.NameColName;
@@ -145,15 +146,16 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                 var updatedRaw = JsonSerializer.Deserialize<Dictionary<string, object>>(json);
 
                 // サーバーからメタデータを受け取りクライアントのテーブルをを更新
-                UpdateRawData(updatedRaw, transaction);
-                //保持しているプロパティも更新
-                UpdatePropertys();
+                if (UpdateRawData(updatedRaw, transaction)) {
+                    //保持しているプロパティも更新
+                    SetPropertys(updatedRaw);
+                }
             } catch {
                 transaction.Rollback();
                 return false;
             }
 
-            // 7. 世界線を閉じる（Base世界線を確定）
+            // 7. コミットしてを更新を完了する
             transaction.Commit();
 
             return true;
@@ -177,19 +179,17 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                         $"WHERE {IdColName} = @DataID AND tenant_code = @TenantCode";
 
 
+                // 3. インメモリの RawData を更新（正本世界線の吸収）
                 DBcon.Execute(sql, raw, transaction);
 
-                // 3. インメモリの RawData を更新（正本世界線の吸収）
-                _rawData = raw;
+                //4.　このオブジェクトのプロパティも更新する。これをやらないと、UI側の表示が変わらない。
+                SetPropertys(raw);
 
                 return true;
             } catch {
                 return false;
             }
         }
-
-
-
 
 
         public void SetPropertys(Dictionary<string, object> record) {

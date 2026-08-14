@@ -15,14 +15,14 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                                         where TSync : SyncBaseDataObj<TKey> {
      
     }
-    public class SyncBaseDataObjMgr<TBase, TSync, TKey>
+    public abstract class SyncBaseDataObjMgr<TBase, TSync, TKey>
                                         where TBase : BaseDataObj<TKey>, new()
                                         where TSync : SyncBaseDataObj<TKey>, new() {
         protected BaseDataObjMgr<TBase, TKey> _baseDataObjMgr;
 
         protected HttpClient _http;
 
-        protected string ApiRoute { get; set; } // 派生先で設定する事。
+        public abstract string ApiRoute { get ; } // 派生先で設定する事。
 
         protected CustomAuthStateProvider _auth;
 
@@ -67,7 +67,6 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             //_http = http;
             //_auth = auth;
 
-            //_apiRoute = "ハードコードする";
 
             //次のメソッドの中でテーブル名などの基本的な情報をハードコード
             //DataObjはSyncDataObjとして次のメソッドの中で生成するように派生したDataObjMgrで実装する事。
@@ -80,35 +79,25 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             // SyncDataObjMgr は BaseDataObjMgr を内包し、同型性を保つために
             // Base のテーブル情報を Sync 側にコピーする必要があるため以下を記述
 
-            //TableName = _baseDataObjMgr.TblName;
-            //DataTableName = _baseDataObjMgr.S_TblName;
-            //InfoTableName = _baseDataObjMgr.InfoTbl;
-
         }
         
-        protected virtual TSync CreateNewSyncDataObj(TBase baseDataOjb) {
+        protected virtual TSync CreateNewSyncDataObj(TBase baseDataObj) {
             //本来はabustractにすべきだが実装例として書いておく。具象クラスで適宜修正する事。
             var newSyncObj = new TSync();
-            newSyncObj.SetBaseDataObj(baseDataOjb);
+            newSyncObj.SetBaseDataObj(baseDataObj);
             newSyncObj.Http = _http;
             newSyncObj.Auth = _auth;
             return newSyncObj;
         }
 
         //データベースからデータを取得する。(クライアント、サーバー共用）
-        //コンストラクタで呼び出す事。コンストラクタはサーバー、クライアントそれぞれの派生先で内容変える。
-        public virtual async Task Initialize(string strWhere = "") {
+        //コンストラクタで呼び出してはいけない。
+        public virtual async Task Initialize() {
 
-            string sql = $"SELECT * FROM \"{TableName}\"";
-            if (!string.IsNullOrWhiteSpace(strWhere)) {
-                sql += $" WHERE {strWhere}";
-            }
-            sql += ";";
-
-            var records = await DBcon.QueryAsync<Dictionary<string, object>>(sql);
+            var records = await LoadRecordsAsync();
 
             foreach (var record in records) {
-                T readData = _baseDataObjMgr.CreateNewDataObj();
+                TBase readData = _baseDataObjMgr.CreateNewDataObj();
                 readData.DBcon = DBcon;
                 readData.TenantCode = TenantCode;
                 readData.SetPropertys(record);
@@ -116,6 +105,15 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                 _baseDataObjMgr._dataList.Add(readSyncData);
             }
         }
+
+        //データベースからデータを取得する。(クライアント、サーバー共用）
+        //コンストラクタで呼び出してはいけない。
+        public virtual async Task<IEnumerable<Dictionary<string, object>>> LoadRecordsAsync() {
+            string sql = $"SELECT * FROM \"{TableName}\" WHERE tenant_code = @TenantCode;";
+
+            return await DBcon.QueryAsync<Dictionary<string, object>>(sql);
+        }
+
 
         public async Task<bool> SyncData()
         {

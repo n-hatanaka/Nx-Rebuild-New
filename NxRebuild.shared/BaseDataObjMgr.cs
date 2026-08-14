@@ -31,7 +31,7 @@ namespace NxRebuild.shared {
         void RemoveFromList(BaseDataObj<TKey> obj);
 
         Task DistributeJsonData(string json);
-        Task Initialize(string strWhere = "");
+        Task Initialize();
         string LoadMultipleDataAsJson(List<TKey> idList);
         
     }
@@ -96,7 +96,7 @@ namespace NxRebuild.shared {
             TenantCode = tenantCode;
             CurrentUserID = currUserID;
 
-            //Initialize()はインスタンス生成元が呼び出す事
+            //Initialize()はインスタンス生成元が呼び出す事(この中で呼んではいけない)
         }
         protected abstract TKey GenerateDataID();
 
@@ -136,30 +136,34 @@ namespace NxRebuild.shared {
         }
 
         //データベースからデータを取得する。(クライアント、サーバー共用）
-        //コンストラクタで呼び出す事。コンストラクタはサーバー、クライアントそれぞれの派生先で内容変える。
-        public virtual async Task Initialize(string strWhere = "") {
+        //コンストラクタで呼び出してはいけない。
+        public virtual async Task<IEnumerable<Dictionary<string, object>>> LoadRecordsAsync() {
+            // Base は “世界線の物理層” なので意味を持たない
+            // 派生先で SQL を完全に書き換える前提なら、ここは空実装でいい
+            string sql = $"SELECT * FROM \"{_tblName}\";";
 
-            //管理するDataObjを生成してリストに登録
-            string sql = $"SELECT * FROM \"{_tblName}\"";
-            if (!string.IsNullOrWhiteSpace(strWhere)) {
-                sql += $" WHERE {strWhere}";
-            }
-            sql += ";";
+            return await DBcon.QueryAsync<Dictionary<string, object>>(sql);
+        }
 
-            var records = await DBcon.QueryAsync<Dictionary<string, object>>(sql);
+        //データベースからデータを取得する。(クライアント、サーバー共用）
+        //コンストラクタで呼び出してはいけない。
+        public virtual async Task Initialize() {
+            var records = await LoadRecordsAsync();
 
             foreach (var record in records) {
-                T readData = CreateDataObj();
-                readData.DBcon = DBcon;
-                readData.TenantCode = TenantCode;
-                readData.SetPropertys(record);
-                _dataList.Add(readData);
+                T obj = CreateDataObj();
+                obj.DBcon = DBcon;
+                obj.TenantCode = TenantCode;
+                obj.SetPropertys(record);
+
+                _dataList.Add(obj);
             }
         }
+
         // 指定したID群を順次削除し、削除に失敗したIDを返す。
         // 返り値のリストが空なら全件成功。
         // UIはこの返り値を観測して成功／部分失敗を判断する。
-        public async Task<List<TKey>> DeleteData(IEnumerable<TKey> dataIDs) {
+        public virtual async Task<List<TKey>> DeleteData(IEnumerable<TKey> dataIDs) {
             var failedLst = new List<TKey>();
 
             foreach (var id in dataIDs) {
@@ -172,7 +176,7 @@ namespace NxRebuild.shared {
 
 
         //指定したデータを削除し、_dataListからオブジェクトを削除
-        public async Task<bool> DeleteDataObj(TKey dataID) {
+        public virtual async Task<bool> DeleteDataObj(TKey dataID) {
             var target = (BaseDataObj<TKey>)_dataList.FirstOrDefault(x => ((BaseDataObj<TKey>)x).DataID.Equals(dataID));
 
             if (target != null) {
@@ -191,7 +195,7 @@ namespace NxRebuild.shared {
             return false;
         }
 
-        public void RemoveFromList(BaseDataObj<TKey> obj) {
+        public virtual void RemoveFromList(BaseDataObj<TKey> obj) {
             _dataList.Remove(obj);
         }
 
