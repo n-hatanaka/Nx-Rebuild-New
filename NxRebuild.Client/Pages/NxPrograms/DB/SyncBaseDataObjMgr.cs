@@ -5,17 +5,18 @@ using Microsoft.Data.Sqlite;
 using Npgsql;
 using NxRebuild.shared;
 using System.Data;
-using System.Data.Common;
+
 using System.Net.Http.Json; // GetFromJsonAsync用
 using System.Text.Json;
 
 namespace NxRebuild.Client.Pages.NxPrograms.DB {
     //public class SyncBaseDataObjMgr<T, TKey> where T : BaseDataObj<TKey> , IBaseDataObjMgr<T, TKey>, new()
-    public interface ISyncBaseDataObjMgr<TSync, TKey>
+    public interface ISyncBaseDataObjMgr<TBase, TSync, TKey> : IBaseDataObjMgr<TBase, TKey>
+                                        where TBase : BaseDataObj<TKey>
                                         where TSync : SyncBaseDataObj<TKey> {
      
     }
-    public abstract class SyncBaseDataObjMgr<TBase, TSync, TKey>
+    public abstract class SyncBaseDataObjMgr<TBase, TSync, TKey> : ISyncBaseDataObjMgr<TBase, TSync, TKey>
                                         where TBase : BaseDataObj<TKey>, new()
                                         where TSync : SyncBaseDataObj<TKey>, new() {
         protected BaseDataObjMgr<TBase, TKey> _baseDataObjMgr;
@@ -26,14 +27,14 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
         protected CustomAuthStateProvider _auth;
 
-        public string TableName { get; set; }
-        public string DataTableName { get; set; }
-        public string InfoTableName { get; set; }
-        public string WarehouseTableName { get; set; }
-        public string WarehouseSupplyTableName { get; set; }
+        public string TblName { get => _baseDataObjMgr.TblName; }
+        public string S_TblName { get => _baseDataObjMgr.S_TblName;}
+        public string InfoTbl { get => _baseDataObjMgr.InfoTbl;}
+        public string W_TblName { get => _baseDataObjMgr.W_TblName;}
+        public string Ws_TblName { get => _baseDataObjMgr.Ws_TblName;}
 
         public NxDataType DataType { get => _baseDataObjMgr.DataType; set => _baseDataObjMgr.DataType = value; }
-        public DateTime RefreshedAt { get => _baseDataObjMgr.Refreshed_at; }
+        public DateTime Refreshed_at { get => _baseDataObjMgr.Refreshed_at; }
 
 
         public Guid TenantCode { get => _baseDataObjMgr.TenantCode; set => _baseDataObjMgr.TenantCode = value; }
@@ -42,7 +43,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
         public IDbConnection DBcon { get => _baseDataObjMgr.DBcon; set => _baseDataObjMgr.DBcon = value; }
 
-        public IEnumerable<ISyncBaseDataObj<TKey>> DataList {
+        public IEnumerable<IBaseDataObj<TKey>> DataList {
             get {
                 foreach (var obj in _baseDataObjMgr._dataList) {
                     if (obj is SyncBaseDataObj<TKey> syncObj) {
@@ -53,14 +54,14 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                 }
 
                 return _baseDataObjMgr._dataList
-                    .Cast<ISyncBaseDataObj<TKey>>();
+                    .Cast<IBaseDataObj<TKey>>();
             }
         }
 
 
 
 
-        public SyncBaseDataObjMgr( DbConnection db, HttpClient http, CustomAuthStateProvider auth, Guid tenantCode, Guid currentUserId) {
+        public SyncBaseDataObjMgr( IDbConnection db, HttpClient http, CustomAuthStateProvider auth, Guid tenantCode, Guid currentUserId) {
             //以下派生先での実装例
             //_baseDataObjMgr = new BaseDataObjMgr<T, TKey>(db, tenantCode, currentUserId);
 
@@ -109,13 +110,13 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         //データベースからデータを取得する。(クライアント、サーバー共用）
         //コンストラクタで呼び出してはいけない。
         public virtual async Task<IEnumerable<Dictionary<string, object>>> LoadRecordsAsync() {
-            string sql = $"SELECT * FROM \"{TableName}\" WHERE tenant_code = @TenantCode;";
+            string sql = $"SELECT * FROM \"{TblName}\" WHERE tenant_code = @TenantCode;";
 
             return await DBcon.QueryAsync<Dictionary<string, object>>(sql);
         }
 
 
-        public async Task<bool> SyncData()
+        public virtual async Task<bool> SyncData()
         {
             DateTime refreshed_at = _baseDataObjMgr.Refreshed_at;
             // ① API に世界線同期点を渡す
@@ -171,7 +172,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             return true;
         }
         
-        public async Task<List<TKey>> DeleteData(IEnumerable<TKey> dataIDs)
+        public virtual async Task<List<TKey>> DeleteData(IEnumerable<TKey> dataIDs)
        {
            var url = $"{ApiRoute}/Delete";
        
@@ -209,7 +210,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
            return failedLst;
        }
        
-       public async Task<bool> DeleteDataObj(TKey dataID) {
+       public virtual async Task<bool> DeleteDataObj(TKey dataID) {
            return await _baseDataObjMgr.DeleteDataObj(dataID);
        }
 
@@ -225,17 +226,12 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             public string Data { get; set; }
         }
 
-        public string LoadMultipleDataAsJson(List<TKey> idList) => _baseDataObjMgr.LoadMultipleDataAsJson(idList);
+        public virtual string LoadMultipleDataAsJson(List<TKey> idList) => _baseDataObjMgr.LoadMultipleDataAsJson(idList);
 
-        public void DistributeJsonData(string json) => _baseDataObjMgr.DistributeJsonData(json);
+        public virtual Task DistributeJsonData(string json) => _baseDataObjMgr.DistributeJsonData(json);
+        public virtual void RemoveFromList(BaseDataObj<TKey> obj) => _baseDataObjMgr.RemoveFromList(obj);
+           
 
-        #region INotifyPropertyChanged Members
-        public event PropertyChangedEventHandler PropertyChanged;
-
-        protected virtual void OnPropertyChanged(string propertyName) {
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         }
-        #endregion INotifyPropertyChanged Members
-    }
 
 }

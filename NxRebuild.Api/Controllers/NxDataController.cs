@@ -17,14 +17,14 @@ namespace NxRebuild.Api.Controllers {
         protected readonly IDbConnection _db;
         protected readonly UserManager<ApplicationUser> _userMgr;
         //次の四つのメンバは初期化時にハードコード
-        protected string _tableName;//メタデータのテーブル名
+        protected string _tblName;//メタデータのテーブル名
         protected string _nameColName; //テーブルのデータ名カラムのカラム名
         protected string _idColName;//テーブルのIDカラムのカラム名
         protected Guid _tenantCode;//テナントコード
         protected ApplicationUser _user;
         protected string _userID;
         protected string _userGroup;
-        protected IBaseDataObjMgr<BaseDataObj<TKey>,TKey> _dataObjMgr;
+        protected IsrvBaseDataObjMgr<T,TKey> _dataObjMgr;
 
         public NxDataController(IDbConnection dbConnection, UserManager<ApplicationUser> userManager) {
             _db = dbConnection;
@@ -66,7 +66,7 @@ namespace NxRebuild.Api.Controllers {
         [HttpGet("sync/{refreshedAt}")]
         public async Task<IActionResult> SyncAll(DateTime refreshedAt)
         {
-            // DataObjMgr を取得（あなたの構造に合わせて）
+            // DataObjMgr を生成
             await CreateObjMgr(); 
             var mgr = _dataObjMgr;
         
@@ -74,8 +74,10 @@ namespace NxRebuild.Api.Controllers {
         
             foreach (var obj in mgr.DataList)
             {
-                // 世界線同期済みの SyncBaseDataObj<TKey>
-                var json = obj.TblToJson();   // ここはあなたの実装名に合わせる
+                if (obj.refreshedAt <= refreshedAt)
+                    continue;
+                // クライアントの更新日よりあたらしいBaseDataObj<TKey>
+                var json = obj.TblToJson();   
         
                 resultList.Add(new {
                     Key = obj.DataID,

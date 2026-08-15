@@ -17,18 +17,14 @@ namespace NxRebuild.shared {
         DateTime Refreshed_at { get; }
         Guid TenantCode { get; set; }
 
-        string TblName { get; set; }
-        string S_TblName { get; set; }
-        string InfoTbl { get; set; }
+        string TblName { get; }
+        string S_TblName { get; }
+        string InfoTbl { get;  }
 
-        string W_TblName { get; set; }
-        string Ws_TblName { get; set; }
+        string W_TblName { get;  }
+        string Ws_TblName { get; }
 
-        T CreateNewDataObj();
-        Task<bool> DeleteDataObj(TKey dataID);
         Task<List<TKey>> DeleteData(IEnumerable<TKey> dataIDs);
-
-        void RemoveFromList(BaseDataObj<TKey> obj);
 
         Task DistributeJsonData(string json);
         Task Initialize();
@@ -36,25 +32,46 @@ namespace NxRebuild.shared {
         
     }
 
-    // マネージャの機能だけを外出しするインターフェース
+    // サーバー向けマネージャの機能だけを外出しするインターフェース
+    public interface IsrvBaseDataObjMgr<T, TKey> where T : BaseDataObj<TKey> {
+        Guid CurrentUserID { get; set; }
+        IEnumerable<IBaseDataObj<TKey>> DataList { get; }
+        NxDataType DataType { get; set; }
+        IDbConnection DBcon { get; set; }
+        DateTime Refreshed_at { get; }
+        Guid TenantCode { get; set; }
 
-    //DataObjを管理するクラス
-    //派生先では次のように定義する事
-    //public class HaseiObjMgr<T, Guid> : DataObjMgr<T, TKey> where T : HaseiObj<Guid>
+        string TblName { get; }
+        string S_TblName { get; }
+        string InfoTbl { get; }
 
-    public abstract class BaseDataObjMgr<T, TKey> : IBaseDataObjMgr<T, TKey> where T : BaseDataObj<TKey>, new() {
+        string W_TblName { get; }
+        string Ws_TblName { get; }
+
+        Task<List<TKey>> DeleteData(IEnumerable<TKey> dataIDs);
+
+        Task DistributeJsonData(string json);
+        Task Initialize();
+        string LoadMultipleDataAsJson(List<TKey> idList);
+        void RemoveFromList(BaseDataObj<TKey> obj);
+    }
+        //DataObjを管理するクラス
+        //派生先では次のように定義する事
+        //public class HaseiObjMgr<T, Guid> : DataObjMgr<T, TKey> where T : HaseiObj<Guid>
+
+    public abstract class BaseDataObjMgr<T, TKey> : IBaseDataObjMgr<T, TKey> , IsrvBaseDataObjMgr<T, TKey> where T : BaseDataObj<TKey>, new() {
         protected string _tblName;　
         protected string _s_tblName;
         protected string _infoTbl;
 
         protected string _w_tblName;
         protected string _ws_tblName;
-        public string TblName { get; set; }//データ名等基本データが格納されるテーブル名
-        public string S_TblName { get; set; }//明細データが格納されるサブテーブル名
-        public string InfoTbl { get; set; }//TblNameに加え栄養素などの集計結果が入っているテーブル(プロパティをビューから取得したいときはこれを使う
+        public string TblName { get => _tblName; }//データ名等基本データが格納されるテーブル名
+        public string S_TblName { get => _s_tblName; }//明細データが格納されるサブテーブル名
+        public string InfoTbl { get => _infoTbl; }//TblNameに加え栄養素などの集計結果が入っているテーブル(プロパティをビューから取得したいときはこれを使う
 
-        public string W_TblName { get; set; }
-        public string Ws_TblName { get; set; }
+        public string W_TblName { get => _w_tblName; }
+        public string Ws_TblName { get => _ws_tblName; }
 
         public NxDataType DataType { get; set; }
 
@@ -91,11 +108,11 @@ namespace NxRebuild.shared {
             }
         }
 
-        public BaseDataObjMgr(DbConnection db , Guid tenantCode , Guid currUserID) {
+        public BaseDataObjMgr(IDbConnection db , Guid tenantCode , Guid currUserID) {
             DBcon = db;
             TenantCode = tenantCode;
             CurrentUserID = currUserID;
-
+            //テーブル名などの基本情報は派生先のコンストラクタでハードコードする事。
             //Initialize()はインスタンス生成元が呼び出す事(この中で呼んではいけない)
         }
         protected abstract TKey GenerateDataID();

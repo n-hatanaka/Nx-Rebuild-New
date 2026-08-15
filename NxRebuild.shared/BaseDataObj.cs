@@ -53,8 +53,8 @@ namespace NxRebuild.shared {
         string TblName { get; }
         Guid TenantCode { get; set; }
         DateTime Update_at { get;  }
-        string W_TblName { get; }
-        string Ws_TblName { get; }
+        string W_TblName { get;  }
+        string Ws_TblName { get;  }
 
         Task<LockStatus> DataOpen();
         string TblToJson();

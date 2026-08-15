@@ -1,7 +1,7 @@
 ﻿using Dapper;
 using System;
 using System.Collections.Generic;
-using System.Data.Common;
+using System.Data;
 using System.Text;
 
 namespace NxRebuild.shared {
@@ -9,7 +9,7 @@ namespace NxRebuild.shared {
 
 
         // BaseDataObjMgr(DbConnection, Guid, Guid) を呼べるコンストラクタを提供
-        public NutritionPropertysMgr(DbConnection db, Guid tenantCode, Guid currentUserID)
+        public NutritionPropertysMgr(IDbConnection db, Guid tenantCode, Guid currentUserID)
             : base(db, tenantCode, currentUserID) {
       　     _tblName ="ColName";
         }

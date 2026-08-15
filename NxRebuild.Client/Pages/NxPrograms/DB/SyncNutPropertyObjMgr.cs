@@ -27,10 +27,69 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         //Initializeメソッドから呼び出される。栄養素プロパティのデータをDBから取得する。
         public override async Task<IEnumerable<Dictionary<string, object>>> LoadRecordsAsync() {
             // データベースから栄養素プロパティを取得する
-            string sql = $"SELECT * FROM \"{TableName}\" WHERE tenant_code = @TenantCode ORDER BY SortNo;";
+            string sql = $"SELECT * FROM \"{TblName}\" WHERE tenant_code = @TenantCode ORDER BY SortNo;";
 
             return await DBcon.QueryAsync<Dictionary<string, object>>(sql);
         }
 
+
+        public virtual async Task<bool> SyncData() {
+            // ① API に世界線同期点を渡す
+            var url = $"{ApiRoute}/sync";
+            var response = await _http.GetAsync(url);
+
+            if (!response.IsSuccessStatusCode)
+                return false;
+
+            // ② JSON を受け取る
+            var json = await response.Content.ReadAsStringAsync();
+
+            // ③ パース（API の返却構造に合わせた型を使用）
+            var syncResult = JsonSerializer.Deserialize<SyncAllResult>(json);
+
+            if (syncResult?.Items == null)
+                return false;
+
+            // ④ ループして DataObjMgr の世界線を更新
+            foreach (var item in syncResult.Items) {
+                var dataId = item.Key;
+                var dataJson = item.Data;
+
+                // ⑤ 既存 DataObj を探す
+                var target = _baseDataObjMgr.DataList
+                    .FirstOrDefault(x => x.DataID.Equals(dataId));
+
+                if (target != null) {
+                    // ⑥ 既存オブジェクトに世界線を流し込む
+                    await target.JsonToTbl(dataJson);
+                } else {
+                    // ⑦ 新規作成
+                    var newObj = _baseDataObjMgr.CreateNewDataObj();
+
+                    // DataID をセット（必要なら）
+                    newObj.DataID = dataId;
+
+                    // ⑧ 世界線を流し込む
+                    await newObj.JsonToTbl(dataJson);
+
+                    var newSyncObj = CreateNewSyncDataObj(newObj);
+
+                    // ⑨ DataList に追加
+                    _baseDataObjMgr._dataList.Add((object)newSyncObj);
+
+                }
+            }
+
+            return true;
+        }
+
+        public override async Task<List<int>> DeleteData(IEnumerable<int> dataIDs) {
+            //削除は行わないので無効化
+            throw new NotImplementedException();
+        }
+        public override async Task<bool> DeleteDataObj(int dataID) {
+            //削除は行わないので無効化
+            throw new NotImplementedException();    
+        }
     }
 }
