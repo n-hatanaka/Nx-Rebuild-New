@@ -242,7 +242,7 @@ namespace NxRebuild.shared {
         //DBへのデータ名変更を試みる。成功した場合プロパティの値も書き換える
         public virtual async Task<bool> ReNameQueryExec(string newName, IDbTransaction dbTransaction) {
             // ここでSQLを構築して実行
-            string sql = $"UPDATE {_tblName} SET {_nameColName} = @name, update_at = @update_at WHERE {_idColName} = @id AND group_code = @tenantCode";
+            string sql = $"UPDATE {_tblName} SET {_nameColName} = @name, update_at = @update_at WHERE {_idColName} = @id AND tenant_code = @tenantCode";
 
             // 成功したら true が返る
             return await DBcon.ExecuteAsync(sql, new { name = newName, id = DataID, update_at = DateTime.UtcNow ,tenantCode = TenantCode }, dbTransaction) > 0;
@@ -348,7 +348,7 @@ namespace NxRebuild.shared {
                         UPDATE {TblName} 
                         SET locked_by = @userId, locked_at = @lockedAt 
                         WHERE {IdColName} = @dataID 
-                          AND group_code = @tenantCode
+                          AND tenant_code = @tenantCode
                           AND (locked_at IS NULL OR locked_at < @expiryTime)";
 
             try {
@@ -386,7 +386,7 @@ namespace NxRebuild.shared {
             // SQLでlocked_atとlocked_byの両方を取得
             var sql = $@"SELECT locked_at, locked_by as UserId, Update_at  
                  FROM {TblName} 
-                 WHERE group_code = @groupCode AND {IdColName} = @dataID";
+                 WHERE tenant_code = @tenantCode AND {IdColName} = @dataID";
 
             var result = await DBcon.QueryFirstOrDefaultAsync<dynamic>(sql, new { TenantCode, DataID },transaction);
 

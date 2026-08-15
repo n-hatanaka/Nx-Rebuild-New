@@ -84,9 +84,9 @@ namespace NxRebuild.shared {
 
 
         //DataObjのList：派生したDataObjも保持できる様Objectにダウンキャストする。
-        public List<Object> _dataList = new List<Object>();
+        public List<IBaseDataObj<TKey>> _dataList = new List<IBaseDataObj<TKey>>();
 
-        public IEnumerable<IBaseDataObj<TKey>> DataList => _dataList.Cast<IBaseDataObj<TKey>>();
+        public IEnumerable<IBaseDataObj<TKey>> DataList => _dataList;
         public DateTime Refreshed_at {
             get {
                 DateTime latestUpdate = DateTime.MinValue;
@@ -203,7 +203,7 @@ namespace NxRebuild.shared {
                     transaction.Rollback();
                 else {
                     transaction.Commit();
-                    _dataList.Remove(dataID);
+                    _dataList.Remove(target);
 
                     return true;
                 }

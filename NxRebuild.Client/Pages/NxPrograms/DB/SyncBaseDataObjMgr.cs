@@ -155,7 +155,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                     // ⑦ 新規作成
                     var newObj = _baseDataObjMgr.CreateNewDataObj();
         
-                    // DataID をセット（必要なら）
+                    // JSonで渡されたDataIDをあらためてセットする
                     newObj.DataID = dataId;
         
                     // ⑧ 世界線を流し込む
