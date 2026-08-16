@@ -1,102 +1,108 @@
 ```mermaid
-
 classDiagram
+    %% Interfaces
+    class IBaseDataObj
+    class ISyncBaseDataObj
+    class IBaseDataObjMgr
+    class IsrvBaseDataObjMgr
+    class ISyncBaseDataObjMgr
 
-&#x20;   %% Interfaces
+    %% Interface inheritance
+    IBaseDataObj <|-- ISyncBaseDataObj : inherits
+    IBaseDataObjMgr <|-- ISyncBaseDataObjMgr : inherits
 
-&#x20;   class IBaseDataObj
+    %% Implementation classes
+    class BaseDataObj
+    class SyncBaseDataObj
+    class SyncBaseDataObjMgr
+    class BaseDataObjMgr
+    class NxDataController
 
-&#x20;   class ISyncBaseDataObj
+    %% Implementation relations
+    IBaseDataObj <|.. BaseDataObj : implements
+    ISyncBaseDataObj <|.. SyncBaseDataObj : implements
+    IBaseDataObjMgr <|.. BaseDataObjMgr : implements
+    IsrvBaseDataObjMgr <|.. BaseDataObjMgr : implements
+    ISyncBaseDataObjMgr <|.. SyncBaseDataObjMgr : implements
 
-&#x20;   class IBaseDataObjMgr
+    %% Composition relations
+    SyncBaseDataObj o-- BaseDataObj : holds
+    SyncBaseDataObjMgr o-- BaseDataObjMgr : holds
 
-&#x20;   class IsrvBaseDataObjMgr
+    %% Management relations
+    BaseDataObjMgr o-- BaseDataObj : manages
+    SyncBaseDataObjMgr o-- SyncBaseDataObj : manages
 
-&#x20;   class ISyncBaseDataObjMgr
+    %% --- Added cyclic structure ---
+    %% Sync layer → HttpController
+    SyncBaseDataObj --> NxDataController : sync request
+    SyncBaseDataObjMgr --> NxDataController : sync request
 
+    %% HttpController → DataObjMgr
+    NxDataController o-- BaseDataObjMgr : holds
+    NxDataController --> IsrvBaseDataObjMgr : data operation / API
+    NxDataController --> BaseDataObj : data operation / API
+    
+    %% Notes (commented out)
 
-
-&#x20;   %% Interface inheritance
-
-&#x20;   IBaseDataObj <|-- ISyncBaseDataObj : inherits
-
-&#x20;   IBaseDataObjMgr <|-- ISyncBaseDataObjMgr : inherits
-
-
-
-&#x20;   %% Concrete classes
-
-&#x20;   class BaseDataObj
-
-&#x20;   class SyncBaseDataObj
-
-&#x20;   class SyncBaseDataObjMgr
-
-&#x20;   class BaseDataObjMgr
-
-&#x20;   class NxDataController
-
-
-
-&#x20;   %% Implementation relationships
-
-&#x20;   IBaseDataObj <|.. BaseDataObj : implements
-
-&#x20;   ISyncBaseDataObj <|.. SyncBaseDataObj : implements
-
-&#x20;   IBaseDataObjMgr <|.. BaseDataObjMgr : implements
-
-&#x20;   IsrvBaseDataObjMgr <|.. BaseDataObjMgr : implements
-
-&#x20;   ISyncBaseDataObjMgr <|.. SyncBaseDataObjMgr : implements
-
-
-
-&#x20;   %% Composition relationships
-
-&#x20;   SyncBaseDataObj o-- BaseDataObj : holds
-
-&#x20;   SyncBaseDataObjMgr o-- BaseDataObjMgr : holds
-
-
-
-&#x20;   %% Management relationships
-
-&#x20;   BaseDataObjMgr o-- BaseDataObj : manages
-
-&#x20;   SyncBaseDataObjMgr o-- SyncBaseDataObj : manages
-
-
-
-&#x20;   %% --- Worldline flow (synchronization cycle) ---
-
-&#x20;   %% Sync layer → HttpController
-
-&#x20;   SyncBaseDataObj --> NxDataController : sync request
-
-&#x20;   SyncBaseDataObjMgr --> NxDataController : sync request
-
-
-
-&#x20;   %% HttpController → DataObjMgr
-
-&#x20;   NxDataController --> IsrvBaseDataObjMgr : data operations / API handling
-
-&#x20;   NxDataController --> BaseDataObjMgr : data operations / API handling
-
-&#x20;   
-
-&#x20;   %% Notes
-
-&#x20;   note for SyncBaseDataObj "Wrapper class for BaseDataObj.<br/>Provides synchronization features with the server."
-
-&#x20;   note for SyncBaseDataObjMgr "Wrapper class for BaseDataObjMgr.<br/>Invokes SyncBaseDataObj methods and handles server synchronization."
-
-&#x20;   note for ISyncBaseDataObj "Extends IBaseDataObj so SyncBaseDataObj can be treated as the same type."
-
-&#x20;   note for ISyncBaseDataObjMgr "Extends IBaseDataObjMgr so SyncBaseDataObjMgr can be treated as the same type."
-
-&#x20;   note for NxDataController "Receives sync requests from Sync layer.<br/>Accesses server DB through IsrvBaseDataObjMgr and BaseDataObjMgr."
-
+    %%note for IBaseDataObj "Interface to treat BaseDataObj and SyncBaseDataObjMgr as the same type.<br/>Provides UI abstraction by accessing objects through this interface."
+    %%note for IBaseDataObjMgr "Interface to treat BaseDataObjMgr and SyncBaseDataObjMgr as the same type.<br/>Provides UI abstraction by accessing objects through this interface."
+    %%note for SyncBaseDataObj "Wrapper class of BaseDataObj.<br/>Provides synchronization functionality with the server."
+    %%note for SyncBaseDataObjMgr "Wrapper class of BaseDataObjMgr.<br/>Calls SyncBaseDataObj methods and handles synchronization with the server."
+    %%note for ISyncBaseDataObj "By inheriting IBaseDataObj, SyncBaseDataObj can be treated as the same type."
+    %%note for ISyncBaseDataObjMgr "By inheriting IBaseDataObjMgr, SyncBaseDataObjMgr can be treated as the same type."
+    %%note for NxDataController "Receives sync requests and accesses the server DB through IsrvBaseDataObjMgr and BaseDataObjMgr."
 ```
 
+## Base layer (primary CRUD line)
+
+### BaseDataObj
+- Performs CRUD operations on individual entities.
+
+### BaseDataObjMgr
+- Manages the lifecycle of BaseDataObj.
+- Performs CRUD operations on multiple data entries through BaseDataObj.
+
+
+## Sync layer (synchronized CRUD line)
+
+### SyncBaseDataObj
+- Wrapper class of BaseDataObj.
+- Provides synchronization functionality with the server.
+
+### SyncBaseDataObjMgr
+- Wrapper class of BaseDataObjMgr.
+- Uses SyncBaseDataObj to handle synchronization.
+
+
+## UI abstraction interfaces (ensuring Sync → Base type equivalence)
+
+### ISyncBaseDataObj
+- By inheriting IBaseDataObj, SyncBaseDataObj can be treated as the same type.
+
+### ISyncBaseDataObjMgr
+- By inheriting IBaseDataObjMgr, SyncBaseDataObjMgr can be treated as the same type.
+
+### IBaseDataObj
+- Provides client-side implementation.
+- Interface that allows BaseDataObj and SyncBaseDataObj to be treated as the same type.
+- Enables UI abstraction by accessing objects through this interface.
+
+### IBaseDataObjMgr
+- Provides client-side implementation to the UI.
+- Interface that allows BaseDataObjMgr and SyncBaseDataObjMgr to be treated as the same type.
+- Enables UI abstraction by accessing objects through this interface.
+
+
+## Server-side interface
+
+### IsrvBaseDataObjMgr
+- Interface for server-side access to BaseDataObjMgr.
+- Provides server-side implementation to the API.
+
+
+## Controller (CRUD line connection point)
+
+### NxDataController
+- Receives sync requests.
+- Accesses the server DB through IsrvBaseDataObjMgr and BaseDataObjMgr.
