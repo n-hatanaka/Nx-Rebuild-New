@@ -21,8 +21,8 @@ namespace NxRebuild.Api.Controllers
         // -------------------------------------------------------------
         //指定されたテーブル名のデータを丸ごとJSONで返す
         // -------------------------------------------------------------
-        [HttpGet("data/{tableName}/{group_id}")]
-        public async Task<IActionResult> GetTableData(string tableName, string group_id)
+        [HttpGet("data/{tableName}/{tenant_code}")]
+        public async Task<IActionResult> GetTableData(string tableName, string tenant_code)
         {
             // セキュリティ対策：怪しいテーブル名は弾く（英数字とアンダースコアのみ許可）
             if (!System.Text.RegularExpressions.Regex.IsMatch(tableName, @"^[a-zA-Z0-9_]+$"))
@@ -30,8 +30,8 @@ namespace NxRebuild.Api.Controllers
                 return BadRequest("不正なテーブル名です。");
             }
 
-            if (string.IsNullOrEmpty(group_id)) {
-                return BadRequest("不正なIDです。");
+            if (string.IsNullOrEmpty(tenant_code)) {
+                return BadRequest("不正なtenant_codeです。");
             }
 
             try
@@ -40,7 +40,7 @@ namespace NxRebuild.Api.Controllers
                                 SELECT 1
                                 FROM information_schema.columns
                                 WHERE table_name = @TableName
-                                  AND column_name = 'Group_ID' 
+                                  AND column_name = 'tenant_code' 
                                   AND table_schema = 'public'
                             );";
 
@@ -51,11 +51,11 @@ namespace NxRebuild.Api.Controllers
                 // Dapperの「dynamic（動的）」型で読み出します
                 IEnumerable<dynamic> data;
                 if (IsGrouping) {
-                    var guidValue = Guid.Parse(group_id);
+                    var guidValue = Guid.Parse(tenant_code);
 
-                    // パラメータを @Group_ID のように指定し、第二引数に匿名オブジェクトを渡す
-                    sql = $"SELECT * FROM \"{tableName}\" WHERE \"Group_ID\" = @Group_ID";
-                    data = await _dbConnection.QueryAsync(sql, new { Group_ID = guidValue });
+                    // パラメータを @tenant_code のように指定し、第二引数に匿名オブジェクトを渡す
+                    sql = $"SELECT * FROM \"{tableName}\" WHERE \"tenant_code\" = @tenant_code";
+                    data = await _dbConnection.QueryAsync(sql, new { tenant_code = guidValue });
                 } else {
                     sql = $"SELECT * FROM \"{tableName}\"";
                     data = await _dbConnection.QueryAsync(sql);

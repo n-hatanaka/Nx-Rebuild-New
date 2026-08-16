@@ -4,8 +4,8 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 
 //UI 側で：
-//var groupCode = (await AuthStateProvider.GetAuthenticationStateAsync())
-//    .User.FindFirst("group_code")?.Value;
+//var tenant_code = (await AuthStateProvider.GetAuthenticationStateAsync())
+//    .User.FindFirst("tenant_code")?.Value;
 //が どこでも使えるようになる。
 
 namespace NxRebuild.Client.Pages.Auth
@@ -32,13 +32,13 @@ namespace NxRebuild.Client.Pages.Auth
             // JWT の claims をベースに identity を作る
             var claims = jwt.Claims.ToList();
 
-            // group_code を取り出す
-            var groupCode = jwt.Claims.FirstOrDefault(c => c.Type == "group_code")?.Value;
+            // tenant_code を取り出す
+            var tenantCode = jwt.Claims.FirstOrDefault(c => c.Type == "tenant_code")?.Value;
 
-            // group_code を Claims に追
-            if (!string.IsNullOrEmpty(groupCode))
+            // tenant_code を Claims に追加
+            if (!string.IsNullOrEmpty(tenantCode))
             {
-                claims.Add(new Claim("group_code", groupCode));
+                claims.Add(new Claim("tenant_code", tenantCode));
             }
 
             var identity = new ClaimsIdentity(claims, "jwt");
@@ -54,10 +54,10 @@ namespace NxRebuild.Client.Pages.Auth
 
             var claims = jwt.Claims.ToList();
 
-            var groupCode = jwt.Claims.FirstOrDefault(c => c.Type == "group_code")?.Value;
-            if (!string.IsNullOrEmpty(groupCode))
+            var tenantCode = jwt.Claims.FirstOrDefault(c => c.Type == "tenant_code")?.Value;
+            if (!string.IsNullOrEmpty(tenantCode))
             {
-                claims.Add(new Claim("group_code", groupCode));
+                claims.Add(new Claim("tenant_code", tenantCode));
             }
 
             var identity = new ClaimsIdentity(claims, "jwt");

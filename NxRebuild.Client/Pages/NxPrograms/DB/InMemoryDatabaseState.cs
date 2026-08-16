@@ -88,14 +88,14 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB{
         /// <summary>
         /// 指定されたマスタテーブルのデータをサーバーから取得し、ローカルのインメモリDBに丸ごとコピー。
         /// </summary>
-        public async Task SyncMasterDataAsync(HttpClient http, List<string> masterTableNames, string groupCode)
+        public async Task SyncMasterDataAsync(HttpClient http, List<string> masterTableNames, string tenant_code)
         {
             if (_connection == null) throw new InvalidOperationException("DBが初期化されていません。");
 
             foreach (var tableName in masterTableNames){
                 // 1. サーバーから、指定テーブルの全データを「辞書のリスト」として取得する
                 // (カラム名 -> 値 のマップのリストになります)
-                var rows = await http.GetFromJsonAsync<List<Dictionary<string, object>>>($"api/GetScm/data/{tableName}/{groupCode}");
+                var rows = await http.GetFromJsonAsync<List<Dictionary<string, object>>>($"api/GetScm/data/{tableName}/{tenant_code}");
                 if (rows == null || rows.Count == 0) continue;
 
                 InsertMaster(tableName, rows);

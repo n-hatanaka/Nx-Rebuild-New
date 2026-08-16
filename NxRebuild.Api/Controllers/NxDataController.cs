@@ -23,7 +23,7 @@ namespace NxRebuild.Api.Controllers {
         protected Guid _tenantCode;//テナントコード
         protected ApplicationUser _user;
         protected string _userID;
-        protected string _userGroup;
+        protected string _usertenant_code;
         protected IsrvBaseDataObjMgr<T,TKey> _dataObjMgr;
 
         public NxDataController(IDbConnection dbConnection, UserManager<ApplicationUser> userManager) {
@@ -38,7 +38,7 @@ namespace NxRebuild.Api.Controllers {
         protected async Task SetUserInfo(UserManager<ApplicationUser> userManager) {
             _user = await userManager.GetUserAsync(User);
             _userID = _user.Id;
-            _userGroup = _userGroup;
+            _usertenant_code = _user.TenantCode;
 
         }
 
@@ -74,9 +74,10 @@ namespace NxRebuild.Api.Controllers {
         
             foreach (var obj in mgr.DataList)
             {
-                if (obj.refreshedAt <= refreshedAt)
+                if ((obj.Update_at <= refreshedAt) && (obj.LockedAt <= refreshedAt))
                     continue;
-                // クライアントの更新日よりあたらしいBaseDataObj<TKey>
+
+                // クライアントの更新及びロック時刻よりあたらしいBaseDataObj<TKey>
                 var json = obj.TblToJson();   
         
                 resultList.Add(new {
