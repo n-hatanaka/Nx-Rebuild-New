@@ -103,6 +103,14 @@
     private bool _windowMenuOpen = false;
     private bool _drawerOpen = true;
 
+    protected override void OnInitialized()
+    {
+        Manager.OnWindowsChanged += () =>
+        {
+            InvokeAsync(StateHasChanged);
+        };
+    }
+
     private void ToggleWindowMenu() => _windowMenuOpen = !_windowMenuOpen;
     private void ToggleDrawer() => _drawerOpen = !_drawerOpen;
 }

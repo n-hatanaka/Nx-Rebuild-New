@@ -71,6 +71,7 @@
     </nav>
 </div>
 
+
 @code {
     private bool _menuOpen;
 
@@ -80,11 +81,14 @@
 
     protected override void OnInitialized()
     {
-        Manager.OnWindowsChanged += StateHasChanged;
+        Manager.OnWindowsChanged += () =>
+        {
+            InvokeAsync(StateHasChanged);
+        };
     }
 
     private void ToggleNavMenu()
     {
         collapseNavMenu = !collapseNavMenu;
     }
-} *@
+}

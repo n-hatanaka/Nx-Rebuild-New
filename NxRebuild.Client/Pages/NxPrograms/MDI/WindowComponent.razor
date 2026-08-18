@@ -1,4 +1,4 @@
-﻿@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components
 @inject IJSRuntime JS
 
 <style>
@@ -46,21 +46,26 @@
         font-size: 14px;
     }
 
-    .mdi-resizer {
-        width: 12px;
-        height: 12px;
-        background: transparent;
+    .resize-handle {
         position: absolute;
-        right: 0;
-        bottom: 0;
-        cursor: se-resize;
+        background: transparent;
     }
+
+    .resize-nw { top: 0; left: 0; width: 12px; height: 12px; cursor: nw-resize; }
+    .resize-ne { top: 0; right: 0; width: 12px; height: 12px; cursor: ne-resize; }
+    .resize-sw { bottom: 0; left: 0; width: 12px; height: 12px; cursor: sw-resize; }
+    .resize-se { bottom: 0; right: 0; width: 12px; height: 12px; cursor: se-resize; }
+
+    .resize-n { top: 0; left: 12px; right: 12px; height: 6px; cursor: n-resize; }
+    .resize-s { bottom: 0; left: 12px; right: 12px; height: 6px; cursor: s-resize; }
+    .resize-w { left: 0; top: 12px; bottom: 12px; width: 6px; cursor: w-resize; }
+    .resize-e { right: 0; top: 12px; bottom: 12px; width: 6px; cursor: e-resize; }
 </style>
 
 @if (!Info.IsMinimized)
 {
     <div @ref="windowRef"
-         class="mdi-window"
+         class="mdi-window @(Info.IsMaximized ? "mdi-maximized" : "")"
          style="
         left:@Info.Xpx;
         top:@Info.Ypx;
@@ -82,24 +87,32 @@
             <DynamicComponent Type="Info.ComponentType" Parameters="Info.Parameters" />
         </div>
 
-        <div class="mdi-resizer"></div>
+        <div class="resize-handle resize-nw"></div>
+        <div class="resize-handle resize-ne"></div>
+        <div class="resize-handle resize-sw"></div>
+        <div class="resize-handle resize-se"></div>
+
+        <div class="resize-handle resize-n"></div>
+        <div class="resize-handle resize-s"></div>
+        <div class="resize-handle resize-w"></div>
+        <div class="resize-handle resize-e"></div>
     </div>
 }
-
 
 @code {
     [Parameter] public WindowInfo Info { get; set; } = default!;
     [Parameter] public WindowManagerBase Manager { get; set; } = default!;
 
     private ElementReference windowRef;
+    private const double NavbarHeight = 48;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender)
-        {            
+        if (!Info.IsMinimized)
+        {
             var dotNetRef = DotNetObjectReference.Create(this);
             await JS.InvokeVoidAsync("mdi.initDrag", windowRef, dotNetRef);
-            await JS.InvokeVoidAsync("mdi.initResize", windowRef, dotNetRef);
+            await JS.InvokeVoidAsync("mdi.initResizeMulti", windowRef, dotNetRef);
         }
     }
 
@@ -108,6 +121,7 @@
     {
         Info.X = x;
         Info.Y = y;
+        Manager.OnWindowsChanged?.Invoke();
     }
 
     [JSInvokable]
@@ -115,30 +129,27 @@
     {
         Info.Width = w;
         Info.Height = h;
+        Manager.OnWindowsChanged?.Invoke();
     }
 
-    //最大化 / 復元の C# ロジック
     private void ToggleMaximize()
     {
         if (!Info.IsMaximized)
         {
-            // 現在の位置とサイズを保存
             Info.PrevX = Info.X;
             Info.PrevY = Info.Y;
             Info.PrevWidth = Info.Width;
             Info.PrevHeight = Info.Height;
 
-            // 最大化
             Info.X = 0;
-            Info.Y = 0;
+            Info.Y = NavbarHeight;
             Info.Width = Manager.ScreenWidth;
-            Info.Height = Manager.ScreenHeight;
+            Info.Height = Manager.ScreenHeight - NavbarHeight;
 
             Info.IsMaximized = true;
         }
         else
         {
-            // 元に戻す
             Info.X = Info.PrevX;
             Info.Y = Info.PrevY;
             Info.Width = Info.PrevWidth;
@@ -146,11 +157,13 @@
 
             Info.IsMaximized = false;
         }
+
+        Manager.OnWindowsChanged?.Invoke();
     }
 
     private void Minimize()
     {
         Info.IsMinimized = true;
+        Manager.OnWindowsChanged?.Invoke();
     }
-
 }
