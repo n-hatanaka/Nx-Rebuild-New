@@ -1,4 +1,4 @@
-﻿using System.Data;
+using System.Data;
 using System.Text.Json;
 using System.Transactions;
 
@@ -7,6 +7,15 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         // 抽象メンバーを実装
         public override string ApiRoute => "NutProperty"; // 実際のルート
 
+        public bool Visible
+        {
+            get => _dataObj.Visible;          // Base世界線の状態を読む
+            set
+            {
+                _dataObj.Visible = value; 
+            }
+        }
+     
         public override async Task<bool> ReName(string newName) {
             //リネームは行わないので無効化
             throw new NotImplementedException();

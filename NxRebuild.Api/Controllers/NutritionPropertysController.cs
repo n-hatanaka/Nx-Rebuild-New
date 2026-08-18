@@ -1,4 +1,4 @@
-﻿using Dapper;
+using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -28,6 +28,29 @@ namespace NxRebuild.Api.Controllers {
 
             _dataObjMgr = new NutritionPropertysMgr(_db, _tenantCode, Guid.Parse(_userID));
             await Task.CompletedTask;
+        }
+
+     [HttpPost("Visible/{dataId}/{newVal}")]
+        public async Task<IActionResult> VisibleChg(int dataId, bool newVal)
+        {
+            await CreateObjMgr();
+            var mgr = _dataObjMgr;
+        
+            var target = mgr.DataList.FirstOrDefault(x => x.DataID == dataId);
+            if (target == null)
+                return BadRequest("Data not found");
+        
+            // ① オブジェクトの状態を変える（世界線の行為）
+            target.Visible = newVal;
+        
+            // ② SaveAsync（内部で SaveQueryExec + トランザクション）
+            var ok = await target.SaveAsync();
+            if (!ok)
+                return StatusCode(500, "Update failed");
+        
+            // ③ 正本世界線の JSON を返す
+            var json = target.TblToJson();
+            return Ok(json);
         }
 
         [HttpGet("sync")]
