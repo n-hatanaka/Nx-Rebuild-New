@@ -18,7 +18,11 @@ namespace NxRebuild.shared
                 // プロパティ側も同期したいならここで SetPropertys 呼んでもよい
             }
         }
-    
+       public bool Nutrition
+       {
+           get => _rawData.ContainsKey("Nutrition") && Convert.ToBoolean(_rawData["Nutrition"]);
+       }
+
         protected override void Initialize()
         {
             _tblName = "ColName";

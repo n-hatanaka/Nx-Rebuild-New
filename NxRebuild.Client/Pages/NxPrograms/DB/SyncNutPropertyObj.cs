@@ -15,7 +15,11 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                 _dataObj.Visible = value; 
             }
         }
-     
+         // ★追加：Nutrition（ラップドから取るだけ）
+         public bool Nutrition
+         {
+             get => _dataObj.Nutrition;
+         }
         public override async Task<bool> ReName(string newName) {
             //リネームは行わないので無効化
             throw new NotImplementedException();

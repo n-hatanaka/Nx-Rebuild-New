@@ -1,0 +1,40 @@
+@page "/nutrition-properties"
+@inject SyncNutPropertyObjMgr Mgr
+
+<MadCard Class="ma-4 pa-4">
+    <MadText Typo="Typo.h5">栄養素の表示設定</MadText>
+
+    <MadTable Items="_items" Dense="true" Hover="true">
+        <HeaderContent>
+            <MadTh>Name</MadTh>
+            <MadTh>Visible</MadTh>
+        </HeaderContent>
+
+        <RowTemplate>
+            <MadTd>@context.DataName</MadTd>
+
+            <MadTd>
+                <MadSwitch Checked="context.Visible"
+                           CheckedChanged="@(v => OnVisibleChanged(context, v))" />
+            </MadTd>
+        </RowTemplate>
+    </MadTable>
+</MadCard>
+
+@code {
+    private List<SyncNutPropertyObj> _items = new();
+
+    protected override async Task OnInitializedAsync() {
+        await Mgr.Initialize();
+
+        _items = Mgr.DataList
+            .Cast<SyncNutPropertyObj>()
+            .Where(x => x.Nutrition)   // ★ Nutrition = true のみ
+            .OrderBy(x => x.DataID)
+            .ToList();
+    }
+
+    private async Task OnVisibleChanged(SyncNutPropertyObj item, bool value) {
+        await item.NutVisibleChg(value);
+    }
+}
