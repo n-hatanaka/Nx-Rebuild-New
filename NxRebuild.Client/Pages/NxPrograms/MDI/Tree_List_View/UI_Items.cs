@@ -1,4 +1,5 @@
 ﻿using NxRebuild.Client.Pages.NxPrograms.DB;
+using NxRebuild.shared;
 
 namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
 
@@ -17,7 +18,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
         public bool IsExpanded { get; set; }
         public bool IsHighlighted { get; set; }
 
-        public DataObj ItemData {  get; set; }
+        //public IBaseDataObj ItemData {  get; set; }
         public List<MyTreeData> Children { get; set; } = new();
     }
 
@@ -37,7 +38,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
         public bool IsEditing { get; set; }
 
         public bool IsLocked { get; set; }
-        public DataObj ItemData { get; set; }
+        //public IBaseDataObj ItemData { get; set; }
         public Dictionary<string, object> ExtraData { get; set; } = new();
         public bool IsSelected { get; set; }
     }

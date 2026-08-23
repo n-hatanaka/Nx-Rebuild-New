@@ -28,6 +28,12 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI
             OnWindowsChanged?.Invoke();
         }
 
+        // 外部からウィンドウ変更通知を発行するユーティリティ
+        public void NotifyWindowsChanged()
+        {
+            OnWindowsChanged?.Invoke();
+        }
+
         public void Open<T>(string title, Dictionary<string, object>? parameters = null)
             where T : IComponent
         {

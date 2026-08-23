@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Text;
 using System.Data;
 using System.Threading.Tasks;
+using Dapper;
 
 namespace NxRebuild.shared
 {
@@ -92,6 +93,6 @@ namespace NxRebuild.shared
     
             return rows == 1;
         }
-}
+
     }
 }

@@ -121,7 +121,7 @@
     {
         Info.X = x;
         Info.Y = y;
-        Manager.OnWindowsChanged?.Invoke();
+        Manager.NotifyWindowsChanged();
     }
 
     [JSInvokable]
@@ -129,7 +129,7 @@
     {
         Info.Width = w;
         Info.Height = h;
-        Manager.OnWindowsChanged?.Invoke();
+        Manager.NotifyWindowsChanged();
     }
 
     private void ToggleMaximize()
@@ -158,12 +158,12 @@
             Info.IsMaximized = false;
         }
 
-        Manager.OnWindowsChanged?.Invoke();
+        Manager.NotifyWindowsChanged();
     }
 
     private void Minimize()
     {
         Info.IsMinimized = true;
-        Manager.OnWindowsChanged?.Invoke();
+        Manager.NotifyWindowsChanged();
     }
 }

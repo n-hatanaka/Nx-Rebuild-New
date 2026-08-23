@@ -18,7 +18,6 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB{
         // すでにDBが初期化されているかどうかのフラグ
         public bool IsInitialized => _connection != null;
 
-        public List<ColNameRecord> NutritionPropertys { get; set; }
 
         /// <summary>
         /// JSONスキーマを基にインメモリDBを初期化します。すでに初期化済みの場合は何もしません。
@@ -142,12 +141,6 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB{
             return;
         }
 
-        //栄養素カラム情報を取得。インメモリデータベースから取得するのでここではグループコードはとらなくていい
-        public void  SyncNutritionPropertys() {
-            const string sql = "SELECT * FROM ColName ORDER BY sortNo;";
-            NutritionPropertys = _connection.Query<ColNameRecord>(sql).ToList();
-            return;
-        }
 
         // -------------------------------------------------------------
         // JsonElement を C# の「生データ型」に変換するヘルパー関数

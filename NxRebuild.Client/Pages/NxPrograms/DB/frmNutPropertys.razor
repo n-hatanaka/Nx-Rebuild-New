@@ -1,40 +1,62 @@
 @page "/nutrition-properties"
-@inject SyncNutPropertyObjMgr Mgr
+@inject SyncDataObjMgrServices NutSvc
 
 <MadCard Class="ma-4 pa-4">
     <MadText Typo="Typo.h5">栄養素の表示設定</MadText>
 
-    <MadTable Items="_items" Dense="true" Hover="true">
-        <HeaderContent>
-            <MadTh>Name</MadTh>
-            <MadTh>Visible</MadTh>
-        </HeaderContent>
-
-        <RowTemplate>
-            <MadTd>@context.DataName</MadTd>
-
-            <MadTd>
-                <MadSwitch Checked="context.Visible"
-                           CheckedChanged="@(v => OnVisibleChanged(context, v))" />
-            </MadTd>
-        </RowTemplate>
-    </MadTable>
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Visible</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var item in _items)
+            {
+                <tr>
+                    <td>@item.DataName</td>
+                    <td>
+                        <input type="checkbox" checked="@item.Visible" @onchange="@(e => OnVisibleChangedHandler(item, (bool)e.Value))" />
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
 </MadCard>
 
 @code {
     private List<SyncNutPropertyObj> _items = new();
 
-    protected override async Task OnInitializedAsync() {
-        await Mgr.Initialize();
+    protected override async Task OnInitializedAsync()
+    {
+        // ホルダーサービスからマネージャ取得（MainWnd 側で初期化済みの想定）
+        var mgr = NutSvc.GetManager<SyncNutPropertyObjMgr>();
+        if (mgr == null)
+        {
+            // 未初期化の場合は短時間待つ（MainWnd が初期化する設計）、タイムアウト後は空表示
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            while ((mgr = NutSvc.GetManager<SyncNutPropertyObjMgr>()) == null && sw.ElapsedMilliseconds < 3000)
+            {
+                await Task.Delay(100);
+            }
+            if (mgr == null) return; // 初期化されていない
+        }
 
-        _items = Mgr.DataList
+        _items = mgr.DataList
             .Cast<SyncNutPropertyObj>()
-            .Where(x => x.Nutrition)   // ★ Nutrition = true のみ
+            .Where(x => x.Nutrition)
             .OrderBy(x => x.DataID)
             .ToList();
     }
 
     private async Task OnVisibleChanged(SyncNutPropertyObj item, bool value) {
         await item.NutVisibleChg(value);
+    }
+
+    // wrapper to call async handler from components expecting Action<bool>
+    private void OnVisibleChangedHandler(SyncNutPropertyObj item, bool value)
+    {
+        _ = OnVisibleChanged(item, value);
     }
 }

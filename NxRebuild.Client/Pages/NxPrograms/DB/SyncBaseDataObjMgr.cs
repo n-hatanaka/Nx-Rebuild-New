@@ -112,7 +112,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         public virtual async Task<IEnumerable<Dictionary<string, object>>> LoadRecordsAsync() {
             string sql = $"SELECT * FROM \"{TblName}\" WHERE tenant_code = @TenantCode;";
 
-            return await DBcon.QueryAsync<Dictionary<string, object>>(sql);
+            return await DBcon.QueryAsync<Dictionary<string, object>>(sql, new { TenantCode = TenantCode });
         }
 
 
@@ -164,7 +164,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                     var newSyncObj = CreateNewSyncDataObj(newObj);
 
                     // ⑨ DataList に追加
-                    _baseDataObjMgr._dataList.Add((object)newSyncObj);
+                    _baseDataObjMgr._dataList.Add(newSyncObj);
                     
                 }
             }

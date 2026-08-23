@@ -34,9 +34,9 @@ namespace NxRebuild.Api.Controllers {
         public async Task<IActionResult> VisibleChg(int dataId, bool newVal)
         {
             await CreateObjMgr();
-            var mgr = _dataObjMgr;
+            var mgr = _dataObjMgr as NutritionPropertysMgr;
         
-            var target = mgr.DataList.FirstOrDefault(x => x.DataID == dataId);
+            var target = (mgr.DataList.FirstOrDefault(x => x.DataID == dataId) as NutritionProperty);
             if (target == null)
                 return BadRequest("Data not found");
         

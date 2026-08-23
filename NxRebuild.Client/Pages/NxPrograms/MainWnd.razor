@@ -17,8 +17,10 @@
 @inject AuthenticationStateProvider AuthProvider
 @inject HttpClient Http
 @using NxRebuild.Client.Pages.NxPrograms.DB
+@using NxRebuild.Client.Pages.Auth
 @* ★ステート管理サービスを注入 *@
 @inject InMemoryDatabaseState DbState 
+@inject SyncDataObjMgrServices NutSvc
 
 <h3>MainWnd</h3>
 <hr />
@@ -86,7 +88,7 @@ else
     {
         var state = await AuthProvider.GetAuthenticationStateAsync();
         var user = state.User;
-        var groupCode = (await AuthProvider.GetAuthenticationStateAsync()).User.FindFirst("group_code")?.Value;
+        var tenantCode = state.User.FindFirst("tenant_code")?.Value;
 
         if (user.Identity is { IsAuthenticated: true } && !DbState.IsInitialized)
         {
@@ -104,9 +106,45 @@ else
                                                     };
 
                 // 3. ★マスタデータの同期を一括実行！
-                await DbState.SyncMasterDataAsync(Http, masterTables, groupCode);
+                await DbState.SyncMasterDataAsync(Http, masterTables, tenantCode);
 
-                DbState.SyncNutritionPropertys();
+                // 4. SyncNutPropertyObjMgr を生成して初期化（InMemory DB と認証情報が揃った直後）
+                try
+                {
+                    var conn = DbState.Connection as System.Data.Common.DbConnection;
+                    if (conn == null)
+                    {
+                        Console.WriteLine("NutritionProperty 初期化: DB connection が null です。");
+                    }
+                    else
+                    {
+                        var customAuth = AuthProvider as CustomAuthStateProvider;
+                        if (customAuth == null)
+                        {
+                            Console.WriteLine("NutritionProperty 初期化: AuthenticationStateProvider を CustomAuthStateProvider にキャストできません。");
+                        }
+
+                        var tenantGuid = Guid.TryParse(tenantCode, out var tg) ? tg : Guid.Empty;
+
+                        var userIdClaim = user.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub)
+                                         ?? user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier);
+                        var currentUserGuid = Guid.Empty;
+                        if (userIdClaim != null && Guid.TryParse(userIdClaim.Value, out var ug))
+                            currentUserGuid = ug;
+
+                        if (customAuth != null)
+                        {
+                            // ホルダーサービス経由で SyncNutPropertyObjMgr を生成・初期化
+                            await NutSvc.InitializeNutPropertyAsync(conn, Http, customAuth, tenantGuid, currentUserGuid);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"NutritionProperty 初期化エラー: {ex.Message}");
+                }
+
+                
             }
             catch (Exception ex)
             {

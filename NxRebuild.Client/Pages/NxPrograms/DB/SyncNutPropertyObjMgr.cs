@@ -29,7 +29,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             // データベースから栄養素プロパティを取得する
             string sql = $"SELECT * FROM \"{TblName}\" WHERE tenant_code = @TenantCode ORDER BY SortNo;";
 
-            return await DBcon.QueryAsync<Dictionary<string, object>>(sql);
+            return await DBcon.QueryAsync<Dictionary<string, object>>(sql, new { TenantCode = TenantCode });
         }
 
 
@@ -75,7 +75,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                     var newSyncObj = CreateNewSyncDataObj(newObj);
 
                     // ⑨ DataList に追加
-                    _baseDataObjMgr._dataList.Add((object)newSyncObj);
+                    _baseDataObjMgr._dataList.Add(newSyncObj);
 
                 }
             }

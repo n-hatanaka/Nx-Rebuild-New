@@ -26,7 +26,7 @@ Welcome to your new app.
                 <code>@jsonResult</code>
             </pre>
         }
-
+        
     </Authorized>
     <NotAuthorized>
         <p style="color:red">未ログインです</p>
@@ -41,11 +41,11 @@ Welcome to your new app.
 
     protected override async Task OnInitializedAsync()
     {
-        // 1. 現在のログイン状態を取得します
+        //1. 現在のログイン状態を取得します
         var state = await AuthProvider.GetAuthenticationStateAsync();
         var user = state.User;
 
-        // 2. ログインしている場合（IsAuthenticated が true）のみAPIを呼び出します
+        //2. ログインしている場合（IsAuthenticated が true）のみAPIを呼び出します
         if (user.Identity is { IsAuthenticated: true })
         {
             await FetchSchemaJsonAsync();

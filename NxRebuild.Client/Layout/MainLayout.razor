@@ -3,6 +3,7 @@
 @inject IJSRuntime JS
 @using MudBlazor
 @using NxRebuild.Client.Pages.NxPrograms.MDI
+@using NxRebuild.Client.Pages.NxPrograms.DB
 @inject WindowManagerBase Manager
 
 <MudThemeProvider />
@@ -82,6 +83,7 @@
                     <MudDivider Class="my-2" />
 
                     <MudNavLink Href="logout" Icon="@Icons.Material.Filled.Dashboard">ログアウト</MudNavLink>
+                    <MudNavLink OnClick="@(() => Manager.Open<FrmNutPropertys>("栄養素設定"))" Icon="@Icons.Material.Filled.List">栄養素設定</MudNavLink>
                 </Authorized>
 
                 <NotAuthorized>
