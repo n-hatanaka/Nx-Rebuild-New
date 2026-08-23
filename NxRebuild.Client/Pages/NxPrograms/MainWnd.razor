@@ -90,13 +90,38 @@ else
         var user = state.User;
         var tenantCode = state.User.FindFirst("tenant_code")?.Value;
 
+        // ログ出力: 認証状態
+        Console.WriteLine($"[MainWnd] GetAuthenticationStateAsync: IsAuthenticated={user.Identity?.IsAuthenticated}, Name={user.Identity?.Name}");
+
         if (user.Identity is { IsAuthenticated: true } && !DbState.IsInitialized)
         {
             try
             {
                 // 1. JSONスキーマを取得して、インメモリDBのテーブル群（器）を作る
-                var jsonResult = await Http.GetStringAsync("api/GetScm");
-                DbState.Initialize(jsonResult);
+                Console.WriteLine("[MainWnd] Fetching schema: api/GetScm");
+                string jsonResult;
+                try
+                {
+                    jsonResult = await Http.GetStringAsync("api/GetScm");
+                    Console.WriteLine($"[MainWnd] Retrieved schema length: {jsonResult?.Length}");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[MainWnd] Error fetching schema: {ex.Message}");
+                    throw;
+                }
+
+                Console.WriteLine("[MainWnd] Initializing InMemory DB");
+                try
+                {
+                    DbState.Initialize(jsonResult);
+                    Console.WriteLine("[MainWnd] DbState.Initialize completed");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[MainWnd] Error in DbState.Initialize: {ex.Message}");
+                    throw;
+                }
 
                 // 2. ★同期したいマスタテーブルのリストを用意する（ハードコード）
                 var masterTables = new List<string> { "Zmst", 
@@ -106,7 +131,17 @@ else
                                                     };
 
                 // 3. ★マスタデータの同期を一括実行！
-                await DbState.SyncMasterDataAsync(Http, masterTables, tenantCode);
+                Console.WriteLine($"[MainWnd] Starting SyncMasterDataAsync for tenant={tenantCode}");
+                try
+                {
+                    await DbState.SyncMasterDataAsync(Http, masterTables, tenantCode);
+                    Console.WriteLine("[MainWnd] SyncMasterDataAsync completed");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[MainWnd] Error in SyncMasterDataAsync: {ex.Message}");
+                    throw;
+                }
 
                 // 4. SyncNutPropertyObjMgr を生成して初期化（InMemory DB と認証情報が揃った直後）
                 try
@@ -135,7 +170,9 @@ else
                         if (customAuth != null)
                         {
                             // ホルダーサービス経由で SyncNutPropertyObjMgr を生成・初期化
+                            Console.WriteLine("NutritionProperty: calling InitializeNutPropertyAsync");
                             await NutSvc.InitializeNutPropertyAsync(conn, Http, customAuth, tenantGuid, currentUserGuid);
+                            Console.WriteLine("NutritionProperty: InitializeNutPropertyAsync completed");
                         }
                     }
                 }
@@ -144,7 +181,6 @@ else
                     Console.WriteLine($"NutritionProperty 初期化エラー: {ex.Message}");
                 }
 
-                
             }
             catch (Exception ex)
             {

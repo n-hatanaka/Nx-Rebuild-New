@@ -65,6 +65,10 @@ public class ApiProgram
 
         var app = builder.Build();
 
+        //app.UseHttpsRedirection();
+
+        app.UseRouting();
+
         // 最初のテストユーザー作成（同期ブロッキングで呼び出す）
         using (var scope = app.Services.CreateScope())
         {
@@ -107,7 +111,6 @@ public class ApiProgram
             app.UseCors("AllowWasm");
         }
 
-        app.UseHttpsRedirection();
 
         app.UseCors("AllowWasm");
 

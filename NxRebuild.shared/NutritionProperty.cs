@@ -37,19 +37,23 @@ namespace NxRebuild.shared
                       WHERE t.{_idColName} = @dataID AND t.tenant_code = @tenantCode";
         }
     
-        public override Task<LockStatus> DataOpen()
+        public override async Task<LockStatus> DataOpen()
         {
             throw new NotImplementedException();
         }
     
-        public override Task<bool> DeleteQueryExec(IDbTransaction transaction)
+        public override async Task<bool> DeleteQueryExec(IDbTransaction transaction)
         {
-            throw new NotImplementedException();
+            // No-op: 同期時にクライアント側で削除処理を行わない設計のため、何もしないで成功を返す
+            await Task.CompletedTask;
+            return true;
         }
     
-        public override Task<bool> SoftDeleteQueryExec(IDbTransaction transaction)
+        public override async Task<bool> SoftDeleteQueryExec(IDbTransaction transaction)
         {
-            throw new NotImplementedException();
+            // No-op: ソフトデリートを使わないので何もしないで成功を返す
+            await Task.CompletedTask;
+            return true;
         }
     
         public override async Task<bool> SaveAsync()

@@ -1,4 +1,6 @@
 ﻿using System.Net.Http;
+using System;
+using System.Net;
 using System.Net.Http.Headers;
 using System.Threading;
 using System.Threading.Tasks;
@@ -14,18 +16,35 @@ namespace NxRebuild.Client.Pages.Auth
         {
             _jsRuntime = jsRuntime;
         }
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) {
+            string token = null;
 
-        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            // ★ 末尾の cancellationToken を削除し、"authToken" だけを引数にします
-            var token = await _jsRuntime.InvokeAsync<string>("sessionStorage.getItem", "authToken");
+            try {
+                token = await _jsRuntime.InvokeAsync<string>("sessionStorage.getItem", "authToken");
+            } catch {
+                // JSInterop が未初期化のときは token = null のまま
+                token = null;
+            }
 
-            if (!string.IsNullOrEmpty(token))
-            {
+            if (!string.IsNullOrEmpty(token)) {
                 request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
             }
 
-            return await base.SendAsync(request, cancellationToken);
+            try {
+                return await base.SendAsync(request, cancellationToken);
+            } catch (HttpRequestException ex) {
+                // JSInterop が未初期化の可能性があるので、ここも try/catch で包む
+                try {
+                    await _jsRuntime.InvokeVoidAsync("console.error", ex.ToString());
+                } catch {
+                    // 何もしない
+                }
+
+                return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable) {
+                    ReasonPhrase = "Network error: " + ex.Message
+                };
+            }
         }
+
     }
 }
