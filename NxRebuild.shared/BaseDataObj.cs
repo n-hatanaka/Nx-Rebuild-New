@@ -137,7 +137,7 @@ namespace NxRebuild.shared {
         //ここで固定のテーブル名やNameカラム名などのプロパティを設定する
         protected abstract void Initialize();
 
-        public virtual void SetPropertys(Dictionary<string, object> record) {
+        public virtual void Setproperties(Dictionary<string, object> record) {
             // 【変更】recordをそのまま _rawData として保持する設計に移行
             // ※KeyedListとDictionaryの互換性がある前提ですが、
             // 必要に応じてここでコピーまたは変換を行ってください。
@@ -232,7 +232,7 @@ namespace NxRebuild.shared {
             IDbTransaction transaction = DBcon.BeginTransaction();
             if (await ReNameQueryExec(newName, transaction)) {
                 transaction.Commit();
-                await UpdatePropertys();
+                await Updateproperties();
                 return true;
             }
             transaction.Rollback();
@@ -249,14 +249,14 @@ namespace NxRebuild.shared {
 
         }
 
-        public virtual async Task UpdatePropertys() {
+        public virtual async Task Updateproperties() {
             string sql =
                 $"SELECT * FROM {_tblName} WHERE {_idColName} = '{DataID}' AND tenant_code = '{TenantCode}'";
 
             var record = await DBcon.QueryFirstOrDefaultAsync<Dictionary<string, object>>(sql);
 
             if (record != null) {
-                SetPropertys(record);
+                Setproperties(record);
             }
         }
 

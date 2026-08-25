@@ -94,7 +94,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         public string W_TblName => _dataObj.W_TblName;
         public string Ws_TblName => _dataObj.Ws_TblName;
 
-        public virtual async Task UpdatePropertys() => await _dataObj.UpdatePropertys();
+        public virtual async Task Updateproperties() => await _dataObj.Updateproperties();
 
         public virtual void SetBaseDataObj(BaseDataObj<TKey> baseObj) {
             _dataObj = baseObj ?? throw new ArgumentNullException(nameof(baseObj));
@@ -148,7 +148,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                 // サーバーからメタデータを受け取りクライアントのテーブルをを更新
                 if (UpdateRawData(updatedRaw, transaction)) {
                     //保持しているプロパティも更新
-                    SetPropertys(updatedRaw);
+                    Setproperties(updatedRaw);
                 }
             } catch {
                 transaction.Rollback();
@@ -183,7 +183,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                 DBcon.Execute(sql, raw, transaction);
 
                 //4.　このオブジェクトのプロパティも更新する。これをやらないと、UI側の表示が変わらない。
-                SetPropertys(raw);
+                Setproperties(raw);
 
                 return true;
             } catch {
@@ -192,8 +192,8 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         }
 
 
-        public void SetPropertys(Dictionary<string, object> record) {
-            _dataObj.SetPropertys(record);
+        public void Setproperties(Dictionary<string, object> record) {
+            _dataObj.Setproperties(record);
         }
 
     }

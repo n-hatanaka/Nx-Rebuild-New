@@ -63,7 +63,5 @@ builder.Services.AddSingleton<WindowManagerBase>();
 
 // ★ インメモリDB管理サービスをシングルトンとして登録
 builder.Services.AddSingleton<InMemoryDatabaseState>();
-// ホルダーサービスを登録（Sync 系オブジェクトの遅延初期化を行う）
-builder.Services.AddSingleton<SyncDataObjMgrServices>();
 
 await builder.Build().RunAsync();

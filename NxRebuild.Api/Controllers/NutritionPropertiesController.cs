@@ -14,8 +14,8 @@ namespace NxRebuild.Api.Controllers {
 
     [ApiController]
     [Route("NutProperty")]
-    public class NutritionPropertysController : NxDataController<NutritionProperty, int> {
-        public NutritionPropertysController(IDbConnection dbConnection, UserManager<ApplicationUser> userManager)
+    public class NutritionPropertiesController : NxDataController<NutritionProperty, int> {
+        public NutritionPropertiesController(IDbConnection dbConnection, UserManager<ApplicationUser> userManager)
             : base(dbConnection, userManager) {
             // 初期化ロジックをここに実装
             _tblName = "ColName";
@@ -26,7 +26,7 @@ namespace NxRebuild.Api.Controllers {
 
         protected override async Task CreateObjMgr() {
 
-            _dataObjMgr = new NutritionPropertysMgr(_db, _tenantCode, Guid.Parse(_userID));
+            _dataObjMgr = new NutritionPropertiesMgr(_db, _tenantCode, Guid.Parse(_userID));
             await Task.CompletedTask;
         }
 
@@ -34,7 +34,7 @@ namespace NxRebuild.Api.Controllers {
         public async Task<IActionResult> VisibleChg(int dataId, bool newVal)
         {
             await CreateObjMgr();
-            var mgr = _dataObjMgr as NutritionPropertysMgr;
+            var mgr = _dataObjMgr as NutritionPropertiesMgr;
         
             var target = (mgr.DataList.FirstOrDefault(x => x.DataID == dataId) as NutritionProperty);
             if (target == null)

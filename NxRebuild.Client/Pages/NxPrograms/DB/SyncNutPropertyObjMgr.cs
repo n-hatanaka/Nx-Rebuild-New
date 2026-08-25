@@ -14,13 +14,13 @@ using System.Text.Json;
 namespace NxRebuild.Client.Pages.NxPrograms.DB {
     public class SyncNutPropertyObjMgr : SyncBaseDataObjMgr<NutritionProperty, SyncNutPropertyObj, int> {
         public override string ApiRoute => "NutProperty"; // 実際のAPIルート
-        public SyncNutPropertyObjMgr(DbConnection db, HttpClient http, CustomAuthStateProvider auth, Guid tenantCode, Guid currentUserId)
+        public SyncNutPropertyObjMgr(IDbConnection db, HttpClient http, CustomAuthStateProvider auth, Guid tenantCode, Guid currentUserId)
             : base(db, http, auth, tenantCode, currentUserId)
         {
             _http = http;
             _auth = auth; 
             
-            _baseDataObjMgr = new NutritionPropertysMgr(db, tenantCode, currentUserId);
+            _baseDataObjMgr = new NutritionPropertiesMgr(db, tenantCode, currentUserId);
 
         }
 

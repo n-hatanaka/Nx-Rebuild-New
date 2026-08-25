@@ -12,7 +12,6 @@
     <RunAOTCompilation>false</RunAOTCompilation>
     <PublishTrimmed>false</PublishTrimmed>
     <WasmBuildNative>true</WasmBuildNative>
-    <BaseOutputPath>C:\NxBuildTemp</BaseOutputPath>
   </PropertyGroup>
 <!-- <PropertyGroup>
   <TargetFramework>net10.0</TargetFramework>

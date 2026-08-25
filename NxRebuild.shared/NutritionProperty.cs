@@ -16,7 +16,7 @@ namespace NxRebuild.shared
             set
             {
                 _rawData["Visible"] = value;
-                // プロパティ側も同期したいならここで SetPropertys 呼んでもよい
+                // プロパティ側も同期したいならここで SetProperties 呼んでもよい
             }
         }
        public bool Nutrition

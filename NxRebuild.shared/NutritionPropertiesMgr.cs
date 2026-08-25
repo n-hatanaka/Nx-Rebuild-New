@@ -5,11 +5,11 @@ using System.Data;
 using System.Text;
 
 namespace NxRebuild.shared {
-    public class NutritionPropertysMgr : BaseDataObjMgr<NutritionProperty, int> {
+    public class NutritionPropertiesMgr : BaseDataObjMgr<NutritionProperty, int> {
 
 
         // BaseDataObjMgr(DbConnection, Guid, Guid) を呼べるコンストラクタを提供
-        public NutritionPropertysMgr(IDbConnection db, Guid tenantCode, Guid currentUserID)
+        public NutritionPropertiesMgr(IDbConnection db, Guid tenantCode, Guid currentUserID)
             : base(db, tenantCode, currentUserID) {
       　     _tblName ="ColName";
         }

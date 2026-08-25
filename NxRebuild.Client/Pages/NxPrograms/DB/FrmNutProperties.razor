@@ -1,5 +1,5 @@
 @page "/nutrition-properties"
-@inject SyncDataObjMgrServices NutSvc
+@using NxRebuild.Client.Services
 
 <MadCard Class="ma-4 pa-4">
     <MadText Typo="Typo.h5">栄養素の表示設定</MadText>
@@ -30,13 +30,13 @@
 
     protected override async Task OnInitializedAsync()
     {
-        // ホルダーサービスからマネージャ取得（MainWnd 側で初期化済みの想定）
-        var mgr = NutSvc.GetManager<SyncNutPropertyObjMgr>();
+        // GlobalStateからマネージャ取得（MainWnd 側で初期化済みの想定）
+        var mgr = GlobalState.NutProperties;
         if (mgr == null)
         {
             // 未初期化の場合は短時間待つ（MainWnd が初期化する設計）、タイムアウト後は空表示
             var sw = System.Diagnostics.Stopwatch.StartNew();
-            while ((mgr = NutSvc.GetManager<SyncNutPropertyObjMgr>()) == null && sw.ElapsedMilliseconds < 3000)
+            while ((mgr = GlobalState.NutProperties) == null && sw.ElapsedMilliseconds < 3000)
             {
                 await Task.Delay(100);
             }

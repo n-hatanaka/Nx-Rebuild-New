@@ -55,7 +55,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                     // サーバーからメタデータを受け取りクライアントのテーブルを更新
                     if (UpdateRawData(updatedRaw, transaction)) {
                         // 保持しているプロパティも更新
-                        SetPropertys(updatedRaw);
+                        Setproperties(updatedRaw);
                     } else {
                         transaction.Rollback();
                         return false;

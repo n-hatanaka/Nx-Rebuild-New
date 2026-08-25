@@ -11,6 +11,8 @@
 @inject WindowManagerBase Manager
 
 @using System.Diagnostics
+@using NxRebuild.Client.Services
+@using NxRebuild.Client.Pages.NxPrograms.DB
 
 @using Microsoft.AspNetCore.Components.Authorization
 @using Dapper
@@ -171,7 +173,9 @@ else
                         {
                             // ホルダーサービス経由で SyncNutPropertyObjMgr を生成・初期化
                             Console.WriteLine("NutritionProperty: calling InitializeNutPropertyAsync");
-                            await NutSvc.InitializeNutPropertyAsync(conn, Http, customAuth, tenantGuid, currentUserGuid);
+                            GlobalState.NutProperties =
+                                        new SyncNutPropertyObjMgr(DbState.Connection, Http, customAuth, tenantGuid, currentUserGuid);
+                            GlobalState.NutProperties.Initialize();
                             Console.WriteLine("NutritionProperty: InitializeNutPropertyAsync completed");
                         }
                     }

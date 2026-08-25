@@ -129,7 +129,7 @@ namespace NxRebuild.shared {
             dataObj.TenantCode = TenantCode;
             dataObj.CurrUsrID = CurrentUserID;
             dataObj.DataID = GenerateDataID();
-            dataObj.SetPropertys(GetEmptySchema());
+            dataObj.Setproperties(GetEmptySchema());
             _dataList.Add(dataObj);
             return dataObj;
         }
@@ -171,7 +171,7 @@ namespace NxRebuild.shared {
                 T obj = CreateDataObj();
                 obj.DBcon = DBcon;
                 obj.TenantCode = TenantCode;
-                obj.SetPropertys(record);
+                obj.Setproperties(record);
 
                 _dataList.Add(obj);
             }

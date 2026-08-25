@@ -101,7 +101,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                 TBase readData = _baseDataObjMgr.CreateNewDataObj();
                 readData.DBcon = DBcon;
                 readData.TenantCode = TenantCode;
-                readData.SetPropertys(record);
+                readData.Setproperties(record);
                 var readSyncData = CreateNewSyncDataObj(readData);
                 _baseDataObjMgr._dataList.Add(readSyncData);
             }
