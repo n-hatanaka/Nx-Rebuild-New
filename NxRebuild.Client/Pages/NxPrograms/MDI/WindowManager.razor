@@ -17,7 +17,11 @@
 
     protected override void OnInitialized()
     {
-        Manager.OnWindowsChanged += StateHasChanged;
+        Manager.OnWindowsChanged += () =>
+        {
+            InvokeAsync(StateHasChanged);
+        };
+
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)

@@ -1,10 +1,7 @@
 ﻿using Microsoft.AspNetCore.Components;
 
-namespace NxRebuild.Client.Pages.NxPrograms.MDI
-{
-
-    public class WindowManagerBase
-    {
+namespace NxRebuild.Client.Pages.NxPrograms.MDI {
+    public class WindowManagerBase {
         public List<WindowInfo> Windows { get; set; } = new();
         public double ScreenWidth { get; set; }
         public double ScreenHeight { get; set; }
@@ -12,33 +9,33 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI
         public event Action? OnWindowsChanged;
 
         private int _zCounter = 100;
-        public WindowManagerBase()
-        {
+
+        // ★ drag/resize 中は再描画しないためのフラグ
+        public bool IsDragging { get; set; } = false;
+
+        public WindowManagerBase() {
             Console.WriteLine("WindowManagerBase created");
         }
 
-        public void Restore(Guid id)
-        {
+        public void Restore(Guid id) {
             var w = Windows.FirstOrDefault(x => x.Id == id);
-            if (w != null)
-            {
+            if (w != null) {
                 w.IsMinimized = false;
                 BringToFront(w);
             }
-            OnWindowsChanged?.Invoke();
+
+            if (!IsDragging)
+                OnWindowsChanged?.Invoke();
         }
 
-        // 外部からウィンドウ変更通知を発行するユーティリティ
-        public void NotifyWindowsChanged()
-        {
-            OnWindowsChanged?.Invoke();
+        public void NotifyWindowsChanged() {
+            if (!IsDragging)
+                OnWindowsChanged?.Invoke();
         }
 
         public void Open<T>(string title, Dictionary<string, object>? parameters = null)
-            where T : IComponent
-        {
-            Windows.Add(new WindowInfo
-            {
+            where T : IComponent {
+            Windows.Add(new WindowInfo {
                 Title = title,
                 ComponentType = typeof(T),
                 Parameters = parameters,
@@ -47,23 +44,22 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI
                 Z = ++_zCounter
             });
 
-            //StateHasChanged();
-            OnWindowsChanged?.Invoke();
+            if (!IsDragging)
+                OnWindowsChanged?.Invoke();
         }
 
-        public void Close(Guid id)
-        {
+        public void Close(Guid id) {
             Windows.RemoveAll(w => w.Id == id);
-            //StateHasChanged();
-            OnWindowsChanged?.Invoke();
+
+            if (!IsDragging)
+                OnWindowsChanged?.Invoke();
         }
 
-        public void BringToFront(WindowInfo win)
-        {
+        public void BringToFront(WindowInfo win) {
             win.Z = ++_zCounter;
-           //StateHasChanged();
-            OnWindowsChanged?.Invoke();
+
+            if (!IsDragging)
+                OnWindowsChanged?.Invoke();
         }
     }
-
 }
