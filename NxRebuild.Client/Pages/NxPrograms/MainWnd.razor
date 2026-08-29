@@ -1,10 +1,7 @@
 ﻿@page "/Home"
 
-@inject IJSRuntime JS 
-
-@* ★ AuthenticationHeaderValue のために必要 *@
-@using System.Net.Http.Headers 
-
+@inject IJSRuntime JS
+@using System.Net.Http.Headers
 @using MudBlazor
 @using NxRebuild.Client.Pages.NxPrograms.MDI
 @using NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View
@@ -18,13 +15,20 @@
 @using Dapper
 @inject AuthenticationStateProvider AuthProvider
 @inject HttpClient Http
-@using NxRebuild.Client.Pages.NxPrograms.DB
 @using NxRebuild.Client.Pages.Auth
-@* ★ステート管理サービスを注入 *@
-@inject InMemoryDatabaseState DbState 
+@inject InMemoryDatabaseState DbState
 
 <h3>MainWnd</h3>
 <hr />
+
+@if (isInitializing)
+{
+    <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
+    <p>@initMessage</p>
+    @* 初期化中はここで描画を止める *@
+    return;
+}
+
 @if (DbState.IsInitialized)
 {
     <p style="color:green">インメモリDB準備完了！</p>
@@ -33,11 +37,11 @@ else
 {
     <p>データベース初期化中</p>
 }
+
 <div>Hash: @Manager.GetHashCode()</div>
 
 <WindowManager Manager="Manager" />
 
-@* <MudButton OnClick="@(() => Manager.Open<__Main>("プロジェクト編集"))"> *@
 <MudButton OnClick="@(() => Manager.Open<AknTreeListView>("プロジェクト編集"))">
     プロジェクト編集を開く
 </MudButton>
@@ -66,7 +70,7 @@ else
                         }
                     </tr>
                 </thead>
-                <tbody>                   
+                <tbody>
                     @foreach (var row in queryResult)
                     {
                         <tr>
@@ -84,122 +88,82 @@ else
     }
 </MudCard>
 
-    @code {
-    protected override async Task OnInitializedAsync()
+@code {
+
+    private bool isInitializing = true;
+    private string initMessage = "初期化開始...";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (firstRender)
+        {
+            await InitializeAsync();
+            StateHasChanged();
+        }
+    }
+
+    private async Task InitializeAsync()
+    {
+        initMessage = "認証状態確認中...";
+        StateHasChanged();
+
         var state = await AuthProvider.GetAuthenticationStateAsync();
         var user = state.User;
-        var tenantCode = state.User.FindFirst("tenant_code")?.Value;
-
-        // ログ出力: 認証状態
-        Console.WriteLine($"[MainWnd] GetAuthenticationStateAsync: IsAuthenticated={user.Identity?.IsAuthenticated}, Name={user.Identity?.Name}");
+        var tenantCode = user.FindFirst("tenant_code")?.Value;
 
         if (user.Identity is { IsAuthenticated: true } && !DbState.IsInitialized)
         {
             try
             {
-                // 1. JSONスキーマを取得して、インメモリDBのテーブル群（器）を作る
-                Console.WriteLine("[MainWnd] Fetching schema: api/GetScm");
-                string jsonResult;
-                try
-                {
-                    jsonResult = await Http.GetStringAsync("api/GetScm");
-                    Console.WriteLine($"[MainWnd] Retrieved schema length: {jsonResult?.Length}");
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"[MainWnd] Error fetching schema: {ex.Message}");
-                    throw;
-                }
+                initMessage = "スキーマ取得中...";
+                StateHasChanged();
 
-                Console.WriteLine("[MainWnd] Initializing InMemory DB");
-                try
-                {
-                    DbState.Initialize(jsonResult);
-                    Console.WriteLine("[MainWnd] DbState.Initialize completed");
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"[MainWnd] Error in DbState.Initialize: {ex.Message}");
-                    throw;
-                }
+                string jsonResult = await Http.GetStringAsync("api/GetScm");
 
-                // 2. ★同期したいマスタテーブルのリストを用意する（ハードコード）
-                var masterTables = new List<string> { "Zmst", 
-                                                      "tan_m", 
-                                                      "ColName",
-                                                      "gun_m"
-                                                    };
+                initMessage = "インメモリDB構築中...";
+                StateHasChanged();
 
-                // 3. ★マスタデータの同期を一括実行！
-                Console.WriteLine($"[MainWnd] Starting SyncMasterDataAsync for tenant={tenantCode}");
-                try
-                {
-                    await DbState.SyncMasterDataAsync(Http, masterTables, tenantCode);
-                    Console.WriteLine("[MainWnd] SyncMasterDataAsync completed");
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"[MainWnd] Error in SyncMasterDataAsync: {ex.Message}");
-                    throw;
-                }
+                DbState.Initialize(jsonResult);
 
-                // 4. SyncNutPropertyObjMgr を生成して初期化（InMemory DB と認証情報が揃った直後）
-                try
-                {
-                    var conn = DbState.Connection as System.Data.Common.DbConnection;
-                    if (conn == null)
-                    {
-                        Console.WriteLine("NutritionProperty 初期化: DB connection が null です。");
-                    }
-                    else
-                    {
-                        var customAuth = AuthProvider as CustomAuthStateProvider;
-                        if (customAuth == null)
-                        {
-                            Console.WriteLine("NutritionProperty 初期化: AuthenticationStateProvider を CustomAuthStateProvider にキャストできません。");
-                        }
+                initMessage = "マスタ同期中...";
+                StateHasChanged();
 
-                        var tenantGuid = Guid.TryParse(tenantCode, out var tg) ? tg : Guid.Empty;
+                var masterTables = new List<string> { "Zmst", "tan_m", "ColName", "gun_m" };
+                await DbState.SyncMasterDataAsync(Http, masterTables, tenantCode);
 
-                        var userIdClaim = user.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub)
-                                         ?? user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier);
-                        var currentUserGuid = Guid.Empty;
-                        if (userIdClaim != null && Guid.TryParse(userIdClaim.Value, out var ug))
-                            currentUserGuid = ug;
+                initMessage = "栄養素プロパティ初期化中...";
+                StateHasChanged();
 
-                        if (customAuth != null)
-                        {
-                            // ホルダーサービス経由で SyncNutPropertyObjMgr を生成・初期化
-                            Console.WriteLine("NutritionProperty: calling InitializeNutPropertyAsync");
-                            GlobalState.NutProperties =
-                                        new SyncNutPropertyObjMgr(DbState.Connection, Http, customAuth, tenantGuid, currentUserGuid);
-                            GlobalState.NutProperties.Initialize();
-                            Console.WriteLine("NutritionProperty: InitializeNutPropertyAsync completed");
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"NutritionProperty 初期化エラー: {ex.Message}");
-                }
+                var customAuth = AuthProvider as CustomAuthStateProvider;
+                var tenantGuid = Guid.TryParse(tenantCode, out var tg) ? tg : Guid.Empty;
 
+                var userIdClaim = user.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub)
+                                 ?? user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier);
+
+                Guid currentUserGuid = Guid.TryParse(userIdClaim?.Value, out var ug) ? ug : Guid.Empty;
+
+                GlobalState.NutProperties =
+                    new SyncNutPropertyObjMgr(DbState.Connection, Http, customAuth, tenantGuid, currentUserGuid);
+
+                GlobalState.NutProperties.Initialize();
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"初期化・同期エラー: {ex.Message}");
+                initMessage = $"初期化エラー: {ex.Message}";
+                StateHasChanged();
             }
         }
+
+        initMessage = "初期化完了！";
+        isInitializing = false;
+        StateHasChanged();
     }
 
-    
-    // デバッグ用!!!!、SQLiteに存在するテーブルの一覧を取得するSQLをセットしておきます
     private string sqlQuery = "SELECT name, tbl_name FROM sqlite_master WHERE type='table';";
     private string queryError = string.Empty;
     private List<IDictionary<string, object>>? queryResult;
     private List<string> headers = new();
 
-    // ボタンを押したときに実行される処理
     private async Task ExecuteQuery()
     {
         if (DbState.Connection == null)
@@ -212,32 +176,23 @@ else
         queryResult = null;
         headers.Clear();
 
-        var sw = System.Diagnostics.Stopwatch.StartNew();// ★計測開始
+        var sw = Stopwatch.StartNew();
         try
         {
-            // 1. Dapper で任意のクエリを実行し、動的オブジェクトとして取得
             var rawResult = DbState.Connection.Query(sqlQuery);
-
-            // 2. 扱いやすいように C# の Dictionary（辞書型）のリストに変換
             queryResult = rawResult.Select(x => (IDictionary<string, object>)x).ToList();
 
             if (queryResult.Any())
-            {
-                // テーブルの「ヘッダー（列名一覧）」を自動取得
                 headers = queryResult.First().Keys.ToList();
-            }
             else
-            {
                 queryError = "クエリは成功しましたが、結果は0件でした。";
-            }
         }
         catch (Exception ex)
         {
             queryError = $"SQLエラー: {ex.Message}";
         }
-        // ------------------------------------
-        sw.Stop(); // ★計測終了
+
+        sw.Stop();
         Console.WriteLine($"★ [DEBUG] C#のデータ取得と変換にかかった時間: {sw.ElapsedMilliseconds} ms");
-        // ------------------------------------
     }
 }
