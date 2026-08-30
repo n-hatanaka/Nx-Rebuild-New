@@ -25,13 +25,19 @@ namespace NxRebuild.Api.Controllers {
         }
 
         protected override async Task CreateObjMgr() {
+            await SetUserInfo();
+            Guid uid;
 
-            _dataObjMgr = new NutritionPropertiesMgr(_db, _tenantCode, Guid.Parse(_userID));
+            if (_userID == "anonymous")
+                uid = Guid.Empty; // anonymous の世界線では GUID を使わない
+            else
+                uid = Guid.Parse(_userID);
+
+            _dataObjMgr = new NutritionPropertiesMgr(_db, _tenantCode, uid);
+            _dataObjMgr.Initialize();
             await Task.CompletedTask;
         }
-        #if DEBUG
-            [AllowAnonymous]
-        #endif
+
         [HttpPost("Visible/{dataId}/{newVal}")]
         public async Task<IActionResult> VisibleChg(int dataId, bool newVal)
         {

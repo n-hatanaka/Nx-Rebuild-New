@@ -115,18 +115,14 @@ public class ApiProgram
         }
 
         // ★ 開発環境（IsDevelopment）のときだけ CORS ルールを有効化する
-        if (app.Environment.IsDevelopment())
-        {
+        app.UseRouting();
+
+        if (app.Environment.IsDevelopment()) {
             app.UseCors("AllowWasm");
         }
 
-
-        app.UseCors("AllowWasm");
-
-        // 🔥 認証は UseAuthorization の前に必ず置く
         app.UseAuthentication();
         app.UseAuthorization();
-
 
         // 🔥 AuthController を有効化
         app.MapControllers();

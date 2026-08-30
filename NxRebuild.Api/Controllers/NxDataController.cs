@@ -28,15 +28,14 @@ namespace NxRebuild.Api.Controllers {
 
         public NxDataController(IDbConnection dbConnection, UserManager<ApplicationUser> userManager) {
             _db = dbConnection;
-            SetUserInfo(userManager);
-
+            _userMgr = userManager;
             //派生先はここで_tableName等の基本情報を設定する
-            
+
 
         }
 
-        protected async Task SetUserInfo(UserManager<ApplicationUser> userManager) {
-            _user = await userManager.GetUserAsync(User);
+        protected async Task SetUserInfo() {
+            _user = await _userMgr.GetUserAsync(User);
 
             if (_user == null) {
                 // 匿名ユーザー扱い
@@ -55,10 +54,7 @@ namespace NxRebuild.Api.Controllers {
         // { 派生先での実装例（_dataObjMgr の型は派生先に合わせて変更すること）
         //   ※ ほぼコピペで使えるが、各コントローラ固有の ObjMgr を new する点だけ注意
         //     // ★ユーザー情報を取得（JWT の tenant_code を含む）
-        //     var user = await _userMgr.GetUserAsync(User);
-        //     var userId = user.Id;
-        //     var tenantCode = user.TenantCode;   // ← API から受け取らず、ユーザーから取得する
-        //
+        //     await SetUserInfo(_userMgr);　の呼び出し
         //     // ★ObjMgr を生成（Initialize は呼ばない）
         //     _dataObjMgr = new BaseDataObjMgr<T, TKey>(_db, Guid.Parse(tenantCode), userId);
         //
@@ -70,7 +66,7 @@ namespace NxRebuild.Api.Controllers {
         //     // ★DataList やテーブル情報を読み込む
         //     _dataObjMgr.Initialize();
         // }
-        
+
         [HttpGet("sync/{refreshedAt}")]
         public async Task<IActionResult> SyncAll(DateTime refreshedAt)
         {

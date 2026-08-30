@@ -14,7 +14,9 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using Dapper
 @inject AuthenticationStateProvider AuthProvider
-@inject HttpClient Http
+@inject IHttpClientFactory ClientFactory
+
+
 @using NxRebuild.Client.Pages.Auth
 @inject InMemoryDatabaseState DbState
 
@@ -90,9 +92,14 @@ else
 
 @code {
 
+    HttpClient Http;
+
     private bool isInitializing = true;
     private string initMessage = "初期化開始...";
-
+    protected override void OnInitialized()
+    {
+        Http = ClientFactory.CreateClient("SecureClient");
+    }
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
