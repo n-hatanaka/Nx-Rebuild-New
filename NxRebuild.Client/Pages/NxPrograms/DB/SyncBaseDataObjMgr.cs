@@ -1,11 +1,11 @@
 ﻿using Dapper;
 using Microsoft.AspNetCore.Components.Authorization;
-using NxRebuild.Client.Pages.Auth;
 using Microsoft.Data.Sqlite;
 using Npgsql;
+using NxRebuild.Client.Pages.Auth;
 using NxRebuild.shared;
+using SQLitePCL;
 using System.Data;
-
 using System.Net.Http.Json; // GetFromJsonAsync用
 using System.Text.Json;
 
@@ -71,48 +71,50 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
             //次のメソッドの中でテーブル名などの基本的な情報をハードコード
             //DataObjはSyncDataObjとして次のメソッドの中で生成するように派生したDataObjMgrで実装する事。
-            //なお生成したSyncDataObj内の
-            //・Http
-            //・Auth
-            //　の二つのメンバはこのラッパークラス内でインスタンスを付与するので、生成時にその二つはNullのままでいい。
-            //_baseDataObjMgr.Initialize();
+           
+           
 
-            // SyncDataObjMgr は BaseDataObjMgr を内包し、同型性を保つために
-            // Base のテーブル情報を Sync 側にコピーする必要があるため以下を記述
+
 
         }
         
-        protected virtual TSync CreateNewSyncDataObj(TBase baseDataObj) {
-            //本来はabustractにすべきだが実装例として書いておく。具象クラスで適宜修正する事。
+        protected virtual TSync CreateNewSyncDataObj() {           
             var newSyncObj = new TSync();
-            newSyncObj.SetBaseDataObj(baseDataObj);
             newSyncObj.Http = _http;
             newSyncObj.Auth = _auth;
             return newSyncObj;
         }
 
         //データベースからデータを取得する。(クライアント、サーバー共用）
-        //コンストラクタで呼び出してはいけない。
+        //コンストラクタで呼び出してもいいかも
         public virtual async Task Initialize() {
 
+            // ① dynamic で確実にレコードを取る
             var records = await LoadRecordsAsync();
 
             foreach (var record in records) {
-                TBase readData = _baseDataObjMgr.CreateNewDataObj();
+                // ② dynamic(DapperRow) → Dictionary<string, object> に変換
+                var dict = new Dictionary<string, object>();
+                foreach (var kv in (IDictionary<string, object>)record) {
+                    dict[kv.Key] = kv.Value;
+                }
+
+                TSync readData = CreateNewSyncDataObj();
                 readData.DBcon = DBcon;
                 readData.TenantCode = TenantCode;
-                readData.Setproperties(record);
-                var readSyncData = CreateNewSyncDataObj(readData);
-                _baseDataObjMgr._dataList.Add(readSyncData);
+                readData.Setproperties(dict);
+
+                _baseDataObjMgr._dataList.Add(readData);
             }
         }
 
         //データベースからデータを取得する。(クライアント、サーバー共用）
         //コンストラクタで呼び出してはいけない。
-        public virtual async Task<IEnumerable<Dictionary<string, object>>> LoadRecordsAsync() {
+        public virtual async Task<IEnumerable<dynamic>> LoadRecordsAsync() {
             string sql = $"SELECT * FROM \"{TblName}\" WHERE tenant_code = @TenantCode;";
+           
 
-            return await DBcon.QueryAsync<Dictionary<string, object>>(sql, new { TenantCode = TenantCode });
+            return await DBcon.QueryAsync<dynamic>(sql, new { TenantCode = TenantCode });
         }
 
 
@@ -147,21 +149,18 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         
                 if (target != null)
                 {
-                    // ⑥ 既存オブジェクトに世界線を流し込む
+                    // ⑥ 既存オブジェクトに更新データを流し込む
                     await target.JsonToTbl(dataJson);
                 }
                 else
                 {
-                    // ⑦ 新規作成
-                    var newObj = _baseDataObjMgr.CreateNewDataObj();
-        
-                    // JSonで渡されたDataIDをあらためてセットする
-                    newObj.DataID = dataId;
-        
-                    // ⑧ 世界線を流し込む
-                    await newObj.JsonToTbl(dataJson);
+                    // ⑦ 新しい SyncDataObj を作成
+                    var newSyncObj = CreateNewSyncDataObj();
 
-                    var newSyncObj = CreateNewSyncDataObj(newObj);
+                    newSyncObj.DataID = dataId;
+
+                    // ⑧ 新しいデータを流し込む
+                    await newSyncObj.JsonToTbl(dataJson);
 
                     // ⑨ DataList に追加
                     _baseDataObjMgr._dataList.Add(newSyncObj);

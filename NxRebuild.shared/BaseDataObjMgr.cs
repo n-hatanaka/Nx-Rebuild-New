@@ -154,12 +154,12 @@ namespace NxRebuild.shared {
 
         //データベースからデータを取得する。(クライアント、サーバー共用）
         //コンストラクタで呼び出してはいけない。
-        public virtual async Task<IEnumerable<Dictionary<string, object>>> LoadRecordsAsync() {
+        public virtual async Task<IEnumerable<dynamic>> LoadRecordsAsync() {
             // Base は “世界線の物理層” なので意味を持たない
             // 派生先で SQL を完全に書き換える前提なら、ここは空実装でいい
             string sql = $"SELECT * FROM \"{_tblName}\";";
 
-            return await DBcon.QueryAsync<Dictionary<string, object>>(sql);
+            return await DBcon.QueryAsync<dynamic>(sql);
         }
 
         //データベースからデータを取得する。(クライアント、サーバー共用）
@@ -168,10 +168,15 @@ namespace NxRebuild.shared {
             var records = await LoadRecordsAsync();
 
             foreach (var record in records) {
+                var dict = new Dictionary<string, object>();
+                foreach (var kv in (IDictionary<string, object>)record) {
+                    dict[kv.Key] = kv.Value;
+                }
+
                 T obj = CreateDataObj();
                 obj.DBcon = DBcon;
                 obj.TenantCode = TenantCode;
-                obj.Setproperties(record);
+                obj.Setproperties(dict);
 
                 _dataList.Add(obj);
             }

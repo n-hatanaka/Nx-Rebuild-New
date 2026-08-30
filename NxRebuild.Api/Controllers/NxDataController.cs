@@ -37,6 +37,14 @@ namespace NxRebuild.Api.Controllers {
 
         protected async Task SetUserInfo(UserManager<ApplicationUser> userManager) {
             _user = await userManager.GetUserAsync(User);
+
+            if (_user == null) {
+                // 匿名ユーザー扱い
+                _userID = "anonymous";
+                _usertenant_code = "00000000-0001-7000-8000-0000000000000";
+                return;
+            }
+
             _userID = _user.Id;
             _usertenant_code = _user.TenantCode;
 

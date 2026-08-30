@@ -111,16 +111,37 @@ namespace NxRebuild.shared {
         public NxDataType DataType => _datatype; // ※_datatypeはメタデータ側管理ならそのままでOK
 
         public DateTime Update_at {
-            get => (DateTime)_rawData["update_at"];
+            get {
+                if (_rawData.TryGetValue("update_at", out var v) && v != null)
+                    return Convert.ToDateTime(v);
+
+                // テーブルに update_at が無い場合のフォールバック
+                return DateTime.MinValue;
+            }
         }
+
 
         public Guid LockerID {
-            get => (Guid)_rawData["locked_by"];
+            get {
+                if (_rawData.TryGetValue("locked_by", out var v) && v != null)
+                    return Guid.Parse(v.ToString());
+
+                // ロックされていない場合
+                return Guid.Empty;
+            }
         }
 
+
         public DateTime LockedAt {
-            get => (DateTime)_rawData["locked_at"];
+            get {
+                if (_rawData.TryGetValue("locked_at", out var v) && v != null)
+                    return Convert.ToDateTime(v);
+
+                // ロックされていない場合
+                return DateTime.MinValue;
+            }
         }
+
 
         public bool Opened {  get; set; }
 
@@ -135,13 +156,54 @@ namespace NxRebuild.shared {
 
         // この中は派生先で実装する事。
         //ここで固定のテーブル名やNameカラム名などのプロパティを設定する
-        protected abstract void Initialize();
+        //protected abstract void Initialize();
+        public BaseDataObj() {
+
+        }
 
         public virtual void Setproperties(Dictionary<string, object> record) {
             // 【変更】recordをそのまま _rawData として保持する設計に移行
-            // ※KeyedListとDictionaryの互換性がある前提ですが、
-            // 必要に応じてここでコピーまたは変換を行ってください。
-            _rawData = record;
+            // 新しい辞書を作って型を整える（long → int、DBNull → null）
+            var normalized = new Dictionary<string, object>();
+
+            foreach (var kv in record) {
+                object value = kv.Value;
+
+                // SQLite の INTEGER はすべて long(Int64) で返されるため、
+                // Dapper(dynamic) → Dictionary に変換した時点で long が入ってくる。
+                // Nx の抽象層では ID や数値列は int を前提としているため、
+                // long → int に正規化して世界線の型を揃える必要がある。
+                // ただし、本当に long を使うべきカラムが将来追加される場合は、
+                // 具象側（DB定義・Dapperマッピング）でそのカラムだけ long のまま扱うこと。
+                if (value is long l)
+                    value = (int)l;
+
+                // Nutrition / Visible のときだけ bool 正規化
+                //一先ずこうしとく、あとでboolのカラム名に[bool_]で始まる修正入れてそれで判定するようにする
+                //↑のコメントと違うけどintとlongもそうする。
+                if (kv.Key == "Nutrition" || kv.Key == "Visible") {
+                    // string → bool ("1" / "0")
+                    if (value is string s) {
+                        if (s == "1") value = true;
+                        else if (s == "0") value = false;
+                    }
+
+                    // int → bool (1 / 0)
+                    if (value is int i) {
+                        if (i == 1) value = true;
+                        else if (i == 0) value = false;
+                    }
+                }
+
+                // DBNull → null
+                if (value is DBNull)
+                    value = null;
+
+                normalized[kv.Key] = value;
+            }
+
+            // 正規化済みの辞書を _rawData にセット
+            _rawData = normalized;
 
             // 既存のフィールド個別セットは不要になるため、実質上記の一行で完結します。
             // 個別にプロパティへセットしていた古い実装はここで終了します。

@@ -24,8 +24,7 @@ namespace NxRebuild.shared
            get => _rawData.ContainsKey("Nutrition") && Convert.ToBoolean(_rawData["Nutrition"]);
        }
 
-        protected override void Initialize()
-        {
+        public NutritionProperty() {
             _tblName = "ColName";
             _nameColName = "Name";
             _idColName = "No";

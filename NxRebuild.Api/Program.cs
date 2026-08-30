@@ -7,6 +7,7 @@ using NxRebuild.Api.Data;
 using NxRebuild.Api.Models;
 using System.Data;
 using System.Text;
+using Microsoft.AspNetCore.Mvc;
 
 public class ApiProgram
 {
@@ -60,10 +61,18 @@ public class ApiProgram
                 });
         });
 
-        // OpenAPI
-        builder.Services.AddOpenApi();
+        builder.Services.AddEndpointsApiExplorer();
+        builder.Services.AddSwaggerGen();
+
 
         var app = builder.Build();
+
+        if (app.Environment.IsDevelopment()) {
+            app.UseSwagger();
+            app.UseSwaggerUI();   // ← UI を有効化（新方式に対応済み）
+        }
+
+
 
         //app.UseHttpsRedirection();
 
@@ -118,25 +127,6 @@ public class ApiProgram
         app.UseAuthentication();
         app.UseAuthorization();
 
-        // WeatherForecast（既存）
-        var summaries = new[]
-        {
-            "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-        };
-
-        app.MapGet("/weatherforecast", () =>
-        {
-            var forecast = Enumerable.Range(1, 5).Select(index =>
-                new WeatherForecast
-                (
-                    DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-                    Random.Shared.Next(-20, 55),
-                    summaries[Random.Shared.Next(summaries.Length)]
-                ))
-                .ToArray();
-            return forecast;
-        })
-        .WithName("GetWeatherForecast");
 
         // 🔥 AuthController を有効化
         app.MapControllers();

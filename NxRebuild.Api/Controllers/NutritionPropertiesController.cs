@@ -29,8 +29,10 @@ namespace NxRebuild.Api.Controllers {
             _dataObjMgr = new NutritionPropertiesMgr(_db, _tenantCode, Guid.Parse(_userID));
             await Task.CompletedTask;
         }
-
-     [HttpPost("Visible/{dataId}/{newVal}")]
+        #if DEBUG
+            [AllowAnonymous]
+        #endif
+        [HttpPost("Visible/{dataId}/{newVal}")]
         public async Task<IActionResult> VisibleChg(int dataId, bool newVal)
         {
             await CreateObjMgr();

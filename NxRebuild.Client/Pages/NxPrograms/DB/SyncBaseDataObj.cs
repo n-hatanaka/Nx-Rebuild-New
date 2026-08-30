@@ -35,7 +35,12 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         public abstract string ApiRoute { get; } //←派生先で設定する事。
         public Guid CurrUsrID{ get => _dataObj.CurrUsrID; 
                                 set => _dataObj.CurrUsrID = value; }
+
+        protected abstract BaseDataObj<TKey> CreateBaseDataObj();
+
         public SyncBaseDataObj() {
+            _dataObj = CreateBaseDataObj()
+                ?? throw new InvalidOperationException("CreateBaseDataObj returned null");
         }
 
         public IDbConnection DBcon {
@@ -96,9 +101,9 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
         public virtual async Task Updateproperties() => await _dataObj.Updateproperties();
 
-        public virtual void SetBaseDataObj(BaseDataObj<TKey> baseObj) {
-            _dataObj = baseObj ?? throw new ArgumentNullException(nameof(baseObj));
-        }
+        //public virtual void SetBaseDataObj(BaseDataObj<TKey> baseObj) {
+        //    _dataObj = baseObj ?? throw new ArgumentNullException(nameof(baseObj));
+        //}
 
         public async Task<LockStatus> DataOpen() => await _dataObj.DataOpen();
 

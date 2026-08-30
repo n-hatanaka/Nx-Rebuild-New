@@ -25,11 +25,11 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         }
 
         //Initializeメソッドから呼び出される。栄養素プロパティのデータをDBから取得する。
-        public override async Task<IEnumerable<Dictionary<string, object>>> LoadRecordsAsync() {
+        public override async Task<IEnumerable<dynamic>> LoadRecordsAsync() {
             // データベースから栄養素プロパティを取得する
             string sql = $"SELECT * FROM \"{TblName}\" WHERE tenant_code = @TenantCode ORDER BY SortNo;";
-
-            return await DBcon.QueryAsync<Dictionary<string, object>>(sql, new { TenantCode = TenantCode });
+            
+            return await DBcon.QueryAsync<dynamic>(sql, new { TenantCode = TenantCode });
         }
 
 
@@ -64,15 +64,13 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                     await target.JsonToTbl(dataJson);
                 } else {
                     // ⑦ 新規作成
-                    var newObj = _baseDataObjMgr.CreateNewDataObj();
+                    var newSyncObj = CreateNewSyncDataObj();
 
                     // DataID をセット（必要なら）
-                    newObj.DataID = dataId;
+                    newSyncObj.DataID = dataId;
 
                     // ⑧ 世界線を流し込む
-                    await newObj.JsonToTbl(dataJson);
-
-                    var newSyncObj = CreateNewSyncDataObj(newObj);
+                    await newSyncObj.JsonToTbl(dataJson);
 
                     // ⑨ DataList に追加
                     _baseDataObjMgr._dataList.Add(newSyncObj);
