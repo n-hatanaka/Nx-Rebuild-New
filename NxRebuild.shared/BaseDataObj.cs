@@ -1,4 +1,4 @@
-﻿using Dapper;
+using Dapper;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Data.Sqlite;
 using Npgsql;
@@ -160,61 +160,21 @@ namespace NxRebuild.shared {
         public BaseDataObj() {
 
         }
-
-        public virtual void Setproperties(Dictionary<string, object> record) {
-            // 【変更】recordをそのまま _rawData として保持する設計に移行
-            // 新しい辞書を作って型を整える（long → int、DBNull → null）
-            var normalized = new Dictionary<string, object>();
-
-            foreach (var kv in record) {
-                object value = kv.Value;
-
-                // SQLite の INTEGER はすべて long(Int64) で返されるため、
-                // Dapper(dynamic) → Dictionary に変換した時点で long が入ってくる。
-                // Nx の抽象層では ID や数値列は int を前提としているため、
-                // long → int に正規化して世界線の型を揃える必要がある。
-                // ただし、本当に long を使うべきカラムが将来追加される場合は、
-                // 具象側（DB定義・Dapperマッピング）でそのカラムだけ long のまま扱うこと。
-                if (value is long l)
-                    value = (int)l;
-
-                // Nutrition / Visible のときだけ bool 正規化
-                //一先ずこうしとく、あとでboolのカラム名に[bool_]で始まる修正入れてそれで判定するようにする
-                //↑のコメントと違うけどintとlongもそうする。
-                if (kv.Key == "Nutrition" || kv.Key == "Visible") {
-                    // string → bool ("1" / "0")
-                    if (value is string s) {
-                        if (s == "1") value = true;
-                        else if (s == "0") value = false;
-                    }
-
-                    // int → bool (1 / 0)
-                    if (value is int i) {
-                        if (i == 1) value = true;
-                        else if (i == 0) value = false;
-                    }
-                }
-
-                // DBNull → null
-                if (value is DBNull)
-                    value = null;
-
-                normalized[kv.Key] = value;
-            }
-
-            // 正規化済みの辞書を _rawData にセット
+        public virtual void Setproperties(Dictionary<string, object> record)
+        {
+            // ---------------------------------------------------------
+            // ★ NxTypeMapper による「型の正本化」
+            //   - JSON の Number(double/long) → 正しい型へ
+            //   - SQLite の INTEGER(long) → int/long に矯正
+            //   - datetime（マイクロ秒対応）もここで正しく変換
+            //   - bool / string も型マップに従って正本化
+            // ---------------------------------------------------------
+            var normalized = NxTypeMapper.ConvertRow(TblName, record);
+        
+            // 正本化された辞書をそのまま保持
             _rawData = normalized;
-
-            // 既存のフィールド個別セットは不要になるため、実質上記の一行で完結します。
-            // 個別にプロパティへセットしていた古い実装はここで終了します。
-
-            // --- コメントアウトした元実装の意図 ---
-            // _dataID = (TKey?)record[_idColName];
-            // _dataName = (string)record[_nameColName];
-            // _update_at = (DateTime)record["update_at"];
-            // _locker_ID = (Guid)record["locked_by"];
-            // _locked_at = (DateTime)record["locked_at"];
         }
+     
         // テーブルからデータを取得してJSON文字列にする
         public string TblToJson() {
             string sql = CreateJSONsql();
@@ -244,15 +204,21 @@ namespace NxRebuild.shared {
 
             try {
                 foreach (var record in records) {
-                    // どのテーブルに属するかを判定するプロパティ(例: "_table_type")があると仮定
-                    string targetTable = record.ContainsKey("_table_type") ? record["_table_type"].ToString() : _tblName;
-
-                    // 2. Insert: targetTable に対して動的Insert
-                    var columns = string.Join(", ", record.Keys);
-                    var values = string.Join(", ", record.Keys.Select(k => "@" + k));
-
-                    DBcon.Execute($"INSERT INTO {targetTable} ({columns}) VALUES ({values})", record, transaction);
-
+                   string targetTable = record.ContainsKey("_table_type")
+                       ? record["_table_type"].ToString()
+                       : _tblName;
+               
+                   // ★ 型マップ正本化（必須）
+                   var normalized = NxTypeMapper.ConvertRow(targetTable, record);
+               
+                   var columns = string.Join(", ", normalized.Keys);
+                   var values = string.Join(", ", normalized.Keys.Select(k => "@" + k));
+               
+                   DBcon.Execute(
+                       $"INSERT INTO {targetTable} ({columns}) VALUES ({values})",
+                       normalized,
+                       transaction
+                   );
                 }
                 transaction.Commit();
                 return true;

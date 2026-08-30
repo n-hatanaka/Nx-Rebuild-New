@@ -1,4 +1,4 @@
-﻿using Dapper;
+using Dapper;
 using Microsoft.Data.Sqlite;
 using NxRebuild.shared;
 using System.Data;
@@ -23,66 +23,81 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB{
         /// JSONスキーマを基にインメモリDBを初期化します。すでに初期化済みの場合は何もしません。
         /// </summary>
         public void Initialize(string jsonSchema)
-        {
-            if (IsInitialized) return;
-
-            var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-
-            // DTOの変更に合わせて TableSchemaDto の中に ForeignKeys プロパティを追加してください
-            var schemas = JsonSerializer.Deserialize<List<ConvertedTableSchema>>(jsonSchema, options);
-
-            if (schemas == null) throw new ArgumentException("JSONの解析に失敗しました。");
-
-            var conn = new SqliteConnection("Data Source=:memory:");
-            conn.Open();
-
-            try
-            {
-                // ★SQLiteで外部キー制約（リレーション）を有効化するためのコマンドを実行
-                conn.Execute("PRAGMA foreign_keys = ON;");
-
-                foreach (var table in schemas)
-                {
-                    var columnDefs = new List<string>();
-                    foreach (var col in table.Columns)
-                    {
-                        columnDefs.Add($"\"{col.ColumnName}\" {col.SqliteType}");                        
-                    }
-
-
-                    var pkeyDefs = new List<string>();
-                    foreach (var col in table.Columns)
-                    {
-                        if (col.IsPrimaryKey) 
-                            pkeyDefs.Add($"\"{col.ColumnName}");
-                    }
-
-                    if (pkeyDefs.Count > 0) {
-                        var pkSql = string.Join(", ", pkeyDefs);
-                        columnDefs.Add($"PRIMARY KEY (\"{pkSql}\")");
-                    }
-                    
-                    // 外部キー（リレーション）定義をSQLに組み込む
-                    foreach (var fk in table.ForeignKeys)
-                    {
-                        // 例: FOREIGN KEY("user_id") REFERENCES "users"("id")
-                        columnDefs.Add($"FOREIGN KEY(\"{fk.FromColumn}\") REFERENCES \"{fk.ToTable}\"(\"{fk.ToColumn}\")");
-                    }
-
-                    var columnsSql = string.Join(", ", columnDefs);
-                    var createTableSql = $"CREATE TABLE \"{table.TableName}\" ({columnsSql});";
-
-                    conn.Execute(createTableSql);
-                }
-
-                _connection = conn;
-            }
-            catch
-            {
-                conn.Dispose();
-                throw;
-            }
+       {
+           if (IsInitialized) return;
+       
+           var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+       
+           // ① JSON → スキーマ DTO に変換
+           var schemas = JsonSerializer.Deserialize<List<ConvertedTableSchema>>(jsonSchema, options);
+           if (schemas == null) throw new ArgumentException("JSONの解析に失敗しました。");
+       
+           // ② スキーマ → 型マップ正本を生成
+           //    → 全テーブル・全カラムの CsType がここで決まる
+           var typeMap = NxTypeMapBuilder.FromSchemas(schemas);
+       
+           // ③ 世界線に型の正本をロードする
+           //    → BaseDataObj / InsertMaster / API が全部この型を使う
+           NxTypeMapper.Set(typeMap);
+       
+           // ④ SQLite インメモリ DB を作成
+           var conn = new SqliteConnection("Data Source=:memory:");
+           conn.Open();
+       
+           try
+           {
+                 // ★SQLiteで外部キー制約（リレーション）を有効化するためのコマンドを実行
+               conn.Execute("PRAGMA foreign_keys = ON;");
+       
+               foreach (var table in schemas)
+               {
+                   var columnDefs = new List<string>();
+       
+                   // カラム定義
+                   foreach (var col in table.Columns)
+                   {
+                       columnDefs.Add($"\"{col.ColumnName}\" {col.SqliteType}");
+                   }
+       
+                   // 主キー定義
+                   var pkeyDefs = new List<string>();
+                   foreach (var col in table.Columns)
+                   {
+                       if (col.IsPrimaryKey)
+                           pkeyDefs.Add($"\"{col.ColumnName}\"");
+                   }
+       
+                   if (pkeyDefs.Count > 0)
+                   {
+                       var pkSql = string.Join(", ", pkeyDefs);
+                       columnDefs.Add($"PRIMARY KEY ({pkSql})");
+                   }
+       
+                   // 外部キー定義
+                   // 外部キー（リレーション）定義をSQLに組み込む
+                   foreach (var fk in table.ForeignKeys)
+                   {
+                       // 例: FOREIGN KEY("user_id") REFERENCES "users"("id")
+                       columnDefs.Add(
+                           $"FOREIGN KEY(\"{fk.FromColumn}\") REFERENCES \"{fk.ToTable}\"(\"{fk.ToColumn}\")"
+                       );
+                   }
+       
+                   var columnsSql = string.Join(", ", columnDefs);
+                   var createTableSql = $"CREATE TABLE \"{table.TableName}\" ({columnsSql});";
+       
+                   conn.Execute(createTableSql);
+               }
+       
+               _connection = conn;
+           }
+           catch
+           {
+               conn.Dispose();
+               throw;
+           }
         }
+        
 
         /// <summary>
         /// 指定されたマスタテーブルのデータをサーバーから取得し、ローカルのインメモリDBに丸ごとコピー。
@@ -116,13 +131,15 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB{
 
                 // 3. トランザクションをかけて、Dapperで高速に一括挿入する
                 using (var transaction = _connection.BeginTransaction()) {
-                    foreach (var row in rows) {
+                    foreach (var row in rows) {       
+                        // ---------------------------------------------------------
+                        // ★ NxTypeMapper による「正本型への矯正」
+                        //   - JSON の Number(double/long) → 正しい型へ
+                        //   - SQLite の INTEGER(long) → int/long に矯正
+                        //   - datetime（マイクロ秒対応）もここで正しく変換
+                        // ---------------------------------------------------------
+                        var converted = NxTypeMapper.ConvertRow(tableName, row);
 
-                        // ★【ここを追加】：辞書の中の JsonElement を生のデータ型に変換（アンパック）する
-                        var unpackedRow = row.ToDictionary(
-                            kvp => kvp.Key,
-                            kvp => UnpackJsonValue(kvp.Value)
-                        );
                         // ★Dapperの超強力な仕様：
                         // パラメータとして Dictionary<string, object> を直接渡すと、
                         // @key の部分を 辞書のキーと自動でマッピングして実行してくれます！
@@ -140,40 +157,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB{
             }
             return;
         }
-
-
-        // -------------------------------------------------------------
-        // JsonElement を C# の「生データ型」に変換するヘルパー関数
-        // -------------------------------------------------------------
-        private object? UnpackJsonValue(object? value)
-        {
-            if (value is JsonElement element)
-            {
-                switch (element.ValueKind)
-                {
-                    case JsonValueKind.String:
-                        return element.GetString();
-
-                    case JsonValueKind.Number:
-                        // 整数なら long、小数なら double として取り出す
-                        if (element.TryGetInt64(out long l)) return l;
-                        return element.GetDouble();
-
-                    case JsonValueKind.True:
-                        return true;
-
-                    case JsonValueKind.False:
-                        return false;
-
-                    case JsonValueKind.Null:
-                        return null;
-
-                    default:
-                        return element.GetRawText();
-                }
-            }
-            return value;
-        }
+     
         // アプリ終了時に接続を破棄する処理
         public void Dispose()
             {

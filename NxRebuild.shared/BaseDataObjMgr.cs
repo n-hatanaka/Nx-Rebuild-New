@@ -1,4 +1,4 @@
-﻿using Dapper;
+using Dapper;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Data.Sqlite;
 using Npgsql;
@@ -134,24 +134,16 @@ namespace NxRebuild.shared {
             return dataObj;
         }
 
-        //新規レコードの場合に必要になる空のレコードを生成する。
-        protected Dictionary<string, object> GetEmptySchema() {
-            // 1=0 で空の結果を要求し、先頭（というか実質これだけ）を取得
-            // dynamicで受けることでメタデータを保持できる
-            var result = DBcon.QueryFirstOrDefault<dynamic>($"SELECT * FROM {_tblName} WHERE 1 = 0");
-
-            // DapperRowは IDictionary<string, object> にキャスト可能
-            var dictionary = (IDictionary<string, object>)result;
-
-            // もしテーブル名が間違っていたりして null が返る場合に備えてハンドリング
-            if (dictionary == null) {
-                throw new Exception($"テーブル {_tblName} が見つからないか、スキーマを取得できませんでした。");
-            }
-
-            // キーのみ抽出して値をnullで初期化して返す
-            return dictionary.Keys.ToDictionary(key => key, key => (object)null);
+        // 新規レコードの場合に必要になる空のレコードを生成する。
+        protected Dictionary<string, object?> GetEmptySchema()
+        {
+            // NxTypeMap が未設定なら例外（世界線の正本が無い）
+            if (NxTypeMapper.Current == null)
+                throw new Exception("NxTypeMap が初期化されていません。");
+        
+            // 型マップに基づいて初期値辞書を生成
+            return NxTypeMapper.Current.CreateEmptyRow(_tblName);
         }
-
         //データベースからデータを取得する。(クライアント、サーバー共用）
         //コンストラクタで呼び出してはいけない。
         public virtual async Task<IEnumerable<dynamic>> LoadRecordsAsync() {
@@ -164,20 +156,17 @@ namespace NxRebuild.shared {
 
         //データベースからデータを取得する。(クライアント、サーバー共用）
         //コンストラクタで呼び出してはいけない。
-        public virtual async Task Initialize() {
+        public virtual async Task Initialize()
+        {
             var records = await LoadRecordsAsync();
-
-            foreach (var record in records) {
-                var dict = new Dictionary<string, object>();
-                foreach (var kv in (IDictionary<string, object>)record) {
-                    dict[kv.Key] = kv.Value;
-                }
-
+        
+            foreach (var record in records)
+            {
                 T obj = CreateDataObj();
                 obj.DBcon = DBcon;
                 obj.TenantCode = TenantCode;
-                obj.Setproperties(dict);
-
+                obj.Setproperties((IDictionary<string, object>)record);
+        
                 _dataList.Add(obj);
             }
         }
