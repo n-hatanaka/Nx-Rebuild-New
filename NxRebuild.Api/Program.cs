@@ -5,6 +5,7 @@ using Microsoft.IdentityModel.Tokens;
 using Npgsql;
 using NxRebuild.Api.Data;
 using NxRebuild.Api.Models;
+using NxRebuild.Api.Schema;
 using System.Data;
 using System.Text;
 using Microsoft.AspNetCore.Mvc;
@@ -64,7 +65,8 @@ public class ApiProgram
         builder.Services.AddEndpointsApiExplorer();
         builder.Services.AddSwaggerGen();
 
-
+        builder.Services.AddScoped<IDatabaseSchemaProvider, DBSchemaProvider>(); 
+     
         var app = builder.Build();
 
         if (app.Environment.IsDevelopment()) {
@@ -130,8 +132,5 @@ public class ApiProgram
         app.Run();
     }
 
-    record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-    {
-        public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-    }
+    
 }

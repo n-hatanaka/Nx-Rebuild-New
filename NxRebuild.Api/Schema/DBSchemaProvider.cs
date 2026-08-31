@@ -1,7 +1,7 @@
 using Dapper;
 using System.Data;
 
-namespace NxRebuild.Server.Schema
+namespace NxRebuild.Api.Schema;
 {
     public interface IDatabaseSchemaProvider
     {
