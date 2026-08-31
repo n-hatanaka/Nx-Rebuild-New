@@ -23,21 +23,32 @@ namespace NxRebuild.Api.Controllers {
             _idColName = "No";
 
         }
-
-        protected override async Task CreateObjMgr() {
+        protected override async Task CreateObjMgr()
+        {
             await SetUserInfo();
             Guid uid;
-
+        
             if (_userID == "anonymous")
                 uid = Guid.Empty; // anonymous の世界線では GUID を使わない
             else
                 uid = Guid.Parse(_userID);
-
+        
+            // ★ ① DBスキーマプロバイダーを使って PostgreSQL の生スキーマを取得
+            var schemaProvider = HttpContext.RequestServices.GetRequiredService<IDatabaseSchemaProvider>();
+            var schemas = await schemaProvider.GetSchemasAsync();
+        
+            // ★ ② NxTypeMapper を初期化（世界線の抽象型を確定）
+            NxTypeMapper.Initialize(schemas);
+        
+            // ★ ③ DataObjMgr を生成（既存の世界線）
             _dataObjMgr = new NutritionPropertiesMgr(_db, _tenantCode, uid);
+        
+            // ★ ④ DataObjMgr の初期化（既存の世界線）
             _dataObjMgr.Initialize();
+        
             await Task.CompletedTask;
         }
-
+        
         [HttpPost("Visible/{dataId}/{newVal}")]
         public async Task<IActionResult> VisibleChg(int dataId, bool newVal)
         {
