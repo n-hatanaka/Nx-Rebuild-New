@@ -15,13 +15,15 @@ namespace NxRebuild.Api.Controllers {
     [ApiController]
     [Route("NutProperty")]
     public class NutritionPropertiesController : NxDataController<NutritionProperty, int> {
-        public NutritionPropertiesController(IDbConnection dbConnection, UserManager<ApplicationUser> userManager)
-            : base(dbConnection, userManager) {
-            // 初期化ロジックをここに実装
+        public NutritionPropertiesController(
+            IDbConnection dbConnection,
+            UserManager<ApplicationUser> userManager,
+            IDatabaseSchemaProvider schemaProvider)
+            : base(dbConnection, userManager, schemaProvider)
+        {
             _tblName = "ColName";
             _nameColName = "Name";
             _idColName = "No";
-
         }
         protected override async Task CreateObjMgr()
         {
@@ -32,7 +34,10 @@ namespace NxRebuild.Api.Controllers {
                 uid = Guid.Empty; // anonymous の世界線では GUID を使わない
             else
                 uid = Guid.Parse(_userID);
-        
+
+            // ★ 抽象世界線の初期化（共通化済み）
+            await InitializeNxApi();
+
             // ★ ① DBスキーマプロバイダーを使って PostgreSQL の生スキーマを取得
             var schemaProvider = HttpContext.RequestServices.GetRequiredService<IDatabaseSchemaProvider>();
             var schemas = await schemaProvider.GetSchemasAsync();

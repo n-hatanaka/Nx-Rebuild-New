@@ -26,6 +26,26 @@ namespace NxRebuild.Api.Controllers {
         protected string _usertenant_code;
         protected IsrvBaseDataObjMgr<T,TKey> _dataObjMgr;
 
+     
+        protected readonly IDatabaseSchemaProvider _schemaProvider;
+    
+    
+        public NxDataController(
+            IDbConnection dbConnection,
+            UserManager<ApplicationUser> userManager,
+            IDatabaseSchemaProvider schemaProvider)
+        {
+            _db = dbConnection;
+            _userManager = userManager;
+            _schemaProvider = schemaProvider;
+        }
+    
+        protected async Task InitializeNxApi()
+        {
+            var schemas = await _schemaProvider.GetSchemasAsync();
+            NxTypeMapper.Initialize(schemas);
+        }
+     
         public NxDataController(IDbConnection dbConnection, UserManager<ApplicationUser> userManager) {
             _db = dbConnection;
             _userMgr = userManager;
