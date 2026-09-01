@@ -5,132 +5,87 @@ using Microsoft.IdentityModel.Tokens;
 using Npgsql;
 using NxRebuild.Api.Data;
 using NxRebuild.Api.Models;
-using NxRebuild.Api.Schema;
 using System.Data;
+using System.IdentityModel.Tokens.Jwt;
 using System.Text;
-using Microsoft.AspNetCore.Mvc;
 
 public class ApiProgram
 {
     public static void Main(string[] args)
     {
+        // ★ sub → NameIdentifier の自動変換を防ぐ
+        JwtSecurityTokenHandler.DefaultInboundClaimTypeMap.Clear();
+
         var builder = WebApplication.CreateBuilder(args);
 
         // PostgreSQL
         builder.Services.AddDbContext<ApplicationDbContext>(options =>
             options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-        // Identity
+        // Identity（Cookie 認証をデフォルトにしない）
         builder.Services.AddIdentity<ApplicationUser, IdentityRole>()
             .AddEntityFrameworkStores<ApplicationDbContext>()
             .AddDefaultTokenProviders();
 
-        // JWT 認証
-        builder.Services.AddAuthentication()
-            .AddJwtBearer(options =>
+        // ★ JWT をデフォルト認証方式に固定
+        builder.Services.AddAuthentication(options =>
+        {
+            options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+            options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+            options.DefaultScheme = JwtBearerDefaults.AuthenticationScheme;
+        })
+        .AddJwtBearer(options =>
+        {
+            options.TokenValidationParameters = new()
             {
-                options.TokenValidationParameters = new()
-                {
-                    ValidateIssuer = false,
-                    ValidateAudience = false,
-                    ValidateIssuerSigningKey = true,
-                    IssuerSigningKey = new SymmetricSecurityKey(
-                        Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!))
-                };
-            });
+                ValidateIssuer = false,
+                ValidateAudience = false,
+                ValidateIssuerSigningKey = true,
+                IssuerSigningKey = new SymmetricSecurityKey(
+                    Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!))
+            };
+        });
 
         builder.Services.AddAuthorization();
 
-        // 設定ファイルから接続文字列を取得する
+        // DB 接続
         var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
-
-        // データベース接続（IDbConnection）をDIコンテナに登録する
-        // 毎回新しい接続を作成するように「AddTransient」で登録する
-        builder.Services.AddTransient<IDbConnection>((sp) => new NpgsqlConnection(connectionString));
+        builder.Services.AddTransient<IDbConnection>(_ => new NpgsqlConnection(connectionString));
 
         builder.Services.AddControllers();
 
-        //CORS ポリシーを登録
+        // CORS
         builder.Services.AddCors(options =>
         {
-            options.AddPolicy("AllowWasm",
-                policy =>
-                {
-                    policy.WithOrigins("http://localhost:5270")
-                          .AllowAnyHeader()
-                          .AllowAnyMethod();
-                });
+            options.AddPolicy("AllowWasm", policy =>
+            {
+                policy.WithOrigins("http://localhost:5270")
+                      .AllowAnyHeader()
+                      .AllowAnyMethod();
+            });
         });
 
-        builder.Services.AddEndpointsApiExplorer();
-        builder.Services.AddSwaggerGen();
-
-        builder.Services.AddScoped<IDatabaseSchemaProvider, DatabaseSchemaProvider>(); 
-     
         var app = builder.Build();
 
-        if (app.Environment.IsDevelopment()) {
-            app.UseSwagger();
-            app.UseSwaggerUI();   // ← UI を有効化（新方式に対応済み）
-        }
-
-
-
-        //app.UseHttpsRedirection();
-
-        app.UseRouting();
-
-        // 最初のテストユーザー作成（同期ブロッキングで呼び出す）
-        using (var scope = app.Services.CreateScope())
+        if (app.Environment.IsDevelopment())
         {
-            var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
-
-            var email = "test@example.com";
-            var password = "Test123!";
-            var user = userManager.FindByEmailAsync(email).GetAwaiter().GetResult();
-            if (user == null)
-            {
-                user = new ApplicationUser
-                {
-                    UserName = email,
-                    Email = email
-                    // Id と GroupCode はコンストラクタで UUIDv7 自動生成
-                };
-
-                var result = userManager.CreateAsync(user, password).GetAwaiter().GetResult();
-                if (result.Succeeded)
-                {
-                    user.TenantCode = "00000000-0001-7000-8000-000000000000";
-                    userManager.UpdateAsync(user).GetAwaiter().GetResult();
-                    Console.WriteLine("testユーザーを作成しました。");
-                }
-            }
-            else
-            {
-                // 存在する場合はグループコードが固定されているか確認（必要に応じて更新）
-                if (user.TenantCode != "00000000-0001-7000-8000-000000000000")
-                {
-                    user.TenantCode = "00000000-0001-7000-8000-000000000000";
-                    userManager.UpdateAsync(user).GetAwaiter().GetResult();
-                }
-            }
+            app.UseSwagger();
+            app.UseSwaggerUI();
         }
 
-        // ★ 開発環境（IsDevelopment）のときだけ CORS ルールを有効化する
-        app.UseRouting();
+        // --- ミドルウェア（順番が超重要） ---
+        app.UseRouting(); // ← 1回だけ
 
-        if (app.Environment.IsDevelopment()) {
+        if (app.Environment.IsDevelopment())
+        {
             app.UseCors("AllowWasm");
         }
 
         app.UseAuthentication();
         app.UseAuthorization();
 
-        // 🔥 AuthController を有効化
         app.MapControllers();
 
         app.Run();
     }
-
-    
 }
