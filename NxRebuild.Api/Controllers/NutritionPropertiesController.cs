@@ -38,19 +38,12 @@ namespace NxRebuild.Api.Controllers {
                 uid = Guid.Parse(_userID);
 
             // ★ 抽象世界線の初期化（共通化済み）
-            await InitializeNxApi();
-
-            // ★ ① DBスキーマプロバイダーを使って PostgreSQL の生スキーマを取得
-            var schemaProvider = HttpContext.RequestServices.GetRequiredService<IDatabaseSchemaProvider>();
-            var schemas = await schemaProvider.GetSchemasAsync();
+            await InitializeNxApi();            
         
-            // ★ ② NxTypeMapper を初期化（世界線の抽象型を確定）
-            NxTypeMapper.Initialize(schemas);
-        
-            // ★ ③ DataObjMgr を生成（既存の世界線）
+            // ★ DataObjMgr を生成（既存の世界線）
             _dataObjMgr = new NutritionPropertiesMgr(_db, _tenantCode, uid);
         
-            // ★ ④ DataObjMgr の初期化（既存の世界線）
+            // ★ DataObjMgr の初期化（既存の世界線）
             _dataObjMgr.Initialize();
         
             await Task.CompletedTask;

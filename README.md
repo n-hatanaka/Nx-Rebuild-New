@@ -1,3 +1,8 @@
+NxTypeMapper is now available for use within this repository.
+It is a universal type‑conversion engine that resolves type inconsistencies
+between client, server, and database layers.
+Detailed documentation can be found in the “NxTypeMapper README” located in the Document folder.
+
 # Nx‑Rebuild‑New  
 **A Synchronization Worldline Architecture Based on the Nexus UI–DB Transformation Model**
 

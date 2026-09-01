@@ -37,14 +37,21 @@ namespace NxRebuild.Api.Controllers {
             IDatabaseSchemaProvider schemaProvider)
         {
             _db = dbConnection;
-            _userManager = userManager;
+            _userMgr = userManager;
             _schemaProvider = schemaProvider;
         }
     
         protected async Task InitializeNxApi()
         {
+            // ① PostgreSQL のスキーマを取得
             var schemas = await _schemaProvider.GetSchemasAsync();
-            NxTypeMapper.Initialize(schemas);
+
+            // ② スキーマから NxTypeMap を構築
+            var typeMap = NxTypeMapBuilder.FromSchemas(schemas);
+
+            // ③ 世界線の正本をセット
+            NxTypeMapper.Set(typeMap);
+        
         }
      
         public NxDataController(IDbConnection dbConnection, UserManager<ApplicationUser> userManager) {

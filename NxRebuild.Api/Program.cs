@@ -65,7 +65,7 @@ public class ApiProgram
         builder.Services.AddEndpointsApiExplorer();
         builder.Services.AddSwaggerGen();
 
-        builder.Services.AddScoped<IDatabaseSchemaProvider, DBSchemaProvider>(); 
+        builder.Services.AddScoped<IDatabaseSchemaProvider, DatabaseSchemaProvider>(); 
      
         var app = builder.Build();
 

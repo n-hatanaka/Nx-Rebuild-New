@@ -1,7 +1,7 @@
 using Dapper;
 using Microsoft.AspNetCore.Mvc;
 using NxRebuild.shared;
-using NxRebuild.Server.Schema;
+using NxRebuild.Api.Schema;
 using System.Data;
 
 namespace NxRebuild.Api.Controllers

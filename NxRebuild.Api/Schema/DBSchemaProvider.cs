@@ -1,60 +1,49 @@
 using Dapper;
 using System.Data;
+using NxRebuild.shared;
 
-namespace NxRebuild.Api.Schema;
-{
-    public interface IDatabaseSchemaProvider
-    {
+namespace NxRebuild.Api.Schema {
+    public interface IDatabaseSchemaProvider {
         Task<List<ConvertedTableSchema>> GetSchemasAsync();
     }
+
     /// <summary>
     /// PostgreSQL からテーブル名・カラム情報・外部キー情報を取得し、
     /// NxRebuild.shared の DTO に詰めて返す純粋なスキーマプロバイダー。
     /// </summary>
-    public class DatabaseSchemaProvider : IDatabaseSchemaProvider
-    {
+    public class DatabaseSchemaProvider : IDatabaseSchemaProvider {
         private readonly IDbConnection _db;
 
-        public DatabaseSchemaProvider(IDbConnection db)
-        {
+        public DatabaseSchemaProvider(IDbConnection db) {
             _db = db;
         }
 
-        /// <summary>
-        /// PostgreSQL のスキーマを Nx 用 DTO に変換して返す。
-        /// </summary>
-        public async Task<List<ConvertedTableSchema>> GetSchemasAsync()
-        {
+        public async Task<List<ConvertedTableSchema>> GetSchemasAsync() {
             var tableNames = await GetTableNamesAsync();
             var foreignKeys = await GetForeignKeysAsync();
 
             var result = new List<ConvertedTableSchema>();
 
-            foreach (var tableName in tableNames)
-            {
+            foreach (var tableName in tableNames) {
                 var schema = await GetTableSchemaAsync(tableName);
 
-                var converted = new ConvertedTableSchema
-                {
+                var converted = new ConvertedTableSchema {
                     TableName = tableName
                 };
 
                 // カラム情報
-                foreach (var col in schema.Columns)
-                {
-                    converted.Columns.Add(new ConvertedColumnInfo
-                    {
+                foreach (var col in schema.Columns) {
+                    converted.Columns.Add(new ConvertedColumnInfo {
                         ColumnName = col.ColumnName,
                         PostgresType = col.DataType,
+                        SqliteType = "",          // SQLite 変換はクライアント側で行う
                         IsPrimaryKey = col.IsPrimaryKey
                     });
                 }
 
                 // 外部キー情報
-                foreach (var fk in foreignKeys.Where(f => f.FromTable == tableName))
-                {
-                    converted.ForeignKeys.Add(new ForeignKeyInfo
-                    {
+                foreach (var fk in foreignKeys.Where(f => f.FromTable == tableName)) {
+                    converted.ForeignKeys.Add(new ForeignKeyInfo {
                         FromColumn = fk.FromColumn,
                         ToTable = fk.ToTable,
                         ToColumn = fk.ToColumn
@@ -70,8 +59,7 @@ namespace NxRebuild.Api.Schema;
         // -------------------------------------------------------------
         // テーブル一覧取得
         // -------------------------------------------------------------
-        private async Task<IEnumerable<string>> GetTableNamesAsync()
-        {
+        private async Task<IEnumerable<string>> GetTableNamesAsync() {
             var sql = @"
                 SELECT table_name
                 FROM information_schema.tables
@@ -86,8 +74,7 @@ namespace NxRebuild.Api.Schema;
         // -------------------------------------------------------------
         // カラム情報取得
         // -------------------------------------------------------------
-        private async Task<TableSchemaRaw> GetTableSchemaAsync(string tableName)
-        {
+        private async Task<TableSchemaRaw> GetTableSchemaAsync(string tableName) {
             var sql = @"
                 SELECT 
                     c.column_name AS ColumnName,
@@ -111,8 +98,7 @@ namespace NxRebuild.Api.Schema;
 
             var columns = await _db.QueryAsync<ColumnInfoRaw>(sql, new { TableName = tableName });
 
-            return new TableSchemaRaw
-            {
+            return new TableSchemaRaw {
                 TableName = tableName,
                 Columns = columns.ToList()
             };
@@ -121,8 +107,7 @@ namespace NxRebuild.Api.Schema;
         // -------------------------------------------------------------
         // 外部キー取得
         // -------------------------------------------------------------
-        private async Task<IEnumerable<ForeignKeyRaw>> GetForeignKeysAsync()
-        {
+        private async Task<IEnumerable<ForeignKeyRaw>> GetForeignKeysAsync() {
             var sql = @"
                 SELECT
                     kcu.table_name AS FromTable,
@@ -147,21 +132,18 @@ namespace NxRebuild.Api.Schema;
     // -------------------------------------------------------------
     // 内部用 Raw DTO（Shared に入れない）
     // -------------------------------------------------------------
-    public class TableSchemaRaw
-    {
+    public class TableSchemaRaw {
         public string TableName { get; set; } = string.Empty;
         public List<ColumnInfoRaw> Columns { get; set; } = new();
     }
 
-    public class ColumnInfoRaw
-    {
+    public class ColumnInfoRaw {
         public string ColumnName { get; set; } = string.Empty;
         public string DataType { get; set; } = string.Empty;
         public bool IsPrimaryKey { get; set; }
     }
 
-    public class ForeignKeyRaw
-    {
+    public class ForeignKeyRaw {
         public string FromTable { get; set; } = string.Empty;
         public string FromColumn { get; set; } = string.Empty;
         public string ToTable { get; set; } = string.Empty;

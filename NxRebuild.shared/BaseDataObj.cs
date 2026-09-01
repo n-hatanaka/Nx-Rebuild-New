@@ -160,7 +160,7 @@ namespace NxRebuild.shared {
         public BaseDataObj() {
 
         }
-        public virtual void Setproperties(Dictionary<string, object> record)
+        public virtual void Setproperties(IDictionary<string, object> record)
         {
             // ---------------------------------------------------------
             // ★ NxTypeMapper による「型の正本化」
@@ -169,8 +169,8 @@ namespace NxRebuild.shared {
             //   - datetime（マイクロ秒対応）もここで正しく変換
             //   - bool / string も型マップに従って正本化
             // ---------------------------------------------------------
-            var normalized = NxTypeMapper.ConvertRow(TblName, record);
-        
+            var normalized = NxTypeMapper.ConvertRow(TblName, record.ToDictionary(k => k.Key, v => v.Value));
+
             // 正本化された辞書をそのまま保持
             _rawData = normalized;
         }
