@@ -61,28 +61,30 @@ public class ApiProgram
             {
                 policy.WithOrigins("http://localhost:5270")
                       .AllowAnyHeader()
-                      .AllowAnyMethod();
+                      .AllowAnyMethod()
+                      .AllowCredentials();   
             });
         });
 
         var app = builder.Build();
 
-        if (app.Environment.IsDevelopment())
-        {
-            app.UseSwagger();
-            app.UseSwaggerUI();
-        }
 
         // --- ミドルウェア（順番が超重要） ---
         app.UseRouting(); // ← 1回だけ
 
-        if (app.Environment.IsDevelopment())
-        {
-            app.UseCors("AllowWasm");
-        }
+        //if (app.Environment.IsDevelopment())
+        //{
+        //    app.UseCors("AllowWasm");
+        //}
+        app.UseCors("AllowWasm");
 
         app.UseAuthentication();
         app.UseAuthorization();
+
+        if (app.Environment.IsDevelopment()) {
+            app.UseSwagger();
+            app.UseSwaggerUI();
+        }
 
         app.MapControllers();
 
