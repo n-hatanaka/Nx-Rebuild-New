@@ -158,36 +158,6 @@ are isolated outside CRUD processing and treated as separate from application lo
 
 This isolation layer is composed of data handlers (BaseDataObj / SyncBaseDataObj).  
 BaseDataObj performs CRUD on actual data,  
-while SyncBaseDataObj extends BaseDataObj and handles distributed-system arise when the states of the client and server “branch.”
-
-Actual processing includes:
-
-- Strict mutual exclusion  
-- Client-local CRUD  
-- Difference management  
-- Synchronization  
-- Reconstruction of the authoritative copy  
-
-These mechanisms prevent data corruption or conflicts caused by  
-multiple clients editing and synchronizing at different timings.
-
----
-
-## Conclusion of the Nx Architecture: Single-Machine Model
-
-The Nx Architecture provides an abstraction layer that allows  
-UI developers and application logic developers to treat distributed environments  
-as **a single logical machine**.
-
-The Nx Architecture absorbs distributed-system failures at the application layer  
-(synchronization drift, ordering collapse, retransmission, partial failure, etc.),  
-allowing UI developers to avoid dealing with distributed complexity.
-
-Network outages, DB hardware failures, and server downtime  
-are isolated outside CRUD processing and treated as separate from application logic.
-
-This isolation layer is composed of data handlers (BaseDataObj / SyncBaseDataObj).  
-BaseDataObj performs CRUD on actual data,  
 while SyncBaseDataObj extends BaseDataObj and handles distributed-system failures  
 (validation, reconnection, authoritative copy retrieval, etc.).
 
