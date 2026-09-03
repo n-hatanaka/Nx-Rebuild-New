@@ -1,68 +1,75 @@
 ### NxTypeMapper Added
 NxTypeMapper is now available in this repository.  
-It is a **general-purpose type conversion engine** that absorbs type non-isomorphism occurring between client, server, and database.  
-Detailed documentation is available in the “NxTypeMapper README” inside the Document folder.
+It is a **universal type‑conversion engine** that absorbs non‑isomorphic type differences  
+between client, server, and database layers.  
+Detailed documentation is available in the Document folder under “NxTypeMapper README”.
 
 ---
 
 # Nx‑Rebuild‑New
-Worldline Branching Model based on the Nexus UI–DB Transformation Architecture
+A **Divergence Oscillation Model** based on the Nexus UI–DB Transformation Architecture
 
 ---
 
 ## Introduction
-For more than 20 years, enterprise applications have been designed on the assumption of multi-layered structures such as  
-controllers, services, repositories, DTOs, and validation layers.
+For more than 20 years, enterprise applications have been designed around  
+multi‑layered structures such as controllers, services, repositories, DTOs,  
+and validation layers.
 
-Nx‑Rebuild‑New does not replace these layers directly.  
-Instead, it introduces a completely new structural model — the **Nexus UI–DB Transformation Architecture** (hereafter Nx Architecture),  
-in which the client and server share the same object structure.
+Nx‑Rebuild‑New does not replace these layers;  
+instead, it introduces a modular architecture—  
+the Nexus UI–DB Transformation Architecture (hereafter “Nx Architecture”)—  
+which enables the client and server to share the **exact same object structure**.
 
-This architecture enables:
+### With this architecture:
 
-- Declarative CRUD  
-- Automatic propagation of schema changes  
-- Structural stability even in large-scale systems  
+- CRUD becomes declarative  
+- Schema changes propagate automatically  
+- Large‑scale systems maintain structural stability  
 
 ---
 
 ## Purpose
-- To establish a development foundation where individual developers, AI-assisted workflows, and large teams can all write CRUD using the same structure.  
-- To simplify distributed system construction and prevent system failures caused by data inconsistencies originating from CRUD operations across multiple clients.
+- To establish a development foundation where individual developers,  
+  AI‑assisted workflows, and large teams can all write CRUD  
+  using **the same structural model**.
+- To simplify distributed system construction and prevent system failures  
+  caused by data inconsistencies from multi‑client CRUD operations.
 
-Nx‑Rebuild‑New is developed as an implementation example of the Nx Architecture,  
-which defines the data handler object (DataObj) as the smallest unit of CRUD.  
-This repository provides the technical foundation for that architecture.
+Nx‑Rebuild‑New provides the technical foundation for this goal,  
+building the Nx Architecture where DataObj becomes the smallest CRUD unit,  
+and offering a working implementation as part of the repository.
 
 ---
 
 ## What This Architecture Provides
 
-##### DataObj-Centric CRUD
+##### DataObj‑centric CRUD
 UI, API, and DB share the same structure,  
 eliminating the need for DTOs and validation layers.
 
 ##### Complete Isomorphism Between Client and Server
-Because both sides handle the same DataObj,  
-CRUD structure remains stable and schema changes propagate automatically.
+Because both sides operate on the same DataObj,  
+CRUD structure stabilizes and schema changes propagate automatically.
 
 ##### Strong Resistance to Schema Changes
-Shared structures are reflected on both sides as-is,  
-resulting in extremely robust design against specification changes.
+Shared structures are reflected directly on both sides,  
+making the system extremely resilient to specification changes.
 
 ##### Simplified CRUD Implementation
 UI and API code become nearly identical,  
-and new entities are completed simply by creating derived classes.
+and new entities are created simply by defining a derived class.
 
-##### Entity-Level Modularity
-Even very large systems maintain structural stability through loose coupling.
+##### Entity‑level Modularity
+Even very large systems maintain structural integrity  
+through strong decoupling.
 
 ---
 
 ## Usage (Simplified)
 
-1. Load the server schema on the client side  
-   → Build an in-memory DB with the same schema (WASM recommended).
+1. The client loads the server schema  
+   → Builds an in‑memory DB (WASM recommended) with the same schema.
 
 2. Copy the base classes from the Shared folder  
    - BaseDataObj  
@@ -72,20 +79,20 @@ Even very large systems maintain structural stability through loose coupling.
    - SyncBaseDataObj  
    - SyncBaseDataObjMgr
 
-4. On the server side, inherit from NxDataController  
-   → CRUD/API is completed simply by creating derived classes.
+4. On the server, inherit from NxDataController  
+   → CRUD/API is completed by defining a derived class.
 
-5. UI directly handles DataObj  
-   → WASM UI achieves complete isomorphism with the local DB.
+5. UI directly manipulates DataObj  
+   → WASM UI becomes fully isomorphic with the local DB.
 
 ---
 
 ## Target Users
 
 - Individual developers  
-- AI-driven development workflows  
-- Large-scale development teams  
-- Enterprise systems (many entities)
+- AI‑driven development workflows  
+- Large development teams  
+- Enterprise systems with many entities
 
 *“Entity” refers not only to a single record,  
 but also to the smallest unit of user input spanning multiple tables.*
@@ -95,73 +102,77 @@ but also to the smallest unit of user input spanning multiple tables.*
 ## Overview of the Nx Architecture (Simplified)
 
 The Nx Architecture is based on the principle that  
-**“DataObj operates as the smallest unit of CRUD.”**
+**DataObj is the smallest unit of CRUD**.
 
-##### Basic Principles
-- Direct DB operations occur only through CRUD performed by DataObj  
-- Multi-entity operations are loops over collections of DataObj  
-- UI and entities maintain a 1:1 relationship
+##### Core Principles
+- Direct DB operations occur only through DataObj CRUD  
+- Multi‑entity operations are loops over collections of DataObj  
+- UI and entity maintain a 1:1 relationship
 
-##### Resulting Benefits
-- Features can be implemented at the entity level  
+##### Effects
+- Features can be implemented per entity  
 - Aggregation and complex logic can be modularized  
 - Strong resistance to specification changes  
-- CRUD structure remains stable because client and server share the same model
+- CRUD structure stabilizes because client and server share the same model
 
 ---
 
-## Benefits of WASM UI
+## Advantages of WASM UI
 
-The worldline branching model of the Nx Architecture assumes a local DB (SQLite / WASM FS).  
-Using a WASM UI enables:
+The **Divergence Oscillation Model** of the Nx Architecture  
+assumes a local DB (SQLite / WASM FS).  
+Using WASM UI enables:
 
-- Complete operation of both synchronized and unsynchronized worldlines (user-local CRUD)  
-- Entity abstraction via DataObj / DataObjMgr, and the **UI abstraction enabled by it**  
-- Safe delegation of entity management (CRUD) to the user  
-- Fully functional copy/paste operations  
-- UI base classes that handle both synchronized and unsynchronized modes  
-- Zero intrusion when attaching CRUD to existing systems  
-- Gradual migration where existing browser UI remains “paging-only”
+- Full support for both synced and unsynced (user‑local) CRUD  
+- Entity abstraction via DataObj / DataObjMgr,  
+  enabling **UI abstraction**  
+- Safe delegation of entity CRUD to the user  
+- Fully functional copy‑and‑paste operations  
+- UI base classes that support both synced and unsynced modes  
+- Zero intrusion when adding CRUD to existing systems  
+- Gradual migration from existing browser UIs (paging‑only mode)
 
 ---
 
-### Worldline Branching Model (Worldline Model)
+### Divergence Oscillation Model (多態性射影モデル)
 
-The worldline branching model is an abstraction for safely handling  
-differences that arise when the states of the client and server “branch.”
+The Divergence Oscillation Model is an abstraction  
+for safely handling differences that arise when  
+client and server states **diverge**.
 
-Actual processing includes:
+Actual processing consists of:
 
 - Strict mutual exclusion  
-- Client-local CRUD  
-- Difference management  
-- Synchronization  
-- Reconstruction of the authoritative copy  
+- Client‑local CRUD  
+- Difference tracking  
+- Synchronization (convergence)  
+- Reconstruction of the authoritative state  
 
-These mechanisms prevent data corruption or conflicts caused by  
-multiple clients editing and synchronizing at different timings.
+This prevents data corruption or conflicts  
+caused by multiple clients editing and syncing at different times.
 
 ---
 
-## Conclusion of the Nx Architecture: Single-Machine Model
+## Conclusion of the Nx Architecture: Single‑Machine Model
 
-The Nx Architecture provides an abstraction layer that allows  
-UI developers and application logic developers to treat distributed environments  
-as **a single logical machine**.
+The Nx Architecture allows UI developers and application logic developers  
+to treat distributed environments as if they were **a single machine**.
 
-The Nx Architecture absorbs distributed-system failures at the application layer  
-(synchronization drift, ordering collapse, retransmission, partial failure, etc.),  
-allowing UI developers to avoid dealing with distributed complexity.
+It absorbs distributed‑system failures at the application layer  
+(synchronization drift, ordering collapse, retries, partial failures, etc.),  
+so UI developers do not need to handle distributed complexity.
 
-Network outages, DB hardware failures, and server downtime  
-are isolated outside CRUD processing and treated as separate from application logic.
+Physical‑layer issues such as network outages, DB failures,  
+or server downtime are isolated **outside** CRUD processing  
+and separated from application logic.
 
-This isolation layer is composed of data handlers (BaseDataObj / SyncBaseDataObj).  
+This isolation layer is implemented by Data Handlers  
+(BaseDataObj / SyncBaseDataObj).  
 BaseDataObj performs CRUD on actual data,  
-while SyncBaseDataObj extends BaseDataObj and handles distributed-system failures  
-(validation, reconnection, authoritative copy retrieval, etc.).
+while SyncBaseDataObj extends it with synchronization features  
+(validation, reconnection, authoritative re‑fetch, etc.).
 
-As a result, UI developers can build applications as if handling a single machine,  
-and network engineers only need to work within the limited scope of SyncBaseDataObj.
-
----
+As a result, UI developers can build applications  
+as if working with a single machine,  
+and network engineers only need to manage  
+the limited synchronization logic inside SyncBaseDataObj.
