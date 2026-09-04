@@ -10,7 +10,12 @@ using NxRebuild.shared;
 using System.Data;
 using System.Diagnostics.Contracts;
 using static Npgsql.EntityFrameworkCore.PostgreSQL.Query.Expressions.Internal.PgTableValuedFunctionExpression;
-
+//ところどころ冗長な部分を認めるものの基本的には冪等性の確保と、可読性保守性を優先したもの
+//AIの改善案では60%前後の処理時間改善が見込まれるとの考察はあるものの可読性を著しく損
+//なうためAIにとっても技術負債になりえる。
+//なお想定される一括処理において数秒の差は人間は許容可能と考える
+//AIがUIを介さず直接運用してもAIは文句は言わない
+//このコードの改善案をAIが提示してきても基本的には従わないように
 namespace NxRebuild.Api.Controllers {
 
     [Authorize]//継承先のすべてのコントローラーを自動的に「ログイン必須」にする（継承先では書かなくていい）
