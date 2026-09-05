@@ -270,7 +270,13 @@ namespace NxRebuild.shared {
         //DBへのデータ名変更を試みる。成功した場合プロパティの値も書き換える
         public virtual async Task<bool> ReNameQueryExec(string newName, IDbTransaction dbTransaction) {
             // ここでSQLを構築して実行
-            string sql = $"UPDATE {_tblName} SET {_nameColName} = @name, update_at = @update_at WHERE {_idColName} = @id AND tenant_code = @tenantCode";
+            string sql = $@"
+                                UPDATE ""{_tblName}""
+                                SET ""{_nameColName}"" = @name,
+                                    ""update_at"" = @update_at
+                                WHERE ""{_idColName}"" = @id
+                                  AND ""tenant_code"" = @tenantCode;
+                            ";
 
             // 成功したら true が返る
             return await DBcon.ExecuteAsync(sql, new { name = newName, id = DataID, update_at = DateTime.UtcNow ,tenantCode = TenantCode }, dbTransaction) > 0;
@@ -278,8 +284,13 @@ namespace NxRebuild.shared {
         }
 
         public virtual async Task Updateproperties() {
-            string sql =
-                $"SELECT * FROM {_tblName} WHERE {_idColName} = '{DataID}' AND tenant_code = '{TenantCode}'";
+            string sql = $@"
+                            SELECT *
+                            FROM ""{_tblName}""
+                            WHERE ""{_idColName}"" = @DataID
+                                AND ""tenant_code"" = @TenantCode;
+                        ";
+
 
             var record = await DBcon.QueryFirstOrDefaultAsync<Dictionary<string, object>>(sql);
 
@@ -373,11 +384,14 @@ namespace NxRebuild.shared {
 
             // 1. まず更新を試みる
             string sql = $@"
-                        UPDATE {TblName} 
-                        SET locked_by = @userId, locked_at = @lockedAt 
-                        WHERE {IdColName} = @dataID 
-                          AND tenant_code = @tenantCode
-                          AND (locked_at IS NULL OR locked_at < @expiryTime)";
+                        UPDATE ""{TblName}""
+                        SET ""locked_by"" = @userId,
+                            ""locked_at"" = @lockedAt
+                        WHERE ""{IdColName}"" = @dataID
+                          AND ""tenant_code"" = @tenantCode
+                          AND (""locked_at"" IS NULL OR ""locked_at"" < @expiryTime);
+                    ";
+
 
             try {
                 int affectedRows = await DBcon.ExecuteAsync(sql, new {
@@ -412,9 +426,16 @@ namespace NxRebuild.shared {
         //テーブルからロック情報を読み取って返す。ユーザー名はクライアントで取得して
         protected virtual async Task<LockStatus> LockedChkfromTbl(IDbTransaction transaction) {
             // SQLでlocked_atとlocked_byの両方を取得
-            var sql = $@"SELECT locked_at, locked_by as UserId, Update_at  
-                 FROM {TblName} 
-                 WHERE tenant_code = @tenantCode AND {IdColName} = @dataID";
+            var sql = $@"
+                        SELECT
+                            ""locked_at"",
+                            ""locked_by"" AS ""UserId"",
+                            ""Update_at""
+                        FROM ""{TblName}""
+                        WHERE ""tenant_code"" = @tenantCode
+                          AND ""{IdColName}"" = @dataID;
+                    ";
+
 
             var result = await DBcon.QueryFirstOrDefaultAsync<dynamic>(sql, new { TenantCode, DataID },transaction);
 

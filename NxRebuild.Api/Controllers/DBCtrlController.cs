@@ -23,7 +23,7 @@ namespace NxRebuild.Api.Controllers {
         }
 
         // -------------------------------------------------------------
-        // 指定されたテーブル名のデータを丸ごと返す
+        // 指定されたテーブル名のデータを丸ごと返す（識別子クォート統一版）
         // -------------------------------------------------------------
         [HttpGet("data/{tableName}/{tenant_code}")]
         public async Task<IActionResult> GetTableData(string tableName, string tenant_code) {
@@ -37,13 +37,16 @@ namespace NxRebuild.Api.Controllers {
                 using var con = CreateConnection();
                 await con.OpenAsync();
 
-                var sql = @"SELECT EXISTS (
-                                SELECT 1
-                                FROM information_schema.columns
-                                WHERE table_name = @TableName
-                                  AND column_name = 'tenant_code'
-                                  AND table_schema = 'public'
-                            );";
+                // information_schema は PostgreSQL のシステムビューなのでクォート不要
+                var sql = @"
+                    SELECT EXISTS (
+                        SELECT 1
+                        FROM information_schema.columns
+                        WHERE table_name = @TableName
+                          AND column_name = 'tenant_code'
+                          AND table_schema = 'public'
+                    );
+                ";
 
                 var hasTenantCode = await con.ExecuteScalarAsync<bool>(sql, new { TableName = tableName });
 
@@ -51,10 +54,20 @@ namespace NxRebuild.Api.Controllers {
 
                 if (hasTenantCode) {
                     var guidValue = Guid.Parse(tenant_code);
-                    sql = $"SELECT * FROM \"{tableName}\" WHERE \"tenant_code\" = @tenant_code ;";
+
+                    sql = $@"
+                        SELECT *
+                        FROM ""{tableName}""
+                        WHERE ""tenant_code"" = @tenant_code;
+                    ";
+
                     data = await con.QueryAsync(sql, new { tenant_code = guidValue });
                 } else {
-                    sql = $"SELECT * FROM \"{tableName}\";";
+                    sql = $@"
+                        SELECT *
+                        FROM ""{tableName}"";
+                    ";
+
                     data = await con.QueryAsync(sql);
                 }
 
