@@ -1,4 +1,4 @@
 ﻿window.localStore = {
-    get: (key) => localStorage.getItem(key),
-    set: (key, value) => localStorage.setItem(key, value)
+    get: (key) => sessionStorage.getItem(key),
+    set: (key, value) => sessionStorage.setItem(key, value)
 };

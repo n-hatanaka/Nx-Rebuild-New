@@ -38,18 +38,31 @@ async function onActivate(event) {
 }
 
 async function onFetch(event) {
-    let cachedResponse = null;
-    if (event.request.method === 'GET') {
-        // For all navigation requests, try to serve index.html from cache,
-        // unless that request is for an offline resource.
-        // If you need some URLs to be server-rendered, edit the following check to exclude those URLs
-        const shouldServeIndexHtml = event.request.mode === 'navigate'
-            && !manifestUrlList.some(url => url === event.request.url);
+    self.addEventListener('fetch', event => {
+        const request = event.request;
 
-        const request = shouldServeIndexHtml ? 'index.html' : event.request;
-        const cache = await caches.open(cacheName);
-        cachedResponse = await cache.match(request);
-    }
+        // API はネットワーク優先
+        if (request.url.includes('/api/') || request.url.includes('/auth/')) {
+            event.respondWith(fetch(request));
+            return;
+        }
 
-    return cachedResponse || fetch(event.request);
+        // SPA ナビゲーションは index.html を返す
+        if (request.mode === 'navigate') {
+            event.respondWith(
+                caches.match('index.html').then(response => {
+                    return response || fetch('index.html');
+                })
+            );
+            return;
+        }
+
+        // 静的ファイルはキャッシュ優先
+        event.respondWith(
+            caches.match(request).then(cached => {
+                return cached || fetch(request);
+            })
+        );
+    });
+
 }

@@ -39,7 +39,7 @@
 
     <!-- ★ 1. Blazorが動く前に必要な自前スクリプトを先に読み込ませる（頭の / を削除） -->
     <script src="js/mdi.js"></script>
-    <script src="localstorage.js"></script>
+    <script src="sessionStorage.js"></script>
 
     <!-- ★ 2. Blazor 本体（すべての土台） -->
     <script src="_framework/blazor.webassembly.js"></script>
@@ -53,9 +53,10 @@
 
 
     <!-- ★ 5. Service Worker -->
-    <script>
+    <!-- 開発中は無効化 -->
+    <!--<script>
         navigator.serviceWorker.register('service-worker.published.js', { updateViaCache: 'none' });
-    </script>
+    </script>-->
 
 </body>
 </html>

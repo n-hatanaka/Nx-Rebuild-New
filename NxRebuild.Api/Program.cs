@@ -5,6 +5,7 @@ using Microsoft.IdentityModel.Tokens;
 using Npgsql;
 using NxRebuild.Api.Data;
 using NxRebuild.Api.Models;
+using NxRebuild.Api.Schema;
 using System.Data;
 using System.IdentityModel.Tokens.Jwt;
 using System.Text;
@@ -48,11 +49,16 @@ public class ApiProgram
 
         builder.Services.AddAuthorization();
 
-        // DB 接続
-        var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
-        builder.Services.AddTransient<IDbConnection>(_ => new NpgsqlConnection(connectionString));
+        // DB 接続 をDI登録すると例外エラーの原因になる
+       // var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+       // builder.Services.AddTransient<IDbConnection>(_ => new NpgsqlConnection(connectionString));
 
         builder.Services.AddControllers();
+
+
+        builder.Services.AddScoped<IDatabaseSchemaProvider, DatabaseSchemaProvider>();
+
+
 
         // CORS
         builder.Services.AddCors(options =>
@@ -65,6 +71,8 @@ public class ApiProgram
                       .AllowCredentials();   
             });
         });
+
+        builder.Services.AddSwaggerGen();
 
         var app = builder.Build();
 

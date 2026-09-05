@@ -18,18 +18,22 @@ namespace NxRebuild.Api.Controllers {
     [Route("NutProperty")]
     public class NutritionPropertiesController : NxDataController<NutritionProperty, int> {
         public NutritionPropertiesController(
-            IDbConnection dbConnection,
+            IConfiguration config,
             UserManager<ApplicationUser> userManager,
             IDatabaseSchemaProvider schemaProvider)
-            : base(dbConnection, userManager, schemaProvider)
-        {
+            : base(config, userManager, schemaProvider) {
             _tblName = "ColName";
             _nameColName = "Name";
             _idColName = "No";
+
+
         }
         protected override async Task CreateObjMgr()
         {
             await SetUserInfo();
+
+            EnsureConnection(); // _db を初期化（NxDataController側で定義）
+
             Guid uid;
         
             if (_userID == "anonymous")
@@ -37,14 +41,14 @@ namespace NxRebuild.Api.Controllers {
             else
                 uid = Guid.Parse(_userID);
 
-            // ★ 抽象世界線の初期化（共通化済み）
+            // API初期化（共通化済み）
             await InitializeNxApi();            
         
-            // ★ DataObjMgr を生成（既存の世界線）
+            // DataObjMgr を生成
             _dataObjMgr = new NutritionPropertiesMgr(_db, _tenantCode, uid);
         
-            // ★ DataObjMgr の初期化（既存の世界線）
-            _dataObjMgr.Initialize();
+            // DataObjMgr の初期化
+            await _dataObjMgr.Initialize();
         
             await Task.CompletedTask;
         }
@@ -59,7 +63,7 @@ namespace NxRebuild.Api.Controllers {
             if (target == null)
                 return BadRequest("Data not found");
         
-            // ① オブジェクトの状態を変える（世界線の行為）
+            // ① オブジェクトの状態を変える
             target.Visible = newVal;
         
             // ② SaveAsync（内部で SaveQueryExec + トランザクション）

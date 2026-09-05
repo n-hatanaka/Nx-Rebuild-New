@@ -20,7 +20,7 @@ namespace NxRebuild.Client.Pages.Auth
             string token = null;
 
             try {
-                token = await _jsRuntime.InvokeAsync<string>("localStorage.getItem", "authToken");
+                token = await _jsRuntime.InvokeAsync<string>("sessionStorage.getItem", "authToken");
             } catch {
                 // JSInterop が未初期化のときは token = null のまま
                 token = null;

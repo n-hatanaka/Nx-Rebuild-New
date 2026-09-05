@@ -147,7 +147,7 @@ namespace NxRebuild.shared {
         //データベースからデータを取得する。(クライアント、サーバー共用）
         //コンストラクタで呼び出してはいけない。
         public virtual async Task<IEnumerable<dynamic>> LoadRecordsAsync() {
-            // Base は “世界線の物理層” なので意味を持たない
+            // Base は “物理層” なので意味を持たない
             // 派生先で SQL を完全に書き換える前提なら、ここは空実装でいい
             string sql = $"SELECT * FROM \"{_tblName}\";";
 

@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore.Metadata.Conventions;
 using Microsoft.EntityFrameworkCore.Metadata.Internal;
+using Npgsql;
 using NxRebuild.Api.Models;
 using NxRebuild.Api.Schema;
 using NxRebuild.shared;
@@ -15,12 +16,15 @@ using static Npgsql.EntityFrameworkCore.PostgreSQL.Query.Expressions.Internal.Pg
 //なうためAIにとっても技術負債になりえる。
 //なお想定される一括処理において数秒の差は人間は許容可能と考える
 //AIがUIを介さず直接運用してもAIは文句は言わない
-//このコードの改善案をAIが提示してきても基本的には従わないように
+//このパフォーマンス関連の改善案をAIが提示する場合はこの点を留意する事
 namespace NxRebuild.Api.Controllers {
 
     [Authorize]//継承先のすべてのコントローラーを自動的に「ログイン必須」にする（継承先では書かなくていい）
     public abstract class NxDataController<T, TKey> : ControllerBase where T : BaseDataObj<TKey>, new() {
-        protected readonly IDbConnection _db;
+        private readonly string _connectionString;
+
+        // このリクエスト専用の接続
+        protected NpgsqlConnection _db;
         protected readonly UserManager<ApplicationUser> _userMgr;
         //次の四つのメンバは初期化時にハードコード
         protected string _tblName;//メタデータのテーブル名
@@ -34,52 +38,47 @@ namespace NxRebuild.Api.Controllers {
 
      
         protected readonly IDatabaseSchemaProvider _schemaProvider;
-    
-    
-        public NxDataController(
-            IDbConnection dbConnection,
-            UserManager<ApplicationUser> userManager,
-            IDatabaseSchemaProvider schemaProvider)
-        {
-            _db = dbConnection;
+
+
+        public NxDataController(IConfiguration config,
+                                UserManager<ApplicationUser> userManager,
+                                IDatabaseSchemaProvider schemaProvider) {
+            _connectionString = config.GetConnectionString("DefaultConnection");
             _userMgr = userManager;
             _schemaProvider = schemaProvider;
         }
-    
-        protected async Task InitializeNxApi()
-        {
-            // ① PostgreSQL のスキーマを取得
-            var schemas = await _schemaProvider.GetSchemasAsync();
 
-            // ② スキーマから NxTypeMap を構築
-            var typeMap = NxTypeMapBuilder.FromSchemas(schemas);
-
-            // ③ 世界線の正本をセット
-            NxTypeMapper.Set(typeMap);
-        
+        protected NpgsqlConnection CreateConnection() {
+            return new NpgsqlConnection(_connectionString);
         }
-     
-        public NxDataController(IDbConnection dbConnection, UserManager<ApplicationUser> userManager) {
-            _db = dbConnection;
-            _userMgr = userManager;
-            //派生先はここで_tableName等の基本情報を設定する
 
-
+        protected async Task InitializeNxApi() {
+            var schemas = await _schemaProvider.GetSchemasAsync();
+            var typeMap = NxTypeMapBuilder.FromSchemas(schemas);
+            NxTypeMapper.Set(typeMap);
         }
 
         protected async Task SetUserInfo() {
             _user = await _userMgr.GetUserAsync(User);
 
             if (_user == null) {
-                // 匿名ユーザー扱い
                 _userID = "anonymous";
-                _usertenant_code = "00000000-0001-7000-8000-0000000000000";
+                _tenantCode = Guid.Empty;
                 return;
             }
 
             _userID = _user.Id;
-            _usertenant_code = _user.TenantCode;
+            _tenantCode = Guid.TryParse(_user.TenantCode, out var tg) ? tg : Guid.Empty;
+        }
 
+
+
+        // ★ このリクエスト用の接続を用意して _db にセット
+        protected void EnsureConnection() {
+            if (_db == null) {
+                _db = CreateConnection();
+                _db.Open();
+            }
         }
 
         //Httpエンドポイントで必ず呼び出す事。
@@ -87,18 +86,18 @@ namespace NxRebuild.Api.Controllers {
         // { 派生先での実装例（_dataObjMgr の型は派生先に合わせて変更すること）
         //   ※ ほぼコピペで使えるが、各コントローラ固有の ObjMgr を new する点だけ注意
         //     // ★ユーザー情報を取得（JWT の tenant_code を含む）
-        //     await SetUserInfo(_userMgr);　の呼び出し
+        //    await SetUserInfo();
+        //    EnsureConnection(); // ★ここで _db を開く
+        //    
         //     // ★ObjMgr を生成（Initialize は呼ばない）
-        //     _dataObjMgr = new BaseDataObjMgr<T, TKey>(_db, Guid.Parse(tenantCode), userId);
-        //
-        //     // ★派生先で設定される基本情報をここで反映
-        //     _dataObjMgr.TableName   = _tableName;
-        //     _dataObjMgr.IdColName   = _idColName;
-        //     _dataObjMgr.NameColName = _nameColName;
-        //
-        //     // ★DataList やテーブル情報を読み込む
-        //     _dataObjMgr.Initialize();
-        // }
+        //    _dataObjMgr = new BaseDataObjMgr<T, TKey>(_db, _tenantCode, _userID);
+
+        //    _dataObjMgr.TableName   = _tblName;
+        //    _dataObjMgr.IdColName   = _idColName;
+        //    _dataObjMgr.NameColName = _nameColName;
+        //     ★DataList やテーブル情報を読み込む
+        //    _dataObjMgr.Initialize();
+        //}
 
         [HttpGet("sync/{refreshedAt}")]
         public async Task<IActionResult> SyncAll(DateTime refreshedAt)
@@ -154,7 +153,6 @@ namespace NxRebuild.Api.Controllers {
                 //   3. 再確認: LockedChkfromTbl() でロック成功を検証
                 // これにより「同じリクエストを複数回実行しても安全」を保証する。
                 // パフォーマンス面では DB往復が3回になるが、冪等性（データ整合性）の方が優先される。
-                // (詳細: https://github.com/n-hatanaka/Nx-Rebuild-New/blob/main/NxRebuild.shared/BaseDataObj.cs#L299-L368)
                 var lockst = new LockStatus { IsLocked = true, LockedByUserId = _userID };
                 await dataObj.SetLockAsync(lockst);
 

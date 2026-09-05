@@ -41,8 +41,8 @@
         // JWT を sessionStorage に保存
         await JS.InvokeVoidAsync("sessionStorage.setItem", "authToken", json!.token);
 
-        // GroupCode 保存
-        await JS.InvokeVoidAsync("sessionStorage.setItem", "group_code", json!.GroupCode);
+        // TenantCode 保存
+        await JS.InvokeVoidAsync("sessionStorage.setItem", "tenant_code", json!.TenantCode);
 
         // JWT を AuthStateProvider に通知
         var provider = (CustomAuthStateProvider)AuthProvider;
@@ -55,7 +55,7 @@
     public class LoginResponse
     {
         public string token { get; set; }
-        public string GroupCode { get; set; }
+        public string TenantCode { get; set; }
     }
 
 }
