@@ -26,8 +26,6 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
     public abstract class SyncBaseDataObj<TKey> : ISyncBaseDataObj<TKey> {
         protected BaseDataObj<TKey> _dataObj;
 
-        public IBaseDataObj<TKey>? ParentDataObj { get; set; }
-
         protected BaseDataObj<TKey> DataObj { get => _dataObj;}
 
         public HttpClient Http { get; set; }
@@ -35,6 +33,14 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         public abstract string ApiRoute { get; } //←派生先で設定する事。
         public Guid CurrUsrID{ get => _dataObj.CurrUsrID; 
                                 set => _dataObj.CurrUsrID = value; }
+
+        public string ParentIDColName { get => _dataObj.ParentIDColName; }
+        public TKey ParentID { get => _dataObj.ParentID; 
+                        set => _dataObj.ParentID = value; }
+
+
+        public IBaseDataObj<TKey>? ParentDataObj { get => _dataObj.ParentDataObj; 
+                                            set => _dataObj.ParentDataObj = value; }
 
         protected abstract BaseDataObj<TKey> CreateBaseDataObj();
 
@@ -48,7 +54,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             set => _dataObj.DBcon = value;
         }
 
-        public IBaseDataObjMgr<BaseDataObj<TKey>,TKey> SelfObjMgr { 
+        public object SelfObjMgr { 
             get => _dataObj.SelfObjMgr;
             set => _dataObj.SelfObjMgr = value;
         }

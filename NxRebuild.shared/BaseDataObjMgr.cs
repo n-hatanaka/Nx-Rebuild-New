@@ -25,7 +25,7 @@ namespace NxRebuild.shared {
         string Ws_TblName { get; }
 
         Task<List<TKey>> DeleteData(IEnumerable<TKey> dataIDs);
-
+        void SetParent(T obj);
         Task DistributeJsonData(string json);
         Task Initialize();
         string LoadMultipleDataAsJson(List<TKey> idList);
@@ -117,11 +117,6 @@ namespace NxRebuild.shared {
         }
         protected abstract TKey GenerateDataID();
 
-        //BaseDataObjのインスタンスを作成する
-        protected T CreateDataObj() {
-            var obj = new T();
-            return obj;
-        }
 
         public virtual T CreateNewDataObj() {
             var dataObj = new T();
@@ -163,7 +158,7 @@ namespace NxRebuild.shared {
         
             foreach (var record in records)
             {
-                T obj = CreateDataObj();
+                T obj = new T();
                 obj.DBcon = DBcon;
                 obj.SelfObjMgr = this;
                 obj.Setproperties((IDictionary<string, object>)record);
@@ -172,7 +167,53 @@ namespace NxRebuild.shared {
 
                 _dataList.Add(obj);
             }
+            //  全オブジェクトに対して親子関係をセット
+            foreach (var obj in _dataList) {
+                SetParent((T)obj);
+            }
         }
+
+        // 親子関係を設定する（新規作成の場合はUIがここに新しいDataObjを渡す。
+        public virtual void SetParent(T obj) {
+            // 親ID列が存在しない世界線
+            if (string.IsNullOrEmpty(obj.ParentIDColName)) {
+                obj.ParentDataObj = null;
+                return;
+            }
+
+            var pid = obj.ParentID;
+
+            // 親IDが未設定（0やnull） → 最小値をセット
+            if (EqualityComparer<TKey>.Default.Equals(pid, default(TKey))) {
+                obj.ParentDataObj = null;
+                return;
+            }
+
+            // 親を検索
+            var parent = _dataList.FirstOrDefault(x =>
+                EqualityComparer<TKey>.Default.Equals(x.DataID, pid));
+
+            if (parent != null) {
+                obj.ParentDataObj = parent;
+            } else {
+                // ★ 親が存在しない世界線 → 最小値をセット
+                obj.ParentDataObj = null; // 親オブジェクトは null
+                obj.ParentID = GetMinValue<TKey>();
+            }
+        }
+
+        //TKeyの最小値を返すメソッド。int.MinValueやGuid.Emptyなど、TKeyの型に応じて適切な最小値を返す。
+        public static TKey GetMinValue<TKey>() {
+            if (typeof(TKey) == typeof(int))
+                return (TKey)(object)int.MinValue;
+
+            if (typeof(TKey) == typeof(Guid))
+                return (TKey)(object)Guid.Empty; // UUIDv7 の最小値
+
+            throw new NotSupportedException("Unsupported TKey type.");
+        }
+
+
 
         // 指定したID群を順次削除し、削除に失敗したIDを返す。
         // 返り値のリストが空なら全件成功。
@@ -258,7 +299,7 @@ namespace NxRebuild.shared {
 
                 if (obj == null) {
                     // 存在しなければ新規作成
-                    obj = CreateDataObj();
+                    obj = new T();
                     obj.DataID = id; // IDをセット
                     _dataList.Add(obj);
                 }

@@ -62,6 +62,16 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             newSyncObj.Auth = _auth;
             return newSyncObj;
         }
+        // Base の SetParent を透過ラップ
+        public virtual void SetParent(TBase obj) {
+            _baseDataObjMgr.SetParent(obj);
+        }
+
+        // Base の新規作成を透過ラップ
+        public virtual TBase CreateNewDataObj() {
+            return _baseDataObjMgr.CreateNewDataObj();
+        }
+
 
         // データベースからデータを取得する（クライアント・サーバー共用）
         public virtual async Task Initialize() {
@@ -76,9 +86,16 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                 TSync readData = CreateNewSyncDataObj();
                 readData.DBcon = DBcon;
                 readData.TenantCode = TenantCode;
+                readData.CurrUsrID = CurrentUserID;
+                readData.Http = _http;
+                readData.Auth = _auth;
                 readData.Setproperties(dict.ToDictionary(k => k.Key, v => v.Value));
 
                 _baseDataObjMgr._dataList.Add(readData);
+            }
+            //  全オブジェクトに対して親子関係をセット
+            foreach (var obj in _baseDataObjMgr.DataList) {
+                SetParent((TBase)obj);
             }
         }
 

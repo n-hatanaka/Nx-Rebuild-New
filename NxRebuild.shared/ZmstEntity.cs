@@ -23,8 +23,9 @@ namespace NxRebuild.shared {
             _tblName = "Zmst";
             _nameColName = "Z_name";
             _idColName = "LocalCode";
-
+            _parentIDColName = "gun_cd";
             _s_tblName = "tan_m";  // サブテーブル
+
             _infoTbl = "";
             _w_tblName = "";
             _ws_tblName = "";
@@ -52,7 +53,7 @@ namespace NxRebuild.shared {
         }
 
         // ---------------------------------------------------------
-        // DataOpen（排他制御 + tan_m 読み込み）
+        // DataOpen（排他制御）
         // ---------------------------------------------------------
         public override async Task<LockStatus> DataOpen() {
             var lockReq = new LockStatus {
