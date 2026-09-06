@@ -123,13 +123,14 @@ namespace NxRebuild.shared {
             return obj;
         }
 
-        public T CreateNewDataObj() {
+        public virtual T CreateNewDataObj() {
             var dataObj = new T();
             dataObj.DBcon = DBcon;
+            dataObj.SelfObjMgr = this;
+            dataObj.Setproperties(GetEmptySchema());
             dataObj.TenantCode = TenantCode;
             dataObj.CurrUsrID = CurrentUserID;
             dataObj.DataID = GenerateDataID();
-            dataObj.Setproperties(GetEmptySchema());
             _dataList.Add(dataObj);
             return dataObj;
         }
@@ -164,9 +165,11 @@ namespace NxRebuild.shared {
             {
                 T obj = CreateDataObj();
                 obj.DBcon = DBcon;
-                obj.TenantCode = TenantCode;
+                obj.SelfObjMgr = this;
                 obj.Setproperties((IDictionary<string, object>)record);
-        
+                obj.TenantCode = TenantCode;
+                obj.CurrUsrID = CurrentUserID;
+
                 _dataList.Add(obj);
             }
         }

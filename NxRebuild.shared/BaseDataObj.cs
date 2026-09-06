@@ -42,6 +42,8 @@ namespace NxRebuild.shared {
         string DataName { get; }
         NxDataType DataType { get; }
         IDbConnection DBcon { get; set; }
+        string ParentIDColName { get; }
+        TKey ParentID {  get; set; }
         IBaseDataObj<TKey>? ParentDataObj { get; set; }
         string IdColName { get; }
         string InfoTbl { get; }
@@ -49,7 +51,7 @@ namespace NxRebuild.shared {
         Guid LockerID { get; }
         string NameColName { get; }
         string S_TblName { get; }
-        IBaseDataObjMgr<BaseDataObj<TKey>, TKey> SelfObjMgr { get; set; }
+        object SelfObjMgr { get; set; }
         string TblName { get; }
         Guid TenantCode { get; set; }
         DateTime Update_at { get;  }
@@ -70,7 +72,7 @@ namespace NxRebuild.shared {
 
         protected string _nameColName; //テーブルのデータ名カラムのカラム名
         protected string _idColName;//テーブルのIDカラムのカラム名
-
+        protected string _parentIDColName;//テーブルの親IDカラムのカラム名
         protected string _tblName; //データ名等基本データが格納されるテーブル名
         protected string _s_tblName;//材料など詳細データが格納されるテーブル名
         protected string _infoTbl;//_tblNameに加え栄養素などの集計結果が入っているテーブル
@@ -81,6 +83,7 @@ namespace NxRebuild.shared {
         public IBaseDataObj<TKey>? ParentDataObj { get; set; }
         public string NameColName => _nameColName;
         public string IdColName => _idColName;
+        public string ParentIDColName => _parentIDColName = "";
         public string TblName => _tblName;
         public string S_TblName => _s_tblName;
         public string InfoTbl => _infoTbl;
@@ -93,7 +96,7 @@ namespace NxRebuild.shared {
         protected DateTime _locked_at;
 
 
-        public IBaseDataObjMgr<BaseDataObj<TKey>, TKey> SelfObjMgr { get; set; }
+        public object SelfObjMgr { get; set; }
         public Guid TenantCode { get; set; }
         public IDbConnection DBcon { get; set; }
 
@@ -107,6 +110,30 @@ namespace NxRebuild.shared {
         public string DataName {
             get => (string)_rawData[_nameColName];
         }
+
+        public TKey ParentID {
+            get {
+                // 親ID列が存在しない
+                if (string.IsNullOrEmpty(_parentIDColName))
+                    return default(TKey); // intなら0、stringならnull
+
+                // 親ID列がある
+                if (_rawData.TryGetValue(_parentIDColName, out var v) && v != null)
+                    return (TKey)v;
+
+                return default(TKey);
+            }
+
+            set {
+                // 親ID列が存在しない線 → 無効化
+                if (string.IsNullOrEmpty(_parentIDColName))
+                    return;
+
+                // 親ID列がある → 通常処理
+                _rawData[_parentIDColName] = value;
+            }
+        }
+
 
         public NxDataType DataType => _datatype; // ※_datatypeはメタデータ側管理ならそのままでOK
 
