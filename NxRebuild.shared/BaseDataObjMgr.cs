@@ -73,6 +73,8 @@ namespace NxRebuild.shared {
         public string W_TblName { get => _w_tblName; }
         public string Ws_TblName { get => _ws_tblName; }
 
+        protected string RootName { get; set; } = "Root";
+
         public NxDataType DataType { get; set; }
 
         public Guid TenantCode { get; set; }
@@ -117,6 +119,36 @@ namespace NxRebuild.shared {
         }
         protected abstract TKey GenerateDataID();
 
+        public virtual T CreateRoot() {
+            var root = new T();
+
+            root.DBcon = DBcon;
+            root.SelfObjMgr = this;
+
+            // ルートは物理レコードを持たないので空スキーマでよい
+            root.Setproperties(new Dictionary<string, object?>());
+
+            root.TenantCode = TenantCode;
+            root.CurrUsrID = CurrentUserID;
+
+            // ★ GenerateDataID を使わず、型に応じて 0 / Guid.Empty をセット
+            if (typeof(TKey) == typeof(int))
+                root.DataID = (TKey)(object)0;
+            else if (typeof(TKey) == typeof(Guid))
+                root.DataID = (TKey)(object)Guid.Empty;
+            else
+                throw new NotSupportedException("Unsupported TKey type for CreateRoot.");
+
+            root.DataName = RootName;
+
+            root.DataType = NxDataType.root;
+
+            // ルートは親を持たない
+            root.ParentDataObj = null;
+
+            _dataList.Add(root);
+            return root;
+        }
 
         public virtual T CreateNewDataObj() {
             var dataObj = new T();
