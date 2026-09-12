@@ -69,26 +69,6 @@ namespace NxRebuild.shared {
             return lockStatus;
         }
 
-        // ---------------------------------------------------------
-        // tan_m 読み込み
-        // ---------------------------------------------------------
-        public async Task LoadTanMAsync() {
-            string sql = $@"
-                SELECT *
-                FROM ""tan_m""
-                WHERE ""LocalCode"" = @DataID
-                  AND ""tenant_code"" = @TenantCode;
-            ";
-
-            var rows = await DBcon.QueryAsync<Dictionary<string, object>>(sql,
-                new { DataID = this.DataID, TenantCode = this.TenantCode });
-
-            TanList.Clear();
-
-            foreach (var row in rows) {
-                TanList.Add(new TanMEntity(row));
-            }
-        }
 
         // ---------------------------------------------------------
         // 物理削除（tan_m）

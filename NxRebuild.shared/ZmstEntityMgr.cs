@@ -28,7 +28,6 @@ namespace NxRebuild.shared {
         }
 
         public override ZmstEntity CreateNewDataObj() {
-            using var tran = DBcon.BeginTransaction();
 
             var obj = new ZmstEntity();
             obj.DBcon = DBcon;
@@ -38,8 +37,6 @@ namespace NxRebuild.shared {
 
             obj.DataID = 0; //IDは保存時に取得する。
             obj.Setproperties(GetEmptySchema());
-
-            tran.Commit();
 
             _dataList.Add(obj);
             return obj;

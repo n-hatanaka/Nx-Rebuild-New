@@ -19,13 +19,16 @@ namespace NxRebuild.shared {
     public enum NxDataType {
         root = 0,
         Folder = 1,
+
+        //ここから下は使われるシステムに合わせて作成する。必要なければ削除してOK
         Zairyou = 2,
         Ryouri = 4,
         Meal = 8,
         Kondate = 16,
         Calendar = 32,
         Person = 64,
-        InstMeals = 128 //給食'Institutional meals'
+        InstMeals = 128, //給食'Institutional meals'
+        RyouriRow = 256//料理内材料
 
     }
 

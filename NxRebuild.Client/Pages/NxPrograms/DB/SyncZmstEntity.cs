@@ -22,11 +22,6 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         // --- tan_m のリストを直接参照できるようにする ---
         public List<TanMEntity> TanList => Zmst.TanList;
 
-        // --- tan_m のロード（サーバーではなくローカルDBから） ---
-        public async Task LoadTanMAsync() {
-            await Zmst.LoadTanMAsync();
-        }
-
         // --- SaveAsync（同期世界線） ---
         public async Task<bool> SaveAsync() {
             // 1. Base世界線で保存（ローカルDB）
