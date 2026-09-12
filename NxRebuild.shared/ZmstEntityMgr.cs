@@ -102,7 +102,31 @@ namespace NxRebuild.shared {
             
             var root = CreateRoot();
             _dataList.Add(root);
-            
+            // ---------------------------------------------------------
+            // ★ gun_m（分類マスタ）をロードして CategoryEntity を追加
+            // ---------------------------------------------------------
+            string sqlCat = @"
+                                SELECT *
+                                FROM ""gun_m""
+                                WHERE ""tenant_code"" = @TenantCode;
+                            ";
+
+            var catRows = await DBcon.QueryAsync<Dictionary<string, object>>(sqlCat,
+                                                                                new { TenantCode });
+
+            foreach (var row in catRows) {
+                var cat = new CategoryEntity();
+                cat.DBcon = DBcon;
+                cat.TenantCode = TenantCode;
+                cat.CurrUsrID = CurrentUserID;
+                cat.Setproperties(row);
+
+                _dataList.Add(cat);
+            }
+
+            // ---------------------------------------------------------
+            // ★ Zmst + tan_m をロード
+            // ---------------------------------------------------------
             var records = await LoadRecordsAsync();
 
             foreach (var record in records) {

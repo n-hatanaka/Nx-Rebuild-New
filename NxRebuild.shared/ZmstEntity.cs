@@ -6,6 +6,70 @@ using System.Threading.Tasks;
 using Dapper;
 
 namespace NxRebuild.shared {
+    public class CategoryEntity : BaseDataObj<int> {
+        public CategoryEntity() {
+            _tblName = "gun_m";
+            _idColName = "syou_cd";
+            _nameColName = "syou_name";
+            _parentIDColName = "dai_cd";
+            _datatype = NxDataType.Folder;   // UIでフォルダ扱い
+        }
+
+        // ---------------------------------------------------------
+        // ★ 編集禁止：常に「ロックなし」を返す
+        // ---------------------------------------------------------
+        public override Task<LockStatus> DataOpen() {
+            return Task.FromResult(new LockStatus {
+                Exists = true,
+                IsLocked = false
+            });
+        }
+
+
+        // ---------------------------------------------------------
+        // ★ 名前変更禁止：常に false
+        // ---------------------------------------------------------
+        public override Task<bool> ReName(string newName) {
+            return Task.FromResult(false);
+        }
+
+        // ---------------------------------------------------------
+        // ★ 保存禁止：常に false
+        // ---------------------------------------------------------
+        public override Task<bool> SaveAsync() {
+            return Task.FromResult(false);
+        }
+
+        // ---------------------------------------------------------
+        // ★ 保存SQL禁止：常に false
+        // ---------------------------------------------------------
+        public override Task<bool> SaveQueryExec(IDbTransaction tran) {
+            return Task.FromResult(false);
+        }
+
+        // ---------------------------------------------------------
+        // ★ 削除禁止：常に false
+        // ---------------------------------------------------------
+        public override Task<bool> DeleteQueryExec(IDbTransaction tran) {
+            return Task.FromResult(false);
+        }
+
+        // ---------------------------------------------------------
+        // ★ 論理削除禁止：常に false
+        // ---------------------------------------------------------
+        public override Task<bool> SoftDeleteQueryExec(IDbTransaction tran) {
+            return Task.FromResult(false);
+        }
+
+        // ---------------------------------------------------------
+        // JSON生成SQLは使わないので空でOK
+        // ---------------------------------------------------------
+        protected override string CreateJSONsql() {
+            return "";
+        }
+    }
+
+
     public class TanMEntity {
         public Dictionary<string, object?> Raw { get; private set; }
 
@@ -72,27 +136,13 @@ namespace NxRebuild.shared {
 
         // ---------------------------------------------------------
         // 物理削除（tan_m）
-        // 更新処理用Zmstは削除してはいけない
+        // Zmstもtam_mも削除してはいけない
         // ---------------------------------------------------------
-        public override async Task<bool> DeleteQueryExec(IDbTransaction transaction) {
-            try {
-                // tan_m 削除
-                string sqlSub = $@"
-                    DELETE FROM ""{_s_tblName}""
-                    WHERE ""LocalCode"" = @DataID
-                      AND ""tenant_code"" = @TenantCode;
-                ";
-
-                await DBcon.ExecuteAsync(sqlSub, new {
-                    DataID = this.DataID,
-                    TenantCode = this.TenantCode
-                }, transaction);
-
-                return true;
-            } catch {
-                return false;
-            }
+        public override Task<bool> DeleteQueryExec(IDbTransaction transaction) {
+            // ★ 削除禁止：常に false を返す
+            return Task.FromResult(false);
         }
+
 
         // ---------------------------------------------------------
         // ソフトデリート（Zmst のみ）単位マスタは消してはいけないので放置
