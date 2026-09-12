@@ -187,6 +187,12 @@ namespace NxRebuild.shared {
         public BaseDataObj() {
 
         }
+
+        public virtual void SetAsRoot(string RootName, NxDataType DataType = NxDataType.root) {
+            _rawData[_nameColName] = RootName;
+            _datatype = DataType;
+        }
+
         public virtual void Setproperties(IDictionary<string, object> record)
         {
             // ---------------------------------------------------------

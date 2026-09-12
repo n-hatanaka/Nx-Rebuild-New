@@ -102,6 +102,10 @@ namespace NxRebuild.shared {
         // Initialize（Zmst + tan_m を DataList に突っ込む）
         // ---------------------------------------------------------
         public override async Task Initialize() {
+            
+            var root = CreateRoot();
+            _dataList.Add(root);
+            
             var records = await LoadRecordsAsync();
 
             foreach (var record in records) {
@@ -113,10 +117,21 @@ namespace NxRebuild.shared {
                 // Zmst の行をセット
                 obj.Setproperties((IDictionary<string, object>)record);
 
-                // tan_m の行を ZmstEntity 側でロード
-                await obj.LoadTanMAsync();
+                var subRowsObj = record["_tan_m_rows"];
+                // ★ tan_m の行を record から取り出す
+                if (record["_tan_m_rows"] is List<Dictionary<string, object>> subRows) {
+                    foreach (var row in subRows) {
+                        obj.TanList.Add(new TanMEntity(row));
+                    }
+                } else {
+                    obj.TanList.Clear();
+                }
 
                 _dataList.Add(obj);
+            }
+            //  全オブジェクトに対して親子関係をセット
+            foreach (var obj in _dataList) {
+                SetParent((ZmstEntity)obj);
             }
         }
     }

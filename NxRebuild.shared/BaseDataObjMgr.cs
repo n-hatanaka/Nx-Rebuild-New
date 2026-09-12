@@ -73,7 +73,7 @@ namespace NxRebuild.shared {
         public string W_TblName { get => _w_tblName; }
         public string Ws_TblName { get => _ws_tblName; }
 
-        protected string RootName { get; set; } = "Root";
+        protected string RootName { get; set; } = "";//rootNodeの表示名。空の場合はInitializeメソッドでRootNodeオブジェクトは作成されない
 
         public NxDataType DataType { get; set; }
 
@@ -120,6 +120,37 @@ namespace NxRebuild.shared {
         protected abstract TKey GenerateDataID();
 
 
+        //RootノードにあたるDataObjを生成
+        protected virtual T CreateRoot() {
+            var root = new T();
+
+            root.DBcon = DBcon;
+            root.SelfObjMgr = this;
+
+            // ルートは物理レコードを持たないので空スキーマでよい
+            root.Setproperties(new Dictionary<string, object?>());
+
+            root.TenantCode = TenantCode;
+            root.CurrUsrID = CurrentUserID;
+
+            // ★ GenerateDataID を使わず、型に応じて 0 / Guid.Empty をセット
+            if (typeof(TKey) == typeof(int))
+                root.DataID = (TKey)(object)0;
+            else if (typeof(TKey) == typeof(Guid))
+                root.DataID = (TKey)(object)Guid.Empty;
+            else
+                throw new NotSupportedException("Unsupported TKey type for CreateRoot.");
+
+            //rootとしての属性をセットする
+            root.SetAsRoot(RootName);
+
+            // ルートは親を持たない
+            root.ParentDataObj = null;
+
+            _dataList.Add(root);
+            return root;
+        }
+
         public virtual T CreateNewDataObj() {
             var dataObj = new T();
             dataObj.DBcon = DBcon;
@@ -156,6 +187,12 @@ namespace NxRebuild.shared {
         //コンストラクタで呼び出してはいけない。
         public virtual async Task Initialize()
         {
+            //root名が設定されている場合のみrootnodeオブジェクトを生成
+            if (RootName != "") {
+                T root = CreateRoot();
+                _dataList.Add(root);
+            }
+
             var records = await LoadRecordsAsync();
         
             foreach (var record in records)
