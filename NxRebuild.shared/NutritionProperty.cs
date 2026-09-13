@@ -41,7 +41,12 @@ namespace NxRebuild.shared
         {
             throw new NotImplementedException();
         }
-    
+
+
+        public override async Task<LockStatus> DataClose() {
+            throw new NotImplementedException();
+        }
+
         public override async Task<bool> DeleteQueryExec(IDbTransaction transaction)
         {
             // No-op: 同期時にクライアント側で削除処理を行わない設計のため、何もしないで成功を返す

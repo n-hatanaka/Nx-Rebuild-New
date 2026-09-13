@@ -10,7 +10,12 @@ using System.Threading.Tasks;
 using Dapper;
 
 namespace NxRebuild.shared {
-    public class ZmstEntityMgr : BaseDataObjMgr<ZmstEntity, int> {
+    public interface IZmstEntityMgr : IBaseDataObjMgr<ZmstEntity, int> {
+        // ★ 追加メンバなし
+        // 「材料マスタのマネージャである」という意味付けだけを持つ
+    }
+
+    public class ZmstEntityMgr : BaseDataObjMgr<ZmstEntity, int>, IZmstEntityMgr {
         public ZmstEntityMgr(IDbConnection db, Guid tenantCode, Guid currUserID)
             : base(db, tenantCode, currUserID) {
             _tblName = "Zmst";

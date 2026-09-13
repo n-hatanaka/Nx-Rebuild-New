@@ -1,5 +1,7 @@
-﻿@inherits AknTreeViewBase
+﻿@typeparam TKey
+@inherits AknTreeViewBase<TKey>
 @using MudBlazor
+@namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View
 
 <style>
     .tree-node {
@@ -63,67 +65,70 @@
 
 @code {
 
-    private RenderFragment RenderNode(MyTreeData node) => __builder =>
-        {
-            <li>
-                <div class="tree-node @(node.IsHighlighted ? "tree-node-active" : "") @(node.IsEditing ? "editing" : "") @(node.IsSelected ? "selected" : "")"
-                     draggable="@(!node.IsEditing && !DisableNodeDrag ? "true" : "false")"
-                     @ondragstart="() => { if (!node.IsEditing) { DraggingState.DraggingTreeNode = node; DraggingState.DraggingGridItem = null; } }"
-                     @ondragover:preventDefault="true"
-                     @ondragenter="() => { if (!node.IsEditing && !DisableNodeDrop) node.IsHighlighted = true; }"
-                     @ondragleave="() => node.IsHighlighted = false"
-                     @ondrop="() => DropOnNode(node)"
-                     @onclick="() => SelectTreeNode(node)"
-                     @onclick:stopPropagation="true"
-                     @ondblclick="() => StartEditingTreeNode(node)" 　
-                     @ondblclick:stopPropagation="true">
-                    //上から順に説明
-                    // ノードのドラッグが有効または無効に応じてdraggable属性を設定します。
-                    // ドラッグ開始イベントハンドラで、ドラッグ中のノードとグリッドアイテムを設定します。
-                    // ドラッグオーバーイベントハンドラでデフォルトの挙動を停止します。
-                    // ドラッグエントリーイベントハンドラで、ノードが編集中でないまたはドロップを受け付けられている場合、ハイライト状態を更新します。
-                    // ドラッグリーブイベントハンドラで、ノードのハイライト状態を更新します。
-                    // ドロップイベントハンドラで、ドロップを受け付けられている場合のみ、DropOnNodeメソッドを呼び出します。
-                    // クリックイベントハンドラで、ノードを選択します。
-                    // クリックイベントの伝播を停止します。
-                    // ダブルクリックイベントハンドラで、ノードを編集モードに切り替えます。
-                    // ダブルクリックイベントの伝播を停止します。
+    private RenderFragment RenderNode(MyTreeData<TKey> node) => __builder =>
+    {
+        <li>
+            <div class="tree-node @(node.IsHighlighted ? "tree-node-active" : "") @(node.IsEditing ? "editing" : "") @(node.IsSelected ? "selected" : "")"
+                 draggable="@(!node.IsEditing && !DisableNodeDrag ? "true" : "false")"
+                 @ondragstart="() => { if (!node.IsEditing) { DraggingState<TKey>.DraggingTreeNode = node; DraggingState<TKey>.DraggingGridItem = null; } }"
+                 @ondragover:preventDefault="true"
+                 @ondragenter="() => { if (!node.IsEditing && !DisableNodeDrop) node.IsHighlighted = true; }"
+                 @ondragleave="() => node.IsHighlighted = false"
+                 @ondrop="() => DropOnNode(node)"
+                 @onclick="() => SelectTreeNode(node)"
+                 @onclick:stopPropagation="true"
+                 @ondblclick="() => StartEditingTreeNode(node)"
+                 @ondblclick:stopPropagation="true">
 
+                //上から順に説明
+                // ノードのドラッグが有効または無効に応じてdraggable属性を設定します。
+                // ドラッグ開始イベントハンドラで、ドラッグ中のノードとグリッドアイテムを設定します。
+                // ドラッグオーバーイベントハンドラでデフォルトの挙動を停止します。
+                // ドラッグエントリーイベントハンドラで、ノードが編集中でないまたはドロップを受け付けられている場合、ハイライト状態を更新します。
+                // ドラッグリーブイベントハンドラで、ノードのハイライト状態を更新します。
+                // ドロップイベントハンドラで、ドロップを受け付けられている場合のみ、DropOnNodeメソッドを呼び出します。
+                // クリックイベントハンドラで、ノードを選択します。
+                // クリックイベントの伝播を停止します。
+                // ダブルクリックイベントハンドラで、ノードを編集モードに切り替えます。
+                // ダブルクリックイベントの伝播を停止します。
 
-                    // ノードの展開/-collapse状態を切り替えるアイコンとクリックイベントハンドラ。
-                    <span class="tree-expander" @onclick="() => node.IsExpanded = !node.IsExpanded" @onclick:stopPropagation="true">
-                        <MudIcon Icon="@(node.Children.Any() ? (node.IsExpanded ? Icons.Material.Filled.ArrowDropDown : Icons.Material.Filled.ArrowRight) : "")" Size="Size.Small" />
-                    </span>
-                    <MudIcon Icon="@(node.Children.Any() ? Icons.Material.Filled.Folder : Icons.Material.Filled.InsertDriveFile)" Size="Size.Small" Class="mr-2" Style="color:#fbc02d;" />
-                    @if (node.IsEditing)
-                    {
-                        <input @key="@(node.GetHashCode() + node.Text)"
-                               @bind="node.EditingText"
-                               @bind:event="oninput"
-                               @ref="editInput"
-                               @onfocusout="() => StopEditingTreeNode(node, true)"
-                               @onkeyup="(e) => HandleTreeKeyUp(e, node)"
-                               @onclick:stopPropagation="true"
-                               @ondblclick:stopPropagation="true"
-                               class="tree-edit-input" />
-                    }
-                    else
-                    {
-                        // 編集モード中であれば、編集用の入力フィールドとイベントハンドラを表示します。そうでなければ、ノードのテキストを表示します。
-                        <span style="flex-grow:1;">@node.Text</span>
-                    }
-                </div>
+                <span class="tree-expander" @onclick="() => node.IsExpanded = !node.IsExpanded" @onclick:stopPropagation="true">
+                    <MudIcon Icon="@(node.Children.Any() ? (node.IsExpanded ? Icons.Material.Filled.ArrowDropDown : Icons.Material.Filled.ArrowRight) : "")"
+                             Size="Size.Small" />
+                </span>
 
-                // 子ノードがある場合、子ノードを表示します。
-                @if (node.IsExpanded && node.Children.Any())
+                <MudIcon Icon="@(node.Children.Any() ? Icons.Material.Filled.Folder : Icons.Material.Filled.InsertDriveFile)"
+                         Size="Size.Small"
+                         Class="mr-2"
+                         Style="color:#fbc02d;" />
+
+                @if (node.IsEditing)
                 {
-                    <ul style="list-style: none; padding-left: 20px; border-left: 1px solid #eee;">
-                        @foreach (var child in node.Children)
-                        {
-                            @RenderNode(child)
-                        }
-                    </ul>
+                    <input @key="@(node.GetHashCode() + node.Text)"
+                           @bind="node.EditingText"
+                           @bind:event="oninput"
+                           @ref="editInput"
+                           @onfocusout="() => StopEditingTreeNode(node, true)"
+                           @onkeyup="(e) => HandleTreeKeyUp(e, node)"
+                           @onclick:stopPropagation="true"
+                           @ondblclick:stopPropagation="true"
+                           class="tree-edit-input" />
                 }
-            </li>
-        };
+                else
+                {
+                    <span style="flex-grow:1;">@node.Text</span>
+                }
+            </div>
+
+            @if (node.IsExpanded && node.Children.Any())
+            {
+                <ul style="list-style: none; padding-left: 20px; border-left: 1px solid #eee;">
+                    @foreach (var child in node.Children)
+                    {
+                        @RenderNode(child)
+                    }
+                </ul>
+            }
+        </li>
+    };
 }

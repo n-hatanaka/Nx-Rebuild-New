@@ -113,6 +113,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
         public async Task<LockStatus> DataOpen() => await _dataObj.DataOpen();
 
+        public async Task<LockStatus> DataClose() => await _dataObj.DataClose();
 
         public virtual async Task<bool> ReName(string newName) {
             // 1. バリデーション

@@ -1,40 +1,41 @@
 ﻿using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
+using NxRebuild.shared;
 
 
 namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
-    public abstract class AknListViewBase : ComponentBase {
+    public abstract class AknListViewBase<TKey> : ComponentBase where TKey : notnull {
 
 
-        [Parameter] public List<MyDataObj> ListDataItems { get; set; } = new(); // 表示するデータ一覧
+        [Parameter] public List<MyDataObj<TKey>> ListDataItems { get; set; } = new(); // 表示するデータ一覧
         [Parameter] public List<GridColumn> Columns { get; set; } = new(); // カラム定義リスト
         [Parameter] public bool AllowSorting { get; set; } = true; // データのソートを許可するかどうか
         [Parameter] public bool DisableRowDragDrop { get; set; } = false; // 行のドラッグ・ドロップ機能を無効化するかどうか
 
-        [Parameter] public EventCallback<(MyDataObj Item, MouseEventArgs Args)> OnRowClicked { get; set; } // 行クリックイベントコールバック
-        [Parameter] public EventCallback<MyDataObj> OnRowDoubleClicked { get; set; } // 行ダブルクリックイベントコールバック
-        [Parameter] public EventCallback<(int TargetIndex, MyDataObj? DraggedItem)> OnRowDropped { get; set; } // 行ドロップイベントコールバック
+        [Parameter] public EventCallback<(MyDataObj<TKey> Item, MouseEventArgs Args)> OnRowClicked { get; set; } // 行クリックイベントコールバック
+        [Parameter] public EventCallback<MyDataObj<TKey>> OnRowDoubleClicked { get; set; } // 行ダブルクリックイベントコールバック
+        [Parameter] public EventCallback<(int TargetIndex, MyDataObj<TKey>? DraggedItem)> OnRowDropped { get; set; } // 行ドロップイベントコールバック
         [Parameter] public EventCallback<(string Key, bool IsAscending)> OnSortRequested { get; set; } // ソートリクエストイベントコールバック
 
         protected bool _isDoubleClicking = false; // ダブルクリック処理中かどうかのフラグ
         private string _currentSortKey = ""; // 現在ソート対象のキー
         private bool _isAscending = true; // 昇順か降順かのフラグ
         private DateTime _lastClickTime = DateTime.MinValue; // 最終クリック時間
-        private MyDataObj? _lastClickedItem; // 最後にクリックされたアイテム
+        private MyDataObj<TKey>? _lastClickedItem; // 最後にクリックされたアイテム
         protected ElementReference _listInputRef; // 入力フィールドへの参照
 
 
         // 「項目名」の列配置を解決するメソッド
         // もし親で "Name" という DataKey のカラム定義が存在すればその配置クラスを使い、
         // なければデフォルトで "List-cell-left" を返す
-        protected string GetNameAlignClass() {
+        public string GetNameAlignClass() {
             var nameCol = Columns.FirstOrDefault(c => c.DataKey == "Name");
             return nameCol != null && !string.IsNullOrEmpty(nameCol.AlignClass)
                    ? nameCol.AlignClass
                    : "List-cell-left";
         }
 
-        protected void Sort(string key) {
+        public void Sort(string key) {
             if (!AllowSorting || ListDataItems == null || !ListDataItems.Any()) return; // ソートを許可されていない、またはデータが空なら何もしない
 
             if (_currentSortKey == key) {
@@ -44,13 +45,13 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
                 _isAscending = true;
             }
 
-            List<MyDataObj> sortedList;
+            List<MyDataObj<TKey>> sortedList;
             if (key == "Name") { // 「項目名」でソートする場合
                 sortedList = _isAscending
                     ? ListDataItems.OrderBy(i => i.Name).ToList() // 昇順に並べ替え
                     : ListDataItems.OrderByDescending(i => i.Name).ToList(); // 降順に並べ替え
             } else { // 数値でソートする場合
-                Func<MyDataObj, object> keySelector = i =>
+                Func<MyDataObj<TKey>, object> keySelector = i =>
                 {
                     if (!i.ExtraData.TryGetValue(key, out var val) || val == null) {
                         return string.Empty; // データが空なら空文字を返す
@@ -72,12 +73,24 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
             base.StateHasChanged(); // 状態が変更されたことを通知
         }
 
-        protected string GetSortIcon(string key) {
+
+
+        public virtual void HandleNodeSelection(MyTreeData<TKey> node) {
+        }
+
+        public virtual void BuildGridFromObj(IBaseDataObj<TKey> obj) {
+            ListDataItems.Clear();
+            ListDataItems.Add(new MyDataObj<TKey>(obj));
+        }
+
+        public virtual void HandleGridDoubleClick(MyDataObj<TKey> item) {
+        }
+        public string GetSortIcon(string key) {
             if (!AllowSorting || _currentSortKey != key) return ""; // ソートを許可されていない、またはソート対象のキーと異なるなら空文字を返す
             return _isAscending ? " ▲" : " ▼"; // 昇順なら↑、降順なら↓のアイコンを返す
         }
 
-        protected async Task HandleClick(MyDataObj item, MouseEventArgs e) {
+        public async Task HandleClick(MyDataObj<TKey> item, MouseEventArgs e) {
             var now = DateTime.Now;
             if (item == _lastClickedItem && (now - _lastClickTime).TotalMilliseconds < 300) { // ダブルクリック処理中なら何もしない
                 _lastClickTime = DateTime.MinValue; // 最終クリック時間をリセット
@@ -104,7 +117,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
             }
         }
 
-        protected async Task HandleDoubleClick(MyDataObj item) {
+        public async Task HandleDoubleClick(MyDataObj<TKey> item) {
             _isDoubleClicking = true; // ダブルクリック処理中に設定
 
             if (OnRowDoubleClicked.HasDelegate) {
@@ -112,13 +125,13 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
             }
         }
 
-        protected async Task DropRow(int targetIndex) {
+        public async Task DropRow(int targetIndex) {
             if (!DisableRowDragDrop && OnRowDropped.HasDelegate) { // 行ドラッグ・ドロップが有効で、ドロップイベントコールバックがあるなら
-                await OnRowDropped.InvokeAsync((targetIndex, DraggingState.DraggingGridItem)); // ドロップイベントを呼び出す
+                await OnRowDropped.InvokeAsync((targetIndex, DraggingState<TKey>.DraggingGridItem)); // ドロップイベントを呼び出す
             }
         }
 
-        protected async Task StartEditingListItem(MyDataObj item) {
+        public async Task StartEditingListItem(MyDataObj<TKey> item) {
             foreach (var i in ListDataItems) i.IsEditing = false; // すべてのアイテムの編集モードをリセット
             item.IsEditing = true; // クリックされたアイテムの編集モードに設定
 
@@ -130,7 +143,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
             }
         }
 
-        protected string FormatValue(object val, string format) { // 値をフォーマットするメソッド
+        public string FormatValue(object val, string format) { // 値をフォーマットするメソッド
             if (val == null) return "-"; // 値が空なら"-"
             if (string.IsNullOrEmpty(format)) return val.ToString(); // フォーマットが空なら元の値を返す
 

@@ -1,8 +1,6 @@
-﻿@typeparam TKey
-@inherits AknTreeListViewBase<TKey>
-
+﻿@inherits FrmZmstViewBase
 @using MudBlazor
-@namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View
+@using NxRebuild.Client.Services
 
 <style>
     /* 画面全体のレイアウト（左右並び・隙間・高さ） */
@@ -10,16 +8,17 @@
         display: flex;
         flex-direction: row;
         gap: 10px;
-        flex: 1;
-        min-height: 0;
+        flex: 1; /* ← ウインドウに合わせて伸縮 */
+        min-height: 0; /* ← はみ出し防止 */
         min-width: 0;
-        width: 100%;
+        width: 100%; /* ← これで flex の誤判定を完全に防ぐ */
         overflow: hidden;
         color: black;
-        padding: 5px;
+        padding: 5px; /* ← 上下左右すべてに余白 */
         box-sizing: border-box;
     }
 
+    /* 画面が狭い時のレスポンシブ制御（上下並び替え、器の大きさ調整） */
     @@media (max-width: 700px) {
         .app-container {
             flex-direction: column;
@@ -37,6 +36,7 @@
         }
     }
 
+    /* スクロール領域の基本枠（中身の配置とスクロール可否） */
     .scroll-pane {
         background-color: white;
         border: 1px solid #ccc;
@@ -51,25 +51,26 @@
     .tree-pane {
         flex: 0 0 300px;
         min-width: 250px;
-        min-height: 0;
+        min-height: 0; /* ← 必須 */
     }
 
     .grid-pane {
         flex: 2;
         min-width: 0;
-        min-height: 0;
+        min-height: 0; /* ← 必須 */
     }
 </style>
 
 <div class="app-container">
-    @* A. ツリーコンポーネント *@
+    @* A. ツリーコンポーネント (イベント処理を外部結合) *@
     <AknTreeView TKey="int"
                  TreeData="TreeData"
                  OnNodeSelected="HandleNodeSelection"
                  OnNodeDropped="HandleNodeDrop"
                  @ref="_treeview" />
 
-    @* B. グリッドコンポーネント *@
+    @* B. グリッドコンポーネント (イベント処理を外部結合) *@
+    @* ソート機能を無効化する場合（AllowSorting="false" を渡す） *@
     <AknListView TKey="int"
                  ListDataItems="GridDataItems"
                  Columns="Columns"
@@ -82,5 +83,11 @@
 </div>
 
 @code {
+
+    // コンポーネント初期化
+    protected override void OnInitialized()
+    {
+        FrmZmstViewBase_OnInitialized();
+    }
 
 }

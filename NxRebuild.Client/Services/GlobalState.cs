@@ -8,5 +8,8 @@ namespace NxRebuild.Client.Services
     public static class GlobalState
     {
         public static SyncNutPropertyObjMgr? NutProperties { get; set; }
+
+        //一旦スタンドアロン状態で開発を進めていく（あとで直すのを忘れないように
+        public static IZmstEntityMgr? ZmstEntityMgr { get; set; }
     }
 }

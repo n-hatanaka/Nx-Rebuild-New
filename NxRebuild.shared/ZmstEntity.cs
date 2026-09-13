@@ -25,6 +25,13 @@ namespace NxRebuild.shared {
             });
         }
 
+        public override Task<LockStatus> DataClose() {
+            return Task.FromResult(new LockStatus {
+                Exists = true,
+                IsLocked = false
+            });
+        }
+
 
         // ---------------------------------------------------------
         // ★ 名前変更禁止：常に false
@@ -77,11 +84,18 @@ namespace NxRebuild.shared {
             Raw = NxTypeMapper.ConvertRow("tan_m", row);
         }
     }
+    //IZmstEntity インターフェース
+    public interface IZmstEntity : IBaseDataObj<int> {
+        List<TanMEntity> TanList { get; }
+    }
 
-    public class ZmstEntity : BaseDataObj<int>, IBaseDataObj<int> {
+    public class ZmstEntity : BaseDataObj<int>, IZmstEntity {
         // --- サブテーブル tan_m を保持する ---
         public List<TanMEntity> TanList { get; private set; } = new();
 
+        // --- バックアップ ---
+        public Dictionary<string, object?> RawBackup { get; private set; }
+        public List<TanMEntity> TanBackup { get; private set; }
 
         public ZmstEntity() {
             _tblName = "Zmst";
@@ -117,21 +131,81 @@ namespace NxRebuild.shared {
         }
 
         // ---------------------------------------------------------
-        // DataOpen（排他制御）
+        // DataOpen（編集開始前処理）
         // ---------------------------------------------------------
-        public override async Task<LockStatus> DataOpen() {
-            var lockReq = new LockStatus {
+        public override Task<LockStatus> DataOpen() {
+            // --- ★ バックアップ作成 ---
+            RawBackup = CloneRaw(_rawData);
+            TanBackup = CloneTanList(TanList);
+
+            Opened = true;//編集中フラグをON
+
+            // --- ローカル編集開始なのでロックは常に false ---
+            return Task.FromResult(new LockStatus {
                 Exists = true,
-                IsLocked = true,
-                LockedByUserId = CurrUsrID.ToString(),
-                Locked_at = DateTime.UtcNow
-            };
-
-            var lockStatus = await SetLockAsync(lockReq);
-
-
-            return lockStatus;
+                IsLocked = false
+            });
         }
+
+        // ---------------------------------------------------------
+        // DataClose(編集終了）
+        // フラグのセットのみ。UI側でSaveまたはRestoreを呼んだうえで
+        // DataCloseを呼ぶこと
+        // ---------------------------------------------------------
+        public override Task<LockStatus> DataClose() {
+            Opened = false; //編集中フラグをOFF
+            return Task.FromResult(new LockStatus {
+                Exists = true,
+                IsLocked = false
+            });
+        }
+
+        // ---------------------------------------------------------
+        // バックアップから復元する
+        // ---------------------------------------------------------
+        public void RestoreBackup() {
+            // --- RawData の復元 ---
+            if (RawBackup != null) {
+                _rawData = CloneRaw(RawBackup);
+            }
+
+            // --- TanList の復元 ---
+            if (TanBackup != null) {
+                TanList = CloneTanList(TanBackup);
+            }
+        }
+
+
+        // ---------------------------------------------------------
+        // TanListのDeepCopy
+        // ---------------------------------------------------------
+        private List<TanMEntity> CloneTanList(List<TanMEntity> src) {
+            var list = new List<TanMEntity>();
+
+            foreach (var tan in src) {
+                var rawCopy = new Dictionary<string, object?>();
+
+                foreach (var kv in tan.Raw)
+                    rawCopy[kv.Key] = kv.Value;
+
+                list.Add(new TanMEntity(rawCopy));
+            }
+
+            return list;
+        }
+
+        // ---------------------------------------------------------
+        // CloneRaw（Zmst + tan_m の Raw データを複製する）
+        // ---------------------------------------------------------
+        private Dictionary<string, object?> CloneRaw(Dictionary<string, object?> src) {
+            var dst = new Dictionary<string, object?>();
+            foreach (var kv in src) {
+                // object は参照型だが NxTypeMapper の値は基本プリミティブなのでそのままでOK
+                dst[kv.Key] = kv.Value;
+            }
+            return dst;
+        }
+
 
 
         // ---------------------------------------------------------
@@ -142,6 +216,7 @@ namespace NxRebuild.shared {
             // ★ 削除禁止：常に false を返す
             return Task.FromResult(false);
         }
+
 
 
         // ---------------------------------------------------------

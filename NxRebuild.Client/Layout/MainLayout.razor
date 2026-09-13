@@ -84,6 +84,15 @@
 
                     <MudNavLink Href="logout" Icon="@Icons.Material.Filled.Dashboard">ログアウト</MudNavLink>
                     <MudNavLink OnClick="@(() => Manager.Open<FrmNutProperties>("栄養素設定"))" Icon="@Icons.Material.Filled.List">栄養素設定</MudNavLink>
+                    <MudNavLink Icon="@Icons.Material.Filled.List" OnClick="@OpenZmst">材料マスタ</MudNavLink>
+
+@code {
+    private void OpenZmst()
+    {
+        Manager.Open<FrmZmstView>("材料マスタ");
+    }
+}
+
                 </Authorized>
 
                 <NotAuthorized>

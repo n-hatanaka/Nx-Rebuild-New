@@ -62,6 +62,7 @@ namespace NxRebuild.shared {
         string Ws_TblName { get;  }
 
         Task<LockStatus> DataOpen();
+        Task<LockStatus> DataClose();
         string TblToJson();
         Task<bool> JsonToTbl(string json);
         Task<bool> ReName(string newName);
@@ -267,6 +268,7 @@ namespace NxRebuild.shared {
 
         public abstract Task<LockStatus> DataOpen();
 
+        public abstract Task<LockStatus> DataClose();
 
 
 
