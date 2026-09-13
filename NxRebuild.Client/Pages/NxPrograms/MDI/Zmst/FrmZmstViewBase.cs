@@ -10,20 +10,23 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
         protected AknTreeView<int>? _treeview;
         protected AknListView<int>? _listview;
 
-        protected ZmstEntityMgr? ZmstMgr { get; set; }
+        protected IZmstEntityMgr? ZmstMgr { get; set; }
         protected IBaseDataObj<int>? SelectedFolder { get; set; }
 
         // ---------------------------------------------------------
         // 初期化（Explorer）
         // ---------------------------------------------------------
+
         protected override async Task OnInitializedAsync() {
             ZmstMgr = GlobalState.ZmstEntityMgr;
 
             if (ZmstMgr == null)
                 return;
 
-            SetManager(ZmstMgr);   // ← AknTreeListViewBase の正しい初期化
+            SetManager((IBaseDataObjMgr<BaseDataObj<int>, int>)ZmstMgr);
+
         }
+
 
         // ---------------------------------------------------------
         // フォルダだけツリーに入れる（新構造）

@@ -1,8 +1,13 @@
-﻿@typeparam TKey
+﻿
+
+@typeparam TKey
 @inherits AknTreeListViewBase<TKey>
 
 @using MudBlazor
 @namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View
+
+@* 抽象フォームの画面レイアウトを定義するコンポーネントです。 
+　　これをテンプレートとして具象フォームを作成することができます。*@
 
 <style>
     /* 画面全体のレイアウト（左右並び・隙間・高さ） */

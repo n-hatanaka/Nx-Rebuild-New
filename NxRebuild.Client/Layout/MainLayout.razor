@@ -3,6 +3,7 @@
 @inject IJSRuntime JS
 @using MudBlazor
 @using NxRebuild.Client.Pages.NxPrograms.MDI
+@using NxRebuild.Client.Pages.NxPrograms.MDI.Zmst
 @using NxRebuild.Client.Pages.NxPrograms.DB
 @inject WindowManagerBase Manager
 
@@ -85,14 +86,6 @@
                     <MudNavLink Href="logout" Icon="@Icons.Material.Filled.Dashboard">ログアウト</MudNavLink>
                     <MudNavLink OnClick="@(() => Manager.Open<FrmNutProperties>("栄養素設定"))" Icon="@Icons.Material.Filled.List">栄養素設定</MudNavLink>
                     <MudNavLink Icon="@Icons.Material.Filled.List" OnClick="@OpenZmst">材料マスタ</MudNavLink>
-
-@code {
-    private void OpenZmst()
-    {
-        Manager.Open<FrmZmstView>("材料マスタ");
-    }
-}
-
                 </Authorized>
 
                 <NotAuthorized>
@@ -120,6 +113,11 @@
         {
             InvokeAsync(StateHasChanged);
         };
+    }
+
+    private void OpenZmst()
+    {
+        Manager.Open<FrmZmstView>("材料マスタ");
     }
 
     private void ToggleWindowMenu() => _windowMenuOpen = !_windowMenuOpen;

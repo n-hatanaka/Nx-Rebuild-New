@@ -73,10 +73,10 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
         public virtual void HandleGridReorder((int TargetIndex, MyDataObj<TKey>? DraggedItem) payload) {
             if (payload.DraggedItem == null) return;
 
-            var idx = ListDataItems.IndexOf(payload.DraggedItem);
+            var idx = GridDataItems.IndexOf(payload.DraggedItem);
             if (idx != -1) {
-                ListDataItems.RemoveAt(idx);
-                ListDataItems.Insert(payload.TargetIndex, payload.DraggedItem);
+                GridDataItems.RemoveAt(idx);
+                GridDataItems.Insert(payload.TargetIndex, payload.DraggedItem);
             }
 
             DraggingState<TKey>.DraggingGridItem = null;
@@ -137,8 +137,8 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
         // ★ DataObj → GridView へ流し込む（IBaseDataObj を MyDataObj に投影）
         // ---------------------------------------------------------
         public virtual void BuildGridFromObj(IBaseDataObj<TKey> obj) {
-            ListDataItems.Clear();
-            ListDataItems.Add(new MyDataObj<TKey>(obj));
+            GridDataItems.Clear();
+            GridDataItems.Add(new MyDataObj<TKey>(obj));
             StateHasChanged();
         }
     }
