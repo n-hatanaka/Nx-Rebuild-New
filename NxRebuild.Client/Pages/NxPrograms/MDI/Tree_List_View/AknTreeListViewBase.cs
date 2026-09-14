@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using NxRebuild.Client.Pages.NxPrograms.DB;
 using NxRebuild.Client.Services;
@@ -107,6 +107,38 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
             }
         }
 
+        public void AddDefaultColumns()
+        {
+            Columns.Clear();
+        
+            // ファイル名
+            Columns.Add(new GridColumn {
+                Caption = "ファイル名",
+                DataKey = "Name",
+                AlignClass = "text-left",
+                Width = 200
+            });
+        
+            // locked_at
+            Columns.Add(new GridColumn {
+                Caption = "ロック日時",
+                DataKey = "locked_at",
+                AlignClass = "text-center",
+                Format = "yyyy/MM/dd HH:mm",
+                Width = 150
+            });
+        
+            // update_at
+            Columns.Add(new GridColumn {
+                Caption = "更新日時",
+                DataKey = "update_at",
+                AlignClass = "text-center",
+                Format = "yyyy/MM/dd HH:mm",
+                Width = 150
+            });
+        }        
+
+          
         // ------------------------- DataObj関連 ---------------------------------------
 
         public virtual void SetManager(IBaseDataObjMgr<BaseDataObj<TKey>, TKey> mgr) {

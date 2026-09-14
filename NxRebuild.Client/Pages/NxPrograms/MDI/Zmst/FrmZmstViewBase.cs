@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components;
 using NxRebuild.Client.Pages.NxPrograms.DB;
 using NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View;
 using NxRebuild.Client.Services;
@@ -12,20 +12,6 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
 
         protected IZmstEntityMgr? ZmstMgr { get; set; }
         protected IBaseDataObj<int>? SelectedFolder { get; set; }
-
-        // ---------------------------------------------------------
-        // 初期化（Explorer）
-        // ---------------------------------------------------------
-
-        protected override async Task OnInitializedAsync() {
-            ZmstMgr = GlobalState.ZmstEntityMgr;
-
-            if (ZmstMgr == null)
-                return;
-
-            SetManager((IBaseDataObjMgr<BaseDataObj<int>, int>)ZmstMgr);
-
-        }
 
 
         // ---------------------------------------------------------
