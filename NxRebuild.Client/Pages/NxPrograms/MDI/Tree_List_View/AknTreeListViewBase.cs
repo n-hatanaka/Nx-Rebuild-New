@@ -140,7 +140,12 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
 
           
         // ------------------------- DataObj関連 ---------------------------------------
-
+        public virtual void SetManager<TObj>(IBaseDataObjMgr<TObj, TKey> mgr)
+            where TObj : BaseDataObj<TKey>
+        {
+            DataMgr = mgr;
+            BuildTreeFromMgr();
+        }
         public virtual void SetManager(IBaseDataObjMgr<BaseDataObj<TKey>, TKey> mgr) {
             DataMgr = mgr;
             BuildTreeFromMgr();
