@@ -1,0 +1,88 @@
+@page "/zmst/edit/{LocalCode:int}"
+@inject NutritionPropertiesMgr NutMgr
+@inject ZmstMgr ZmstMgr
+
+<h3>Zmst 編集</h3>
+
+@if (Entity == null)
+{
+    <p>Loading...</p>
+}
+else
+{
+    <EditForm Model="this" OnValidSubmit="SaveAsync">
+        <DataAnnotationsValidator />
+
+        <!-- 基本情報 -->
+        <h4>基本情報</h4>
+
+        <div class="mb-3">
+            <label>料理名</label>
+            <InputText class="form-control" @bind-Value="ZName" />
+        </div>
+
+        <div class="mb-3">
+            <label>食品群</label>
+            <InputSelect class="form-control" @bind-Value="GunCd">
+                @foreach (var g in GunList)
+                {
+                    <option value="@g.Code">@g.Name</option>
+                }
+            </InputSelect>
+        </div>
+
+        <div class="mb-3">
+            <label>備考</label>
+            <InputTextArea class="form-control" @bind-Value="Txt" />
+        </div>
+
+        <!-- 栄養素 -->
+        <h4>栄養素</h4>
+
+        <div class="row">
+            @foreach (var nut in NutritionList)
+            {
+                <div class="col-4 mb-3">
+                    <label>@nut.Name</label>
+                    <InputNumber class="form-control"
+                                 @bind-Value="NutritionValues[nut.Col]" />
+                </div>
+            }
+        </div>
+
+        <!-- 単位（追加のみ） -->
+        <h4>単位（追加のみ）</h4>
+
+        <div class="mb-3">
+            <label>単位コード</label>
+            <InputNumber class="form-control" @bind-Value="NewTanCd" />
+        </div>
+
+        <div class="mb-3">
+            <label>単位名</label>
+            <InputText class="form-control" @bind-Value="NewTanName" />
+        </div>
+
+        <div class="mb-3">
+            <label>並び順（jun）</label>
+            <InputNumber class="form-control" @bind-Value="NewJun" />
+        </div>
+
+        <div class="mb-3">
+            <label>重量</label>
+            <InputNumber class="form-control" @bind-Value="NewJyuuryou" />
+        </div>
+
+        <button class="btn btn-secondary" @onclick="AddTanUnit">追加</button>
+
+        <h5 class="mt-3">追加済み単位（jun順）</h5>
+        <ul>
+            @foreach (var t in Entity.TanList.OrderBy(x => Convert.ToDouble(x.Raw["jun"])))
+            {
+                <li>@t.Raw["tan_cd"] - @t.Raw["tan_Name"] (@t.Raw["jun"] / @t.Raw["jyuuryou"])</li>
+            }
+        </ul>
+
+        <button class="btn btn-primary mt-4">保存</button>
+    </EditForm>
+}
