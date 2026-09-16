@@ -19,3 +19,17 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+Additional Notice (Non-binding Request)
+
+This architecture includes several structural concepts such as synchronized 
+client-side in-memory databases, isomorphic interfaces for mixed sync/async 
+CRUD operations, and unified abstract UI state management.
+
+If you reference, adapt, or implement any of these architectural ideas or 
+design patterns in your own projects, I would appreciate it if you could 
+consider acknowledging this repository as a source of inspiration. I would 
+also be very happy to hear about your use case if you are willing to share it.
+
+This notice is a non-binding request and does not modify the permissions 
+granted by the MIT License.
