@@ -7,10 +7,37 @@ using Dapper;
 
 namespace NxRebuild.shared
 {
+    public interface INutritionProperty : IBaseDataObj<int> {
+        int SortNo { get; }
+        string Col { get; }
+        string Format { get; }
+        int Digit { get; }
+
+        string PName1 { get; }
+        string PName2 { get; }
+        string PName3 { get; }
+        string PTanni { get; }
+
+        bool Visible { get; set; }
+        bool Nutrition { get; }
+    }
+
     //栄養素のプロパティを表すクラス（更新対象のカラムはVisibleだけ。排他制御は行わないので少し特殊）最初の具象実装にうってつけ
     // 非ジェネリックにして BaseDataObj<int> を継承し、抽象メンバーをオーバーライドする
-    public class NutritionProperty : BaseDataObj<int>, IBaseDataObj<int>
-    {
+    public class NutritionProperty : BaseDataObj<int>, INutritionProperty {
+        public int SortNo => Convert.ToInt32(_rawData["SortNo"]);
+        public string Col => _rawData["Col"]?.ToString() ?? "";
+        public string Format => _rawData["Format"]?.ToString() ?? "";
+        public int Digit => Convert.ToInt32(_rawData["Digit"]);
+
+        public string PName1 => _rawData["PName1"]?.ToString() ?? "";
+        public string PName2 => _rawData["PName2"]?.ToString() ?? "";
+        public string PName3 => _rawData["PName3"]?.ToString() ?? "";
+        public string PTanni => _rawData["PTanni"]?.ToString() ?? "";
+
+        // 編集可能なのは Visible のみ
+
+        // 編集可能なのは Visible のみ
         public bool Visible
         {
             get => _rawData.TryGetValue("Visible", out var v) && v is bool b ? b : false;

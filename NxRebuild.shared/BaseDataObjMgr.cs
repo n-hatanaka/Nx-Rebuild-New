@@ -24,6 +24,7 @@ namespace NxRebuild.shared {
         string W_TblName { get;  }
         string Ws_TblName { get; }
 
+        T? Get(TKey id);
         Task<List<TKey>> DeleteData(IEnumerable<TKey> dataIDs);
         void SetParent(T obj);
         Task DistributeJsonData(string json);
@@ -108,6 +109,15 @@ namespace NxRebuild.shared {
                     ? latestUpdate
                     : latestLocked;
             }
+        }
+
+        // --------------------------------------------------
+        // idで指定されたDataObjを返す
+        // --------------------------------------------------
+        public virtual T? Get(TKey id) {
+            return _dataList
+                .OfType<T>()
+                .FirstOrDefault(x => EqualityComparer<TKey>.Default.Equals(x.DataID, id));
         }
 
         public BaseDataObjMgr(IDbConnection db , Guid tenantCode , Guid currUserID) {

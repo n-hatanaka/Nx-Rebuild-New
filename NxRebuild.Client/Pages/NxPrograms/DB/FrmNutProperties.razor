@@ -26,7 +26,7 @@
 </MadCard>
 
 @code {
-    private List<SyncNutPropertyObj> _items = new();
+    private List<SyncNutProperty> _items = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -44,18 +44,18 @@
         }
 
         _items = mgr.DataList
-            .Cast<SyncNutPropertyObj>()
+            .Cast<SyncNutProperty>()
             .Where(x => x.Nutrition)
             .OrderBy(x => x.DataID)
             .ToList();
     }
 
-    private async Task OnVisibleChanged(SyncNutPropertyObj item, bool value) {
+    private async Task OnVisibleChanged(SyncNutProperty item, bool value) {
         await item.NutVisibleChg(value);
     }
 
     // wrapper to call async handler from components expecting Action<bool>
-    private void OnVisibleChangedHandler(SyncNutPropertyObj item, bool value)
+    private void OnVisibleChangedHandler(SyncNutProperty item, bool value)
     {
         _ = OnVisibleChanged(item, value);
     }

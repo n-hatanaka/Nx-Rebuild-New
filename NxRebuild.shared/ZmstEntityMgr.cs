@@ -11,11 +11,23 @@ using Dapper;
 
 namespace NxRebuild.shared {
     public interface IZmstEntityMgr : IBaseDataObjMgr<ZmstEntity, int> {
-        // ★ 追加メンバなし
-        // 「材料マスタのマネージャである」という意味付けだけを持つ
+        List<CategoryEntity> GunList { get; }
     }
 
     public class ZmstEntityMgr : BaseDataObjMgr<ZmstEntity, int>, IZmstEntityMgr {
+        // ---------------------------------------------------------
+        // 食品群リスト
+        // ---------------------------------------------------------
+        public List<CategoryEntity> GunList {
+            get {
+                return _dataList
+                    .OfType<CategoryEntity>()
+                    .OrderBy(x => Convert.ToInt32(x.jun))
+                    .ToList();
+            }
+        }
+
+
         public ZmstEntityMgr(IDbConnection db, Guid tenantCode, Guid currUserID)
             : base(db, tenantCode, currUserID) {
             _tblName = "Zmst";

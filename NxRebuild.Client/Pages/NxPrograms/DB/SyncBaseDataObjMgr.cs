@@ -56,6 +56,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             // 派生先で BaseDataObjMgr を生成すること
         }
 
+        public virtual TBase? Get(TKey id) => _baseDataObjMgr.Get(id);
         protected virtual TSync CreateNewSyncDataObj() {
             var newSyncObj = new TSync();
             newSyncObj.Http = _http;

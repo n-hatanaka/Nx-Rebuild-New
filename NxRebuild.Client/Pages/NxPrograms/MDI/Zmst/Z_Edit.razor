@@ -1,6 +1,8 @@
+@namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst
+@inherits Z_EditBase
+
 @page "/zmst/edit/{LocalCode:int}"
-@inject NutritionPropertiesMgr NutMgr
-@inject ZmstMgr ZmstMgr
+
 
 <h3>Zmst 編集</h3>
 
@@ -10,7 +12,7 @@
 }
 else
 {
-    <EditForm Model="this" OnValidSubmit="SaveAsync">
+    <EditForm Model="Entity" OnValidSubmit="SaveAsync">
         <DataAnnotationsValidator />
 
         <!-- 基本情報 -->
@@ -26,7 +28,7 @@ else
             <InputSelect class="form-control" @bind-Value="GunCd">
                 @foreach (var g in GunList)
                 {
-                    <option value="@g.Code">@g.Name</option>
+                    <option value="@g.DataID">@g.DataName</option>
                 }
             </InputSelect>
         </div>
@@ -43,7 +45,7 @@ else
             @foreach (var nut in NutritionList)
             {
                 <div class="col-4 mb-3">
-                    <label>@nut.Name</label>
+                    <label>@nut.DataName</label>
                     <InputNumber class="form-control"
                                  @bind-Value="NutritionValues[nut.Col]" />
                 </div>

@@ -12,7 +12,7 @@ using System.Text;
 using System.Text.Json;
 
 namespace NxRebuild.Client.Pages.NxPrograms.DB {
-    public class SyncNutPropertyObjMgr : SyncBaseDataObjMgr<NutritionProperty, SyncNutPropertyObj, int> {
+    public class SyncNutPropertyObjMgr : SyncBaseDataObjMgr<NutritionProperty, SyncNutProperty, int> {
         public override string ApiRoute => "NutProperty"; // 実際のAPIルート
         public SyncNutPropertyObjMgr(IDbConnection db, HttpClient http, CustomAuthStateProvider auth, Guid tenantCode, Guid currentUserId)
             : base(db, http, auth, tenantCode, currentUserId)

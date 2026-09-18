@@ -29,7 +29,11 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
         [Parameter] public List<MyDataObj<TKey>> GridDataItems { get; set; } = new();
 
         // ---------------------------------------------------------
+        /// <summary>
+        /// データマネージャーprotected IBaseDataObjMgr<BaseDataObj<TKey>, TKey>? DataMgr { get; set; }
         protected IBaseDataObjMgr<BaseDataObj<TKey>, TKey>? DataMgr { get; set; }
+
+
         // ---------------------------------------------------------
 
 
@@ -136,20 +140,16 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
                 Format = "yyyy/MM/dd HH:mm",
                 Width = 150
             });
-        }        
+        }
 
-          
+
         // ------------------------- DataObj関連 ---------------------------------------
         public virtual void SetManager<TObj>(IBaseDataObjMgr<TObj, TKey> mgr)
-            where TObj : BaseDataObj<TKey>
-        {
-            DataMgr = mgr;
+          where TObj : BaseDataObj<TKey> {
+            DataMgr = (IBaseDataObjMgr<BaseDataObj<TKey>, TKey>)mgr;
             BuildTreeFromMgr();
         }
-        public virtual void SetManager(IBaseDataObjMgr<BaseDataObj<TKey>, TKey> mgr) {
-            DataMgr = mgr;
-            BuildTreeFromMgr();
-        }
+
 
         // ---------------------------------------------------------
         // ★ Mgr → TreeView へ流し込む（IBaseDataObj を MyTreeData に投影）

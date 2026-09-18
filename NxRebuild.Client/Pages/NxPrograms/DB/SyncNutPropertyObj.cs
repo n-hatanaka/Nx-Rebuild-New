@@ -5,7 +5,7 @@ using System.Transactions;
 using NxRebuild.shared;
 
 namespace NxRebuild.Client.Pages.NxPrograms.DB {
-    public class SyncNutPropertyObj : SyncBaseDataObj<int> {
+    public class SyncNutProperty : SyncBaseDataObj<int> , INutritionProperty {
         // 抽象メンバーを実装
         public override string ApiRoute => "NutProperty"; // 実際のルート
 
@@ -13,15 +13,28 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             return new NutritionProperty();
         }
 
+        private NutritionProperty NP => (NutritionProperty)_dataObj;
+
+        // --- 読み取り専用プロパティ（Base世界線の正本をラップ） ---
+
+        public int SortNo => NP.SortNo;
+        public string Col => NP.Col;
+        public string Format => NP.Format;
+        public int Digit => NP.Digit;
+
+        public string PName1 => NP.PName1;
+        public string PName2 => NP.PName2;
+        public string PName3 => NP.PName3;
+        public string PTanni => NP.PTanni;
+
+        // --- 編集可能プロパティ（Visibleのみ） ---
         public bool Visible {
-            get => ((NutritionProperty)_dataObj).Visible;
-            set => ((NutritionProperty)_dataObj).Visible = value;
+            get => NP.Visible;
+            set => NP.Visible = value;
         }
 
-        // Nutrition は読み取り専用なので同様にキャストして読む
-        public bool Nutrition {
-            get => ((NutritionProperty)_dataObj).Nutrition;
-        }
+        // --- 読み取り専用（栄養素として扱うか） ---
+        public bool Nutrition => NP.Nutrition;
         public override async Task<bool> ReName(string newName) {
             //リネームは行わないので無効化
             throw new NotImplementedException();

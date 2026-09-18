@@ -15,6 +15,13 @@ namespace NxRebuild.shared {
             _datatype = NxDataType.Folder;   // UIでフォルダ扱い
         }
 
+        public int jun {
+            get {
+                if (_rawData.TryGetValue("jun", out var v) && v != null)
+                    return Convert.ToInt32(v);
+                return 0;
+            }
+        }
         // ---------------------------------------------------------
         // ★ 編集禁止：常に「ロックなし」を返す
         // ---------------------------------------------------------
@@ -83,19 +90,38 @@ namespace NxRebuild.shared {
         public TanMEntity(Dictionary<string, object> row) {
             Raw = NxTypeMapper.ConvertRow("tan_m", row);
         }
+
+        public TanMEntity DeepCopy() {
+            return new TanMEntity(new Dictionary<string, object>(this.Raw));
+        }
+
     }
     //IZmstEntity インターフェース
     public interface IZmstEntity : IBaseDataObj<int> {
         List<TanMEntity> TanList { get; }
+        decimal? GetNutritionValue(string col);
+        void SetNutritionValue(string col, decimal? value);
+
+        //作業用のワーキングメモリーにディープコピー。
+        void CreateWorkingMemory(
+                        Dictionary<string, object?> workingRaw,
+                        List<TanMEntity> workingTanList);
     }
 
     public class ZmstEntity : BaseDataObj<int>, IZmstEntity {
         // --- サブテーブル tan_m を保持する ---
         public List<TanMEntity> TanList { get; private set; } = new();
 
-        // --- バックアップ ---
-        public Dictionary<string, object?> RawBackup { get; private set; }
-        public List<TanMEntity> TanBackup { get; private set; }
+        public decimal? GetNutritionValue(string col) {
+            if (_rawData.TryGetValue(col, out var v))
+                return v == null ? null : Convert.ToDecimal(v);
+            return null;
+        }
+
+        public void SetNutritionValue(string col, decimal? value) {
+            _rawData[col] = value;
+        }
+
 
         public ZmstEntity() {
             _tblName = "Zmst";
@@ -134,9 +160,6 @@ namespace NxRebuild.shared {
         // DataOpen（編集開始前処理）
         // ---------------------------------------------------------
         public override Task<LockStatus> DataOpen() {
-            // --- ★ バックアップ作成 ---
-            RawBackup = CloneRaw(_rawData);
-            TanBackup = CloneTanList(TanList);
 
             Opened = true;//編集中フラグをON
 
@@ -160,53 +183,20 @@ namespace NxRebuild.shared {
             });
         }
 
-        // ---------------------------------------------------------
-        // バックアップから復元する
-        // ---------------------------------------------------------
-        public void RestoreBackup() {
-            // --- RawData の復元 ---
-            if (RawBackup != null) {
-                _rawData = CloneRaw(RawBackup);
-            }
 
-            // --- TanList の復元 ---
-            if (TanBackup != null) {
-                TanList = CloneTanList(TanBackup);
-            }
+        public void CreateWorkingMemory(
+                        Dictionary<string, object?> workingRaw,
+                        List<TanMEntity> workingTanList) {
+            // Raw の Deep Copy
+            workingRaw.Clear();
+            foreach (var kv in _rawData)
+                workingRaw[kv.Key] = kv.Value;
+
+            // TanList の Deep Copy
+            workingTanList.Clear();
+            foreach (var t in TanList)
+                workingTanList.Add(t.DeepCopy());
         }
-
-
-        // ---------------------------------------------------------
-        // TanListのDeepCopy
-        // ---------------------------------------------------------
-        private List<TanMEntity> CloneTanList(List<TanMEntity> src) {
-            var list = new List<TanMEntity>();
-
-            foreach (var tan in src) {
-                var rawCopy = new Dictionary<string, object?>();
-
-                foreach (var kv in tan.Raw)
-                    rawCopy[kv.Key] = kv.Value;
-
-                list.Add(new TanMEntity(rawCopy));
-            }
-
-            return list;
-        }
-
-        // ---------------------------------------------------------
-        // CloneRaw（Zmst + tan_m の Raw データを複製する）
-        // ---------------------------------------------------------
-        private Dictionary<string, object?> CloneRaw(Dictionary<string, object?> src) {
-            var dst = new Dictionary<string, object?>();
-            foreach (var kv in src) {
-                // object は参照型だが NxTypeMapper の値は基本プリミティブなのでそのままでOK
-                dst[kv.Key] = kv.Value;
-            }
-            return dst;
-        }
-
-
 
         // ---------------------------------------------------------
         // 物理削除（tan_m）
