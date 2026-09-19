@@ -5,7 +5,10 @@ using NxRebuild.Client.Services;
 using NxRebuild.shared;
 
 namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
-    public class FrmZmstViewBase : AknTreeListViewBase<int> {
+
+    // ★ AknTreeListViewBase<TObj, TKey> に合わせて修正
+    public class FrmZmstViewBase : AknTreeListViewBase<ZmstEntity, int> {
+
         //次の二つのフィールドは継承されるが、明記しないとrazorが認識できないので明記する
         protected AknTreeView<int>? _treeview;
         protected AknListView<int>? _listview;

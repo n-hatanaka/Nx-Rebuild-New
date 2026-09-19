@@ -67,23 +67,29 @@ namespace NxRebuild.shared {
         public override async Task<IEnumerable<dynamic>> LoadRecordsAsync() {
             // --- Zmst ---
             string sqlMain = $@"
-                SELECT *
-                FROM ""{_tblName}""
-                WHERE ""tenant_code"" = @TenantCode;
-            ";
+                                SELECT *
+                                FROM ""{_tblName}""
+                                WHERE ""tenant_code"" = @tc;
+                            ";
 
-            var zmstRows = await DBcon.QueryAsync<Dictionary<string, object>>(sqlMain,
-                new { TenantCode });
+            var tc = TenantCode.ToString(); // Guid → string に変換
+
+            var zmstRows = await DBcon.QueryAsync<Dictionary<string, object>>(
+                sqlMain,
+                new { tc }
+            );
 
             // --- tan_m ---
             string sqlSub = $@"
-                SELECT *
-                FROM ""{_s_tblName}""
-                WHERE ""tenant_code"" = @TenantCode;
-            ";
+                                SELECT *
+                                FROM ""{_s_tblName}""
+                                WHERE ""tenant_code"" = @tc;
+                            ";
 
-            var tanRows = await DBcon.QueryAsync<Dictionary<string, object>>(sqlSub,
-                new { TenantCode });
+            var tanRows = await DBcon.QueryAsync<Dictionary<string, object>>(
+                sqlSub,
+                new { tc }
+            );
 
             // --- LocalCode ごとにグループ化 ---
             var tanGroups = tanRows.GroupBy(r => Convert.ToInt32(r["LocalCode"]))
@@ -112,31 +118,49 @@ namespace NxRebuild.shared {
             return result;
         }
 
+
         // ---------------------------------------------------------
         // Initialize（Zmst + tan_m を DataList に突っ込む）
         // ---------------------------------------------------------
         public override async Task Initialize() {
-            
+
             var root = CreateRoot();
             _dataList.Add(root);
+
             // ---------------------------------------------------------
             // ★ gun_m（分類マスタ）をロードして CategoryEntity を追加
             // ---------------------------------------------------------
             string sqlCat = @"
                                 SELECT *
                                 FROM ""gun_m""
-                                WHERE ""tenant_code"" = @TenantCode;
+                                WHERE ""tenant_code"" = @tc;
                             ";
 
-            var catRows = await DBcon.QueryAsync<Dictionary<string, object>>(sqlCat,
-                                                                                new { TenantCode });
+            var tc = TenantCode.ToString();   // ← Guid → string に変換
+
+            var catRows = await DBcon.QueryAsync<dynamic>(
+                sqlCat,
+                new { tc }                    // ← パラメータ名一致
+            );
 
             foreach (var row in catRows) {
+                var dict = (IDictionary<string, object>)row;
+
+                Console.WriteLine("Keys: " + string.Join(", ", dict.Keys));
+                Console.WriteLine($"App TenantCode: {TenantCode}");
+
+                if (dict.TryGetValue("tenant_code", out var tnc))
+                    Console.WriteLine($"DB TenantCode: {tnc}");
+                else
+                    Console.WriteLine("DB TenantCode: <none>");
+
+                Console.WriteLine($"Equal? {TenantCode.ToString() == dict["tenant_code"]?.ToString()}");
+
                 var cat = new CategoryEntity();
                 cat.DBcon = DBcon;
                 cat.TenantCode = TenantCode;
                 cat.CurrUsrID = CurrentUserID;
-                cat.Setproperties(row);
+                cat.Setproperties(dict);
 
                 _dataList.Add(cat);
             }
@@ -152,11 +176,8 @@ namespace NxRebuild.shared {
                 obj.TenantCode = TenantCode;
                 obj.CurrUsrID = CurrentUserID;
 
-                // Zmst の行をセット
                 obj.Setproperties((IDictionary<string, object>)record);
 
-                var subRowsObj = record["_tan_m_rows"];
-                // ★ tan_m の行を record から取り出す
                 if (record["_tan_m_rows"] is List<Dictionary<string, object>> subRows) {
                     foreach (var row in subRows) {
                         obj.TanList.Add(new TanMEntity(row));
@@ -167,10 +188,11 @@ namespace NxRebuild.shared {
 
                 _dataList.Add(obj);
             }
-            //  全オブジェクトに対して親子関係をセット
+
             foreach (var obj in _dataList) {
                 SetParent((ZmstEntity)obj);
             }
         }
+
     }
 }

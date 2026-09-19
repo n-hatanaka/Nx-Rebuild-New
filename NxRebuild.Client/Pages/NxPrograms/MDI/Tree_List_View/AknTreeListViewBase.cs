@@ -6,8 +6,11 @@ using NxRebuild.shared;
 
 namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
 
-    public class AknTreeListViewBase<TKey> : ComponentBase
+    // ★ TObj を追加した正しい抽象構造
+    public class AknTreeListViewBase<TObj, TKey> : ComponentBase
+        where TObj : BaseDataObj<TKey>
         where TKey : notnull {
+
         [Parameter] public EventCallback<(MyDataObj<TKey> Item, MouseEventArgs Args)> OnRowClicked { get; set; }
         [Parameter] public EventCallback<MyDataObj<TKey>> OnRowDoubleClicked { get; set; }
         [Parameter] public EventCallback<(int TargetIndex, MyDataObj<TKey>? DraggedItem)> OnRowDropped { get; set; }
@@ -30,12 +33,10 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
 
         // ---------------------------------------------------------
         /// <summary>
-        /// データマネージャーprotected IBaseDataObjMgr<BaseDataObj<TKey>, TKey>? DataMgr { get; set; }
-        protected IBaseDataObjMgr<BaseDataObj<TKey>, TKey>? DataMgr { get; set; }
-
-
+        /// データマネージャー
+        /// </summary>
+        protected IBaseDataObjMgr<TObj, TKey>? DataMgr { get; set; }
         // ---------------------------------------------------------
-
 
         // ノード選択イベントハンドラ
         public virtual void HandleNodeSelection(MyTreeData<TKey> selectedNode) {
@@ -86,7 +87,6 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
             DraggingState<TKey>.DraggingGridItem = null;
         }
 
-
         // ソートリクエストイベントハンドラ
         public virtual async Task HandleSortRequest((string Key, bool IsAscending) payload) {
             await OnSortRequested.InvokeAsync(payload);
@@ -111,10 +111,9 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
             }
         }
 
-        public void AddDefaultColumns()
-        {
+        public void AddDefaultColumns() {
             Columns.Clear();
-        
+
             // ファイル名
             Columns.Add(new GridColumn {
                 Caption = "ファイル名",
@@ -122,7 +121,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
                 AlignClass = "text-left",
                 Width = 200
             });
-        
+
             // locked_at
             Columns.Add(new GridColumn {
                 Caption = "ロック日時",
@@ -131,7 +130,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
                 Format = "yyyy/MM/dd HH:mm",
                 Width = 150
             });
-        
+
             // update_at
             Columns.Add(new GridColumn {
                 Caption = "更新日時",
@@ -142,14 +141,11 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
             });
         }
 
-
         // ------------------------- DataObj関連 ---------------------------------------
-        public virtual void SetManager<TObj>(IBaseDataObjMgr<TObj, TKey> mgr)
-          where TObj : BaseDataObj<TKey> {
-            DataMgr = (IBaseDataObjMgr<BaseDataObj<TKey>, TKey>)mgr;
+        public virtual void SetManager(IBaseDataObjMgr<TObj, TKey> mgr) {
+            DataMgr = mgr;
             BuildTreeFromMgr();
         }
-
 
         // ---------------------------------------------------------
         // ★ Mgr → TreeView へ流し込む（IBaseDataObj を MyTreeData に投影）

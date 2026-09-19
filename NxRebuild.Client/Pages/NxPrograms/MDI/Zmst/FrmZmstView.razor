@@ -88,15 +88,20 @@
 @code {
     private bool _initialized = false;
 
+    protected override async Task OnInitializedAsync()
+    {
+        ZmstMgr = GlobalState.ZmstEntityMgr;
+    }
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!firstRender || _initialized) return;
 
         _initialized = true;
-            if (ZmstMgr != null){
-                SetManager((IZmstEntityMgr)ZmstMgr);
-                AddDefaultColumns();
-            }
-        }
+
+        SetManager(ZmstMgr);
+
+        AddDefaultColumns();
+    }
 
 }

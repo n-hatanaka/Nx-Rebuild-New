@@ -74,7 +74,7 @@ namespace NxRebuild.shared {
         public string W_TblName { get => _w_tblName; }
         public string Ws_TblName { get => _ws_tblName; }
 
-        protected string RootName { get; set; } = "";//rootNodeの表示名。空の場合はInitializeメソッドでRootNodeオブジェクトは作成されない
+        protected string RootName { get; set; }//rootNodeの表示名。空の場合はInitializeメソッドでRootNodeオブジェクトは作成されない
 
         public NxDataType DataType { get; set; }
 

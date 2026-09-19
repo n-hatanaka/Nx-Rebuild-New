@@ -44,7 +44,9 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             // ---------------------------------------------------------
             // ④ SQLite インメモリ DB を作成
             // ---------------------------------------------------------
-            var conn = new SqliteConnection("Data Source=:memory:");
+            
+            var conn = new SqliteConnection("Data Source=file:nxdb?mode=memory&cache=shared");
+
             conn.Open();
 
             try {

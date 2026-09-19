@@ -16,7 +16,8 @@
 @inject AuthenticationStateProvider AuthProvider
 @inject IHttpClientFactory ClientFactory
 
-
+@using NxRebuild.shared
+@using NxRebuild.Client.Pages.NxPrograms.MDI
 @using NxRebuild.Client.Pages.Auth
 @inject InMemoryDatabaseState DbState
 
@@ -150,6 +151,10 @@ else
                     new SyncNutPropertyObjMgr(DbState.Connection, Http, customAuth, tenantGuid, currentUserGuid);
 
                 GlobalState.NutProperties.Initialize();
+
+                //あとで差し替える事GlobalState.ZmstEntityMgr = new ZmstEntityMgr(DbState.Connection, Http, customAuth, tenantGuid, currentUserGuid);
+                GlobalState.ZmstEntityMgr = new ZmstEntityMgr(DbState.Connection, tenantGuid, currentUserGuid);
+                await GlobalState.ZmstEntityMgr.Initialize();
             }
             catch (Exception ex)
             {

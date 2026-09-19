@@ -87,7 +87,7 @@ namespace NxRebuild.shared {
         public IBaseDataObj<TKey>? ParentDataObj { get; set; }
         public string NameColName => _nameColName;
         public string IdColName => _idColName;
-        public string ParentIDColName => _parentIDColName = "";
+        public string ParentIDColName => _parentIDColName;
         public string TblName => _tblName;
         public string S_TblName => _s_tblName;
         public string InfoTbl => _infoTbl;
