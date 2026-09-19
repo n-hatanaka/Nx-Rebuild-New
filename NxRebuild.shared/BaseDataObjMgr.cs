@@ -138,7 +138,7 @@ namespace NxRebuild.shared {
             root.SelfObjMgr = this;
 
             // ルートは物理レコードを持たないので空スキーマでよい
-            root.Setproperties(new Dictionary<string, object?>());
+            root.Setproperties(GetEmptySchema());
 
             root.TenantCode = TenantCode;
             root.CurrUsrID = CurrentUserID;
@@ -199,8 +199,7 @@ namespace NxRebuild.shared {
         {
             //root名が設定されている場合のみrootnodeオブジェクトを生成
             if (RootName != "") {
-                T root = CreateRoot();
-                _dataList.Add(root);
+                CreateRoot();
             }
 
             var records = await LoadRecordsAsync();
@@ -232,8 +231,8 @@ namespace NxRebuild.shared {
 
             var pid = obj.ParentID;
 
-            // 親IDが未設定（0やnull） → 最小値をセット
-            if (EqualityComparer<TKey>.Default.Equals(pid, default(TKey))) {
+            // 親IDが未設定（null）または属性がroot → 親オブジェクトをNULLに
+            if (pid == null || obj.DataType == NxDataType.root) {
                 obj.ParentDataObj = null;
                 return;
             }

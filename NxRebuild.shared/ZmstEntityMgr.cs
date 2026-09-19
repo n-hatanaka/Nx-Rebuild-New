@@ -13,7 +13,12 @@ namespace NxRebuild.shared {
     public interface IZmstEntityMgr : IBaseDataObjMgr<ZmstEntity, int> {
         List<CategoryEntity> GunList { get; }
     }
-
+    // ---------------------------------------------------------
+    // ZmstEntityMgr
+    // カラム数80弱+小さいサブテーブル（単位マスタ）を持つ
+    // ツリー構造を作るためのスキーマ設計でないため、本来の想定外の実装を行う
+    // 
+    // ---------------------------------------------------------
     public class ZmstEntityMgr : BaseDataObjMgr<ZmstEntity, int>, IZmstEntityMgr {
         // ---------------------------------------------------------
         // 食品群リスト
@@ -35,7 +40,7 @@ namespace NxRebuild.shared {
             _infoTbl = "";
             _w_tblName = "";
             _ws_tblName = "";
-
+            RootName = "食品分類";
             DataType = NxDataType.Zairyou;
         }
         protected override int GenerateDataID() {
@@ -72,43 +77,62 @@ namespace NxRebuild.shared {
                                 WHERE ""tenant_code"" = @tc;
                             ";
 
-            var tc = TenantCode.ToString(); // Guid → string に変換
+            var tc = TenantCode.ToString(); // Guid → string
 
-            var zmstRows = await DBcon.QueryAsync<Dictionary<string, object>>(
+            // ---------------------------------------------------------
+            // ★ Zmst を正本化して取得
+            // ---------------------------------------------------------
+            var rawZmstRows = await DBcon.QueryAsync<dynamic>(
                 sqlMain,
                 new { tc }
             );
 
-            // --- tan_m ---
+            var zmstRows = rawZmstRows
+                .Select(r => NxTypeMapper.ConvertRow(_tblName, (IDictionary<string, object>)r))
+                .ToList();
+
+
+            // ---------------------------------------------------------
+            // ★ tan_m を正本化して取得
+            // ---------------------------------------------------------
             string sqlSub = $@"
                                 SELECT *
                                 FROM ""{_s_tblName}""
                                 WHERE ""tenant_code"" = @tc;
                             ";
 
-            var tanRows = await DBcon.QueryAsync<Dictionary<string, object>>(
+            var rawTanRows = await DBcon.QueryAsync<dynamic>(
                 sqlSub,
                 new { tc }
             );
+            //なぜかDapperがDapperRowとして返してくる場合があるので、Dictionary<string, object>に変換する。
+            var tanRows = rawTanRows
+                .Select(r => NxTypeMapper.ConvertRow(_s_tblName, (IDictionary<string, object>)r))
+                .ToList();
 
-            // --- LocalCode ごとにグループ化 ---
-            var tanGroups = tanRows.GroupBy(r => Convert.ToInt32(r["LocalCode"]))
-                                   .ToDictionary(g => g.Key, g => g.ToList());
 
-            // --- Zmst + tan_m を合成して返す ---
+            // ---------------------------------------------------------
+            // ★ LocalCode ごとにグループ化（正本化後なので安全）
+            // ---------------------------------------------------------
+            var tanGroups = tanRows
+                .GroupBy(r => (int)r["LocalCode"])
+                .ToDictionary(g => g.Key, g => g.ToList());
+
+
+            // ---------------------------------------------------------
+            // ★ Zmst + tan_m を合成して返す
+            // ---------------------------------------------------------
             var result = new List<Dictionary<string, object>>();
 
             foreach (var zmst in zmstRows) {
-                int localCode = Convert.ToInt32(zmst["LocalCode"]);
+                // LocalCode は正本化済みなので安全
+                int localCode = (int)zmst["LocalCode"];
 
                 // Zmst の行をそのまま返す（Initialize → Setproperties で使う）
                 result.Add(zmst);
 
-                // tan_m の行は ZmstEntity 内で保持するため、
-                // Initialize 後に ZmstEntityMgr が TanList を埋める
+                // tan_m の行を ZmstEntity 内で保持するために追加
                 if (tanGroups.TryGetValue(localCode, out var tanList)) {
-                    // tan_m の行を ZmstEntity に渡すために
-                    // DataList に追加後に ZmstEntity.TanList を埋める
                     zmst["_tan_m_rows"] = tanList;
                 } else {
                     zmst["_tan_m_rows"] = new List<Dictionary<string, object>>();
@@ -120,41 +144,75 @@ namespace NxRebuild.shared {
 
 
         // ---------------------------------------------------------
-        // Initialize（Zmst + tan_m を DataList に突っ込む）
+        // Initialize（gun_m + Zmst + tan_m を DataList に突っ込む）
         // ---------------------------------------------------------
         public override async Task Initialize() {
 
-            var root = CreateRoot();
-            _dataList.Add(root);
+            CreateRoot();
 
             // ---------------------------------------------------------
-            // ★ gun_m（分類マスタ）をロードして CategoryEntity を追加
+            // 大分類 gun_m（分類マスタ）をロードして CategoryEntity を追加
             // ---------------------------------------------------------
             string sqlCat = @"
-                                SELECT *
-                                FROM ""gun_m""
-                                WHERE ""tenant_code"" = @tc;
+                                SELECT
+                                    tenant_code,
+                                    0 AS jun,
+                                    0 As dai_cd,
+                                    dai_name,
+                                    dai_cd AS syou_cd,
+                                    dai_name AS syou_name
+                                FROM gun_m
+                                WHERE tenant_code = @tc
+                                GROUP BY tenant_code, dai_cd, dai_name
+                                ORDER BY dai_cd;
                             ";
 
             var tc = TenantCode.ToString();   // ← Guid → string に変換
 
-            var catRows = await DBcon.QueryAsync<dynamic>(
-                sqlCat,
-                new { tc }                    // ← パラメータ名一致
-            );
+            var rawCatRows = await DBcon.QueryAsync<dynamic>(
+                                        sqlCat,
+                                        new { tc }
+                                    );
+
+            var catRows = rawCatRows
+                            .Select(r => NxTypeMapper.ConvertRow("gun_m", (IDictionary<string, object>)r))
+                            .ToList();
+
 
             foreach (var row in catRows) {
                 var dict = (IDictionary<string, object>)row;
 
-                Console.WriteLine("Keys: " + string.Join(", ", dict.Keys));
-                Console.WriteLine($"App TenantCode: {TenantCode}");
+                var cat = new CategoryEntity();
+                cat.DBcon = DBcon;
+                cat.TenantCode = TenantCode;
+                cat.CurrUsrID = CurrentUserID;
+                cat.Setproperties(dict);
 
-                if (dict.TryGetValue("tenant_code", out var tnc))
-                    Console.WriteLine($"DB TenantCode: {tnc}");
-                else
-                    Console.WriteLine("DB TenantCode: <none>");
+                _dataList.Add(cat);
+            }
+            // ---------------------------------------------------------
+            // 小分類 gun_m（分類マスタ）をロードして CategoryEntity を追加
+            // ---------------------------------------------------------
+            sqlCat = @"
+                        SELECT *
+                        FROM ""gun_m""
+                        WHERE ""tenant_code"" = @tc;
+                    ";
 
-                Console.WriteLine($"Equal? {TenantCode.ToString() == dict["tenant_code"]?.ToString()}");
+            tc = TenantCode.ToString();   // ← Guid → string に変換
+
+            rawCatRows = await DBcon.QueryAsync<dynamic>(
+                                        sqlCat,
+                                        new { tc }
+                                    );
+
+            catRows = rawCatRows
+                            .Select(r => NxTypeMapper.ConvertRow("gun_m", (IDictionary<string, object>)r))
+                            .ToList();
+
+
+            foreach (var row in catRows) {
+                var dict = (IDictionary<string, object>)row;
 
                 var cat = new CategoryEntity();
                 cat.DBcon = DBcon;

@@ -14,82 +14,71 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
         protected AknListView<int>? _listview;
 
         protected IZmstEntityMgr? ZmstMgr { get; set; }
-        protected IBaseDataObj<int>? SelectedFolder { get; set; }
 
 
         // ---------------------------------------------------------
         // フォルダだけツリーに入れる（新構造）
         // ---------------------------------------------------------
-        public override void BuildTreeFromMgr() {
-            if (ZmstMgr == null) return;
+        //public override void BuildTreeFromMgr() {
+        //    if (ZmstMgr == null) return;
 
-            TreeData.Clear();
+        //    TreeData.Clear();
 
-            foreach (var obj in ZmstMgr.DataList) {
-                if (obj.DataType == NxDataType.Folder) {
-                    TreeData.Add(new MyTreeData<int>(obj) {
-                        IsExpanded = true
-                    });
-                }
-            }
+        //    foreach (var obj in ZmstMgr.DataList) {
+        //        if (obj.DataType == NxDataType.Folder) {
+        //            TreeData.Add(new MyTreeData<int>(obj) {
+        //                IsExpanded = true
+        //            });
+        //        }
+        //    }
 
-            StateHasChanged();
-        }
+        //    StateHasChanged();
+        //}
 
-        // ---------------------------------------------------------
-        // ノード選択 → フォルダ内の材料をグリッドへ流し込む
-        // ---------------------------------------------------------
-        public override void HandleNodeSelection(MyTreeData<int> selectedNode) {
-
-            if (selectedNode.ItemData is IBaseDataObj<int> folder) {
-                SelectedFolder = folder;
-                BuildGridFromFolder(folder);
-            }
-        }
 
         // ---------------------------------------------------------
         // フォルダ内の ZmstEntity をグリッドに流し込む（Explorer）
         // ---------------------------------------------------------
-        public void BuildGridFromFolder(IBaseDataObj<int> folder) {
-            GridDataItems.Clear();
-            if (ZmstMgr == null) return;
+        //public void BuildGridFromFolder(IBaseDataObj<int> folder) {
+        //    GridDataItems.Clear();
+        //    if (ZmstMgr == null) return;
 
-            foreach (var obj in ZmstMgr.DataList) {
-                if (obj.DataType == NxDataType.Zairyou &&
-                    obj.ParentID.Equals(folder.DataID)) {
+        //    foreach (var obj in ZmstMgr.DataList) {
+        //        if (obj.DataType == NxDataType.Zairyou &&
+        //            obj.ParentID.Equals(folder.DataID)) {
 
-                    if (obj is IZmstEntity zmst) {
+        //            if (obj is IZmstEntity zmst) {
 
-                        // ★ 新構造：MyDataObj(obj) を使う
-                        var row = new MyDataObj<int>(obj);
+        //                // ★ 新構造：MyDataObj(obj) を使う
+        //                var row = new MyDataObj<int>(obj);
 
-                        // ---------------------------------------------------------
-                        // ★ rawData の全カラムを ExtraData に追加する
-                        //   ただし MyDataObj が自動で入れる基本カラムは除外
-                        // ---------------------------------------------------------
-                        // BaseDataObj<int> にキャストして RawData を読む
-                        var baseObj = (BaseDataObj<int>)obj;
+        //                // ---------------------------------------------------------
+        //                // ★ rawData の全カラムを ExtraData に追加する
+        //                //   ただし MyDataObj が自動で入れる基本カラムは除外
+        //                // ---------------------------------------------------------
+        //                // BaseDataObj<int> にキャストして RawData を読む
+        //                var baseObj = (BaseDataObj<int>)obj;
 
-                        foreach (var kv in baseObj._rawData) {
-                            string key = kv.Key;
+        //                foreach (var kv in baseObj._rawData) {
+        //                    string key = kv.Key;
 
-                            // MyDataObj が自動で入れる基本カラムはスキップ
-                            if (key == obj.IdColName ||
-                                key == obj.ParentIDColName ||
-                                key == "locked_at" ||
-                                key == "update_at")
-                                continue;
+        //                    // MyDataObj が自動で入れる基本カラムはスキップ
+        //                    if (key == obj.IdColName ||
+        //                        key == obj.ParentIDColName ||
+        //                        key == "locked_at" ||
+        //                        key == "update_at")
+        //                        continue;
 
-                            row.ExtraData[key] = kv.Value ?? "";
-                        }
+        //                    row.ExtraData[key] = kv.Value ?? "";
+        //                }
 
-                        GridDataItems.Add(row);
-                    }
-                }
-            }
+        //                GridDataItems.Add(row);
+        //            }
+        //        }
+        //    }
 
-            StateHasChanged();
-        }
+        //    StateHasChanged();
+        //}
 
         // ---------------------------------------------------------
         // ダブルクリック → 編集画面へ遷移（後で作る）

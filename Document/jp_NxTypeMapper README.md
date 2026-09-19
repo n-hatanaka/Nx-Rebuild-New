@@ -1,3 +1,72 @@
+# NxTypeMapper 仕様変更（2026-09）
+
+## ■ 変更内容（1）  
+`ConvertRow` の引数型を  
+**`Dictionary<string, object>` → `IDictionary<string, object>`**  
+へ変更した。
+
+## ■ 変更理由  
+Dapper が返す dynamic は以下 3 種類のいずれかになる：
+
+- `Dictionary<string, object>`
+- `ExpandoObject`（IDictionary 実装）
+- `DapperRow`（IDictionary 実装）
+
+しかし旧仕様では **Dictionary 固定**だったため、  
+`DapperRow` を受け取ると型不一致で例外が発生した。
+
+今回の変更により、  
+**3 種類すべてを統一的に扱える。**
+
+## ■ 効果  
+- DapperRow / ExpandoObject / Dictionary を **IDictionary** として統一扱い  
+- NxTypeMapper の正本化レイヤーが安定  
+- dynamic の型揺れによる例外が消滅  
+- Nx の抽象構造が「正本 → 抽象 → UI」で一貫性を持つ
+
+## ■ 呼び出し側の注意点  
+呼び出し側は必ず以下のようにキャストして渡す：
+
+```csharp
+NxTypeMapper.ConvertRow(
+    tableName,
+    (IDictionary<string, object>)row
+);
+
+■ 変更内容（2）
+GetDefaultValue の仕様変更（未知の型：null → 0）
+
+旧仕様では、GetDefaultValue の「その他」ケースが null を返していたため、
+CreateEmptyRow が null を含む辞書を生成してしまっていた。
+その結果、update_at / locked_at / locked_by / parent_id などの列に null が入り、
+getter が DBNull / null を踏んで例外を発生させる問題があった。
+
+新仕様では、未知の型でも必ず非 null の値（0）を返すように変更した。
+これにより、CreateEmptyRow が null を含まない辞書を返すようになり、
+ロック系・日時系の整合性が保たれ安定する。
+
+新仕様の GetDefaultValue:
+
+private object GetDefaultValue(string csType) {
+    return csType switch {
+        "int"      => 0,
+        "long"     => 0L,
+        "double"   => 0.0,
+        "bool"     => false,
+        "datetime" => DateTime.MinValue,
+        "string"   => string.Empty,
+        "guid"     => Guid.Empty,
+        _          => 0   // 未知の型でも null を返さない
+    };
+}
+
+効果:
+- CreateEmptyRow が null を含まない辞書を返す
+- update_at / locked_at / locked_by が例外を出さない
+- ParentID が null にならない
+- SetParent が正しく親をセットできる
+
+
 # NxTypeMapper README（従来型アプリでも使える汎用型変換エンジン）
 
 ---

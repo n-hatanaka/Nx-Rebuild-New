@@ -1,3 +1,72 @@
+# NxTypeMapper Specification Update (2026-09)
+
+## ■ Change (1)
+The parameter type of `ConvertRow` has been updated from  
+`Dictionary<string, object>` → `IDictionary<string, object>`.
+
+## ■ Reason for the Change
+Dapper returns dynamic rows in one of the following three forms:
+
+- `Dictionary<string, object>`
+- `ExpandoObject` (implements IDictionary)
+- `DapperRow` (implements IDictionary)
+
+Under the previous specification, the parameter type was fixed to `Dictionary`,  
+which caused type mismatch exceptions when receiving `DapperRow`.
+
+With this update, all three dynamic row types can now be handled uniformly.
+
+## ■ Effects
+- Unified handling of DapperRow / ExpandoObject / Dictionary via `IDictionary`
+- Stabilized normalization layer in NxTypeMapper
+- Eliminated exceptions caused by dynamic type variance
+- Ensured consistency across the Nx architecture: “Canonical → Abstract → UI”
+
+## ■ Notes for Callers
+Callers must cast the incoming row to `IDictionary<string, object>`:
+
+NxTypeMapper.ConvertRow(
+    tableName,
+    (IDictionary<string, object>)row
+);
+
+## ■ Change (2)
+Specification update for `GetDefaultValue` (Unknown types: null → 0)
+
+In the previous specification, the “default” case of `GetDefaultValue` returned null.  
+As a result, `CreateEmptyRow` produced dictionaries containing null values.  
+This caused issues where columns such as `update_at`, `locked_at`, `locked_by`, and `parent_id`  
+received null values, leading to exceptions when getters encountered DBNull or null.
+
+The new specification ensures that unknown types always return a non-null value (0).  
+This guarantees that `CreateEmptyRow` produces dictionaries without null values,  
+stabilizing lock-related fields, timestamp fields, and parent-child relationships.
+
+### New GetDefaultValue Specification
+
+private object GetDefaultValue(string csType) {
+    return csType switch {
+        "int"      => 0,
+        "long"     => 0L,
+        "double"   => 0.0,
+        "bool"     => false,
+        "datetime" => DateTime.MinValue,
+        "string"   => string.Empty,
+        "guid"     => Guid.Empty,
+        _          => 0   // Unknown types no longer return null
+    };
+}
+
+### Effects
+- CreateEmptyRow no longer returns dictionaries containing null
+- update_at / locked_at / locked_by no longer trigger exceptions
+- ParentID never becomes null
+- SetParent can correctly assign the parent object
+- Tree construction becomes stable
+- Nx’s abstract model maintains full structural consistency
+
+
+
 # NxTypeMapper README (A Universal Type‑Normalization Engine for Traditional Applications)
 
 ---

@@ -40,7 +40,7 @@ namespace NxRebuild.shared {
         /// 1行分の辞書を一括で型変換する。
         /// BaseDataObj.Setproperties() や InsertMaster で使用。
         /// </summary>
-        public static Dictionary<string, object?> ConvertRow(string table, Dictionary<string, object> row) {
+        public static Dictionary<string, object?> ConvertRow(string table, IDictionary<string, object> row) {
             if (Current == null)
                 return new Dictionary<string, object?>(row);
 
@@ -92,7 +92,8 @@ namespace NxRebuild.shared {
                 "bool" => false,
                 "datetime" => DateTime.MinValue,
                 "string" => "",
-                _ => null
+                // 未知の型は「null禁止」だが「string.Emptyも禁止」
+                _ => 0   // 数値扱いにしておく
             };
         }
 
@@ -196,7 +197,7 @@ namespace NxRebuild.shared {
         /// 1行分の辞書を一括で型変換する。
         /// BaseDataObj.Setproperties() や InsertMaster で使用。
         /// </summary>
-        public Dictionary<string, object?> ConvertRow(string table, Dictionary<string, object> row) {
+        public Dictionary<string, object?> ConvertRow(string table, IDictionary<string, object> row) {
             var result = new Dictionary<string, object?>();
 
             foreach (var kvp in row) {

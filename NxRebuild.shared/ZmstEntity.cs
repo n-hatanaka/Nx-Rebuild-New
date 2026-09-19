@@ -6,7 +6,12 @@ using System.Threading.Tasks;
 using Dapper;
 
 namespace NxRebuild.shared {
-    public class CategoryEntity : BaseDataObj<int> {
+    // ---------------------------------------------------------
+    // CategoryEntity
+    // 食品群マスタ（gun_m）を表すエンティティ
+    // ZmstEntityMgr のデータリストに混在して格納されるため、ZmstEntity を継承する
+    // ---------------------------------------------------------
+    public class CategoryEntity : ZmstEntity {
         public CategoryEntity() {
             _tblName = "gun_m";
             _idColName = "syou_cd";

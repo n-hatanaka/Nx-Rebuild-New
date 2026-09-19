@@ -143,36 +143,42 @@ namespace NxRebuild.shared {
 
         public DateTime Update_at {
             get {
-                if (_rawData.TryGetValue("update_at", out var v) && v != null)
-                    return Convert.ToDateTime(v);
+                try {
+                    if (_rawData.TryGetValue("update_at", out var v) && v != null && v is not DBNull)
+                        return Convert.ToDateTime(v);
+                } catch {
+                    // 苦肉の策：
+                    // DapperRow / ExpandoObject / CreateEmptyRow の型揺れで
+                    // 変換不能な値が来ることがあるため、例外は正常系として扱う。
+                    // 変換できなければ MinValue にフォールバックする。
+                    // 以下同じ
+                }
 
-                // テーブルに update_at が無い場合のフォールバック
                 return DateTime.MinValue;
             }
         }
-
-
-        public Guid LockerID {
-            get {
-                if (_rawData.TryGetValue("locked_by", out var v) && v != null)
-                    return Guid.Parse(v.ToString());
-
-                // ロックされていない場合
-                return Guid.Empty;
-            }
-        }
-
 
         public DateTime LockedAt {
             get {
-                if (_rawData.TryGetValue("locked_at", out var v) && v != null)
-                    return Convert.ToDateTime(v);
+                try {
+                    if (_rawData.TryGetValue("locked_at", out var v) && v != null && v is not DBNull)
+                        return Convert.ToDateTime(v);
+                } catch { }
 
-                // ロックされていない場合
                 return DateTime.MinValue;
             }
         }
 
+        public Guid LockerID {
+            get {
+                try {
+                    if (_rawData.TryGetValue("locked_by", out var v) && v != null && v is not DBNull)
+                        return Guid.Parse(v.ToString());
+                } catch { }
+
+                return Guid.Empty;
+            }
+        }
 
         public bool Opened {  get; set; }
 

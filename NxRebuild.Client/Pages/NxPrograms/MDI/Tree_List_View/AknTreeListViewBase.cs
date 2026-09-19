@@ -21,6 +21,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
 
         protected AknListView<TKey>? _listview;
         public AknListView<TKey>? ListView => _listview;
+        protected IBaseDataObj<TKey>? SelectedFolder { get; set; }
 
         // ツリーデータ
         [Parameter] public List<MyTreeData<TKey>> TreeData { get; set; } = new();
@@ -40,7 +41,10 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
 
         // ノード選択イベントハンドラ
         public virtual void HandleNodeSelection(MyTreeData<TKey> selectedNode) {
-            Console.WriteLine($"フォルダ選択: {selectedNode.Text}");
+            if (selectedNode.ItemData is IBaseDataObj<TKey> folder) {
+                SelectedFolder = folder;
+                BuildGridFromFolder(folder);
+            }
         }
 
         // ノードドラッグドロップイベントハンドラ
@@ -155,23 +159,73 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
 
             TreeData.Clear();
 
-            foreach (var obj in DataMgr.DataList) {
-                if (obj.DataType == NxDataType.Folder) {
-                    TreeData.Add(new MyTreeData<TKey>(obj) {
-                        IsExpanded = true
-                    });
-                }
+            // 1. ルートノードだけ追加（親が null のもの）
+            var roots = DataMgr.DataList
+                        .Where(o =>
+                            o.DataType == NxDataType.Folder ||
+                            (o.DataType == NxDataType.root || o.ParentDataObj == null));
+
+
+            foreach (var root in roots) {
+                var node = new MyTreeData<TKey>(root) { IsExpanded = true };
+                BuildChildren(node, DataMgr.DataList);
+                TreeData.Add(node);
             }
 
             StateHasChanged();
         }
 
+        private void BuildChildren(MyTreeData<TKey> parentNode, IEnumerable<IBaseDataObj<TKey>> all) {
+            var children = all
+                .Where(o => o.DataType == NxDataType.Folder && o.ParentDataObj == parentNode.ItemData);
+
+            foreach (var child in children) {
+                var childNode = new MyTreeData<TKey>(child) { IsExpanded = true };
+                BuildChildren(childNode, all);
+                parentNode.Children.Add(childNode);
+            }
+        }
+
         // ---------------------------------------------------------
         // ★ DataObj → GridView へ流し込む（IBaseDataObj を MyDataObj に投影）
         // ---------------------------------------------------------
-        public virtual void BuildGridFromObj(IBaseDataObj<TKey> obj) {
+        public virtual void BuildGridFromFolder(IBaseDataObj<TKey> folder) {
             GridDataItems.Clear();
-            GridDataItems.Add(new MyDataObj<TKey>(obj));
+            if (DataMgr == null || folder == null)
+                return;
+
+            // 親フォルダの ID
+            var parentId = folder.DataID;
+
+            // 子アイテムを抽出（正本から）
+            var children = DataMgr.DataList
+                .Where(x => x.DataType == NxDataType.Zairyou &&
+                            EqualityComparer<TKey>.Default.Equals(x.ParentID, parentId))
+                .ToList();
+
+            foreach (var obj in children) {
+                // ★ 新構造：MyDataObj(obj) を使う
+                var row = new MyDataObj<TKey>(obj);
+
+                // BaseDataObj<TKey> にキャストして RawData を読む
+                if (obj is BaseDataObj<TKey> baseObj) {
+                    foreach (var kv in baseObj._rawData) {
+                        string key = kv.Key;
+
+                        // MyDataObj が自動で入れる基本カラムはスキップ
+                        if (key == obj.IdColName ||
+                            key == obj.ParentIDColName ||
+                            key == "locked_at" ||
+                            key == "update_at")
+                            continue;
+
+                        row.ExtraData[key] = kv.Value ?? "";
+                    }
+                }
+
+                GridDataItems.Add(row);
+            }
+
             StateHasChanged();
         }
     }
