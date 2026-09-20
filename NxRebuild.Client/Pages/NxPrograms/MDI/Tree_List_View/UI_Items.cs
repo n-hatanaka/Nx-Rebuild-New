@@ -69,6 +69,8 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
     public class MyDataObj<TKey> {
         public string Name { get; set; } = "";
         public bool IsEditing { get; set; }
+        public string EditingName { get; set; } = "";
+
         public bool IsLocked { get; set; }
         public bool IsSelected { get; set; }
 

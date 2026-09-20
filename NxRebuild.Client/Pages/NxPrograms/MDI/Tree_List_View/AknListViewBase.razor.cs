@@ -16,6 +16,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
         [Parameter] public EventCallback<MyDataObj<TKey>> OnRowDoubleClicked { get; set; } // 行ダブルクリックイベントコールバック
         [Parameter] public EventCallback<(int TargetIndex, MyDataObj<TKey>? DraggedItem)> OnRowDropped { get; set; } // 行ドロップイベントコールバック
         [Parameter] public EventCallback<(string Key, bool IsAscending)> OnSortRequested { get; set; } // ソートリクエストイベントコールバック
+        [Parameter] public EventCallback<MyDataObj<TKey>> OnRenameRequested { get; set; }
 
         protected bool _isDoubleClicking = false; // ダブルクリック処理中かどうかのフラグ
         private string _currentSortKey = ""; // 現在ソート対象のキー
@@ -75,16 +76,13 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
 
 
 
-        public virtual void HandleNodeSelection(MyTreeData<TKey> node) {
-        }
 
         public virtual void BuildGridFromObj(IBaseDataObj<TKey> obj) {
             ListDataItems.Clear();
             ListDataItems.Add(new MyDataObj<TKey>(obj));
         }
 
-        public virtual void HandleGridDoubleClick(MyDataObj<TKey> item) {
-        }
+
         public string GetSortIcon(string key) {
             if (!AllowSorting || _currentSortKey != key) return ""; // ソートを許可されていない、またはソート対象のキーと異なるなら空文字を返す
             return _isAscending ? " ▲" : " ▼"; // 昇順なら↑、降順なら↓のアイコンを返す
@@ -125,6 +123,13 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
             }
         }
 
+        public async Task HandleListEditKey(KeyboardEventArgs e, MyDataObj<TKey> item) {
+            if (e.Key == "Enter")
+                await OnRenameRequested.InvokeAsync(item);
+            else if (e.Key == "Escape")
+                CancelRename(item);  // Cancel
+        }
+
         public async Task DropRow(int targetIndex) {
             if (!DisableRowDragDrop && OnRowDropped.HasDelegate) { // 行ドラッグ・ドロップが有効で、ドロップイベントコールバックがあるなら
                 await OnRowDropped.InvokeAsync((targetIndex, DraggingState<TKey>.DraggingGridItem)); // ドロップイベントを呼び出す
@@ -135,12 +140,20 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
             foreach (var i in ListDataItems) i.IsEditing = false; // すべてのアイテムの編集モードをリセット
             item.IsEditing = true; // クリックされたアイテムの編集モードに設定
 
+            item.EditingName = item.Name;   // 編集前の名前を保持
+
             base.StateHasChanged(); // 状態が変更されたことを通知
 
             await Task.Delay(50); // 0.05秒の遅延
             if (_listInputRef.Context != null) {
                 await _listInputRef.FocusAsync(); // フォーカスを設定
             }
+        }
+
+        public void CancelRename(MyDataObj<TKey> item) {
+            item.IsEditing = false;
+            item.EditingName = item.Name;
+            StateHasChanged();
         }
 
         public string FormatValue(object val, string format) { // 値をフォーマットするメソッド

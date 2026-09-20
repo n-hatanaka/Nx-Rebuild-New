@@ -328,20 +328,37 @@ namespace NxRebuild.shared {
         }
 
         public virtual async Task Updateproperties() {
-            string sql = $@"
-                            SELECT *
-                            FROM ""{_tblName}""
-                            WHERE ""{_idColName}"" = @DataID
-                                AND ""tenant_code"" = @TenantCode;
-                        ";
+            try {
+                string sql = $@"
+                                SELECT *
+                                FROM ""{_tblName}""
+                                WHERE ""{_idColName}"" = @DataID
+                                  AND ""tenant_code"" = @TenantCode;
+                            ";
+
+                var record = await DBcon.QueryFirstOrDefaultAsync<dynamic>(sql, new {
+                    DataID = this.DataID,
+                    TenantCode = this.TenantCode
+                });
 
 
-            var record = await DBcon.QueryFirstOrDefaultAsync<Dictionary<string, object>>(sql);
+                if (record != null) {
+                    var dict = ((IDictionary<string, object>)record)
+                        .ToDictionary(k => k.Key, v => v.Value);
 
-            if (record != null) {
-                Setproperties(record);
+                    var normalized = NxTypeMapper.ConvertRow(_tblName, dict);
+
+                    Setproperties(normalized);
+                } else {
+                    Console.WriteLine($"[Nx] Updateproperties: レコードなし {_tblName} DataID={DataID}");
+                }
+            } catch (Exception ex) {
+                Console.WriteLine($"[Nx] Updateproperties Error: {ex.Message}");
+                Console.WriteLine(ex.StackTrace);
             }
         }
+
+
 
         public abstract Task<bool> SaveAsync();
 

@@ -11,6 +11,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
         where TObj : BaseDataObj<TKey>
         where TKey : notnull {
 
+        [Parameter] public EventCallback<MyDataObj<TKey>> OnRenameRequested { get; set; }
         [Parameter] public EventCallback<(MyDataObj<TKey> Item, MouseEventArgs Args)> OnRowClicked { get; set; }
         [Parameter] public EventCallback<MyDataObj<TKey>> OnRowDoubleClicked { get; set; }
         [Parameter] public EventCallback<(int TargetIndex, MyDataObj<TKey>? DraggedItem)> OnRowDropped { get; set; }
@@ -114,6 +115,40 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
                 RemoveNodeFromAll(n.Children, node);
             }
         }
+
+        //リネームリクエストイベントハンドラ
+        protected async Task HandleRename(MyDataObj<TKey> item) {
+
+            if (item == null)
+                return; // キャンセル
+
+            await ConfirmRename(item);
+        }
+
+        //リネーム処理
+        public virtual async Task ConfirmRename(MyDataObj<TKey> item) {
+            // UI 側の編集名を反映（仮）
+            item.Name = item.EditingName;
+
+            // ★ DataMgr に反映（DB更新）
+            if (item.ItemData is BaseDataObj<TKey> baseObj) {
+                var ok = await baseObj.ReName(item.EditingName);
+
+                if (!ok) {
+                    // 失敗したら元に戻す
+                    item.Name = baseObj.DataName;
+                    item.IsEditing = false;
+                    return;
+                }
+            }
+
+            item.IsEditing = false;
+
+            // グリッド再構築
+            if (SelectedFolder != null)
+                BuildGridFromFolder(SelectedFolder);
+        }
+
 
         public void AddDefaultColumns() {
             Columns.Clear();

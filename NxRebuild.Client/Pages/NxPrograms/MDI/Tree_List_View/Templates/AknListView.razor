@@ -99,12 +99,12 @@
                     <div class="list-cell @GetNameAlignClass()" style="width: 200px;">
                         <input @ref="_listInputRef"
                                @key="@($"listedit-{item.GetHashCode()}")"
-                               @bind="item.Name"
+                               @bind="item.EditingName"
                                @bind:event="oninput"
                                class="list-edit-input"
                                autofocus
-                               @onfocusout="() => { item.IsEditing = false; StateHasChanged(); }"
-                               @onkeyup='(e) => { if (e.Key == "Enter" || e.Key == "Escape") { item.IsEditing = false; StateHasChanged(); } }' />
+                               @onkeydown="(e) => HandleListEditKey(e, item)"
+                               @onfocusout="() => CancelRename(item)" />
                     </div>
 
                     @foreach (var col in Columns.Where(c => c.DataKey != "Name"))
