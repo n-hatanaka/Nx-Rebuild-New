@@ -49,21 +49,29 @@ namespace NxRebuild.shared {
             );
         }
 
-        public override ZmstEntity CreateNewDataObj() {
+        public override ZmstEntity? Get(int id) {
+            // _dataList が null の場合は何も返さない
+            if (_dataList == null)
+                return null;
 
-            var obj = new ZmstEntity();
-            obj.DBcon = DBcon;
-            obj.SelfObjMgr = (IBaseDataObjMgr<ZmstEntity, int>)this;
-            obj.TenantCode = TenantCode;
-            obj.CurrUsrID = CurrentUserID;
+            // DataList を手動で走査
+            foreach (var obj in _dataList) {
+                // ID が一致しないならスキップ
+                if (obj.DataID != id)
+                    continue;
 
-            obj.DataID = 0; //IDは保存時に取得する。
-            obj.Setproperties(GetEmptySchema());
+                // CategoryEntity（フォルダ）は除外
+                if (obj is CategoryEntity)
+                    continue;
 
-            _dataList.Add(obj);
-            return obj;
+                // ZmstEntity だけ返す
+                if (obj is ZmstEntity zmst)
+                    return zmst;
+            }
+
+            // 見つからなかった
+            return null;
         }
-
 
 
         // ---------------------------------------------------------

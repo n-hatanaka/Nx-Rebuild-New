@@ -207,9 +207,9 @@ namespace NxRebuild.shared {
         // 物理削除（tan_m）
         // Zmstもtam_mも削除してはいけない
         // ---------------------------------------------------------
-        public override Task<bool> DeleteQueryExec(IDbTransaction transaction) {
-            // ★ 削除禁止：常に false を返す
-            return Task.FromResult(false);
+        public override async Task<bool> DeleteQueryExec(IDbTransaction transaction) {
+            
+            return await SoftDeleteQueryExec(transaction);
         }
 
 

@@ -6,10 +6,10 @@ using NxRebuild.shared;
 
 namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
 
-    // ★ TObj を追加した正しい抽象構造
     public class AknTreeListViewBase<TObj, TKey> : ComponentBase
         where TObj : BaseDataObj<TKey>
         where TKey : notnull {
+
 
         [Parameter] public EventCallback<MyDataObj<TKey>> OnRenameRequested { get; set; }
         [Parameter] public EventCallback<(MyDataObj<TKey> Item, MouseEventArgs Args)> OnRowClicked { get; set; }
@@ -263,5 +263,73 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
 
             StateHasChanged();
         }
+        // =========================================================
+        // ★ 画面上部ボタン用の標準操作（新規・編集・削除）
+        // =========================================================
+
+        /// <summary>
+        /// 新規作成（選択フォルダに新規アイテムを追加）
+        /// </summary>
+        public virtual async Task CreateNewItemAsync() {
+            //if (DataMgr == null || SelectedFolder == null)
+            //    return;
+
+            //// DataMgr 側の「新規作成」抽象 API を呼ぶ（存在する前提）
+            //var newObj = await DataMgr.CreateNewAsync(SelectedFolder);
+
+            //if (newObj != null) {
+            //    // グリッド再構築
+            //    BuildGridFromFolder(SelectedFolder);
+            //}
+        }
+
+        [Inject] protected WindowManagerBase Manager { get; set; } = default!;
+
+        /// <summary>
+        /// 編集画面へ遷移（ の編集画面）
+        /// ここは具象で実装すること
+        /// </summary>
+        public virtual void BeginEditSelectedItem() {
+            //var item = GridDataItems.FirstOrDefault(x => x.IsSelected);
+            //if (item == null) return;
+
+            //if (item.ItemData is BaseDataObj<TKey> baseObj) {
+            //    Manager.Open<Z_Edit>(
+            //        $"材料編集: {baseObj.DataName}",
+            //        new Dictionary<string, object>
+            //        {
+            //            { "LocalCode", baseObj.DataID }
+            //        }
+            //    );
+            //}
+        }
+
+        /// <summary>
+        /// 削除（選択行を削除）
+        /// </summary>
+        public virtual async Task DeleteSelectedItemAsync() {
+            if (DataMgr == null || SelectedFolder == null)
+                return;
+
+            // 選択行を取得
+            //あとで複数選択できる仕様にするけどとりあえず1件だけで
+            var item = GridDataItems.FirstOrDefault(x => x.IsSelected);
+            if (item == null) return;
+
+            if (item.ItemData is TObj obj) {
+
+                // 1件削除 → リストにして渡す
+                var failed = await DataMgr.DeleteData(new[] { obj.DataID });
+
+                // 失敗した ID があればログ
+                if (failed.Count > 0)
+                    Console.WriteLine($"削除失敗: {failed[0]}");
+
+                // グリッド再構築
+                BuildGridFromFolder(SelectedFolder);
+            }
+        }
+
+
     }
 }

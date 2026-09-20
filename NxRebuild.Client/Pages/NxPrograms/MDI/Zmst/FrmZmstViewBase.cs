@@ -17,26 +17,6 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
 
 
         // ---------------------------------------------------------
-        // フォルダだけツリーに入れる（新構造）
-        // ---------------------------------------------------------
-        //public override void BuildTreeFromMgr() {
-        //    if (ZmstMgr == null) return;
-
-        //    TreeData.Clear();
-
-        //    foreach (var obj in ZmstMgr.DataList) {
-        //        if (obj.DataType == NxDataType.Folder) {
-        //            TreeData.Add(new MyTreeData<int>(obj) {
-        //                IsExpanded = true
-        //            });
-        //        }
-        //    }
-
-        //    StateHasChanged();
-        //}
-
-
-        // ---------------------------------------------------------
         // フォルダ内の ZmstEntity をグリッドに流し込む（Explorer）
         // ---------------------------------------------------------
         //public void BuildGridFromFolder(IBaseDataObj<int> folder) {
@@ -83,11 +63,34 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
         // ---------------------------------------------------------
         // ダブルクリック → 編集画面へ遷移（後で作る）
         // ---------------------------------------------------------
-        public override void HandleGridDoubleClick(MyDataObj<int> item) {
+        /// <summary>
+        /// 編集画面へ遷移（Zmst の編集画面）
+        /// </summary>
+        public override void BeginEditSelectedItem() {
+            var item = GridDataItems.FirstOrDefault(x => x.IsSelected);
+            if (item == null) return;
 
+            if (item.ItemData is IZmstEntity baseObj) {
+                Manager.Open<Z_Edit>(
+                    $"材料編集: {baseObj.DataName}",
+                    new Dictionary<string, object>
+                    {
+                        { "LocalCode", baseObj.DataID }
+                    }
+                );
+            }
+        }
+        public override void HandleGridDoubleClick(MyDataObj<int> item) {
             Console.WriteLine($"材料編集画面へ遷移: {item.Name}");
 
-            // NavigationManager.NavigateTo($"/nx/zmst/edit/{item.ExtraData["LocalCode"]}");
+            // ★ ダブルクリックされた行を選択状態にする
+            foreach (var row in GridDataItems)
+                row.IsSelected = false;
+
+            item.IsSelected = true;
+
+            BeginEditSelectedItem();
         }
+
     }
 }

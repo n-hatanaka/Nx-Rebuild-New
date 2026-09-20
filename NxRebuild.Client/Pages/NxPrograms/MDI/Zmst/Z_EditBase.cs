@@ -4,11 +4,47 @@ using NxRebuild.Client.Services;
 using NxRebuild.shared;
 
 namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
+    // 栄養素値を動的に保持するモデルクラス
+    // 栄養素値を動的に保持するモデルクラス
+    public class NutrientModel {
+        private readonly Dictionary<string, decimal?> _values = new();
+
+        // 動的アクセス（実際の値）
+        public decimal? this[string key] {
+            get => _values.TryGetValue(key, out var v) ? v : null;
+            set => _values[key] = value;
+        }
+
+        // Blazor が式ツリー用に必要とするダミープロパティ
+        public decimal? ValueProxy { get; set; }
+
+        // ★ WorkingRaw → NutrientModel に一括ロード
+        public void LoadFromRaw(Dictionary<string, object?> raw, IEnumerable<string> cols) {
+            foreach (var col in cols) {
+                if (raw.TryGetValue(col, out var v) && v != null) {
+                    if (decimal.TryParse(v.ToString(), out var d))
+                        _values[col] = d;
+                    else
+                        _values[col] = null;
+                } else {
+                    _values[col] = null;
+                }
+            }
+        }
+
+        // ★ NutrientModel → WorkingRaw に書き戻し
+        public void SaveToRaw(Dictionary<string, object?> raw) {
+            foreach (var kv in _values)
+                raw[kv.Key] = kv.Value;
+        }
+    }
+
     public partial class Z_EditBase : ComponentBase {
         [Parameter] public int LocalCode { get; set; }
         public List<CategoryEntity> GunList { get => GlobalState.ZmstEntityMgr.GunList; }
         public IZmstEntity Entity { get; set; }
 
+        public NutrientModel Nut { get; set; } = new();
         public List<INutritionProperty> NutritionList { get; set; } = new();
         public Dictionary<string, decimal?> NutritionValues { get; set; } = new();
 
@@ -20,6 +56,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
         public string NewTanName { get; set; }
         public float NewJun { get; set; }
         public float NewJyuuryou { get; set; }
+
 
         // 基本情報
         public string ZName {
@@ -43,6 +80,19 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
             set => WorkingRaw["Txt"] = value;
         }
 
+        public decimal? GetNut(string key) {
+            if (WorkingRaw.TryGetValue(key, out var v)) {
+                if (decimal.TryParse(v?.ToString(), out var d))
+                    return d;
+            }
+            return null;
+        }
+
+        public void SetNut(string key, decimal? value) {
+            WorkingRaw[key] = value?.ToString() ?? "";
+        }
+
+
 
         protected override async Task OnInitializedAsync() {
             var zm = GlobalState.ZmstEntityMgr
@@ -59,8 +109,8 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
             Entity.CreateWorkingMemory(WorkingRaw, WorkingTanList);
 
             // UI バインド用の値を WorkingRaw から取り出す
-            ZName = WorkingRaw["ZName"]?.ToString();
-            GunCd = Convert.ToInt32(WorkingRaw["GunCd"]);
+            ZName = WorkingRaw["Z_name"]?.ToString();
+            GunCd = Convert.ToInt32(WorkingRaw["gun_cd"]);
             Txt = WorkingRaw["Txt"]?.ToString();
 
 
@@ -78,8 +128,8 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
             NutritionList = sorted.ToList();
 
             // 栄養素値を WorkingRaw から読み込む
-            foreach (var np in NutritionList)
-                NutritionValues[np.Col] = Convert.ToDecimal(WorkingRaw[np.Col]);
+            Nut.LoadFromRaw(WorkingRaw, NutritionList.Select(np => np.Col));
+
 
         }
 
@@ -109,12 +159,13 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
 
 
         public async Task SaveAsync() {
-            // 栄養素の反映
-            foreach (var kv in NutritionValues)
-                Entity.SetNutritionValue(kv.Key, kv.Value);
+            // ★ NutrientModel の内容を WorkingRaw に反映
+            Nut.SaveToRaw(WorkingRaw);
 
             // 単位は ZmstEntity.SaveAsync 内でまとめて保存する
             await Entity.SaveAsync();
         }
+
     }
+
 }

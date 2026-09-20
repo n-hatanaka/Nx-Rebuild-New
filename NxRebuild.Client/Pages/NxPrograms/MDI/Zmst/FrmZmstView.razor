@@ -6,22 +6,80 @@
 @using NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View
 
 <style>
-    /* 画面全体のレイアウト（左右並び・隙間・高さ） */
+    .zmst-view-root {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        width: 100%;
+        min-height: 0;
+        box-sizing: border-box;
+    }
+
+    .top-bar {
+        display: flex;
+        flex-direction: row;
+        gap: 10px;
+        padding: 5px 10px;
+        background-color: #f5f5f5;
+        border-bottom: 1px solid #ccc;
+        width: 100%;
+        flex-shrink: 0;
+        box-sizing: border-box;
+    }
+
     .app-container {
         display: flex;
         flex-direction: row;
         gap: 10px;
-        flex: 1; /* ← ウインドウに合わせて伸縮 */
-        min-height: 0; /* ← はみ出し防止 */
+        flex: 1;
+        width: 100%;
+        min-height: 0 !important;
         min-width: 0;
-        width: 100%; /* ← これで flex の誤判定を完全に防ぐ */
         overflow: hidden;
-        color: black;
-        padding: 5px; /* ← 上下左右すべてに余白 */
+        padding: 5px; /* pane同士の間の外側余白を無くしたい場合はここも 0 にしてください */
         box-sizing: border-box;
     }
 
-    /* 画面が狭い時のレスポンシブ制御（上下並び替え、器の大きさ調整） */
+    .tree-pane, .grid-pane {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .tree-pane {
+        flex: 0 0 300px;   
+        min-width: 250px;
+    }
+
+    .grid-pane {
+        flex: 1;             
+        min-width: 0;        
+        width: 0;            
+        display: flex;
+        flex-direction: column;
+    }
+
+    .scroll-pane {
+        flex: 1;
+        width: 100%;
+        height: 100%;
+        overflow-y: auto;
+        overflow-x: auto;
+        background-color: white;
+        border: 1px solid #ccc;
+        padding: 0;
+        box-sizing: border-box;
+        /* 高さが崩れるのを防ぐため block 表示を明示 */
+        display: block; 
+    }
+
+    /* 子コンポーネント（AknTreeView / AknListView） */
+    .scroll-pane > * {
+        width: 100% !important;
+        /* min-height は削除し、高さの自動計算に任せる */
+        box-sizing: border-box;
+    }
+
     @@media (max-width: 700px) {
         .app-container {
             flex-direction: column;
@@ -29,8 +87,8 @@
 
         .tree-pane {
             flex: 0 0 25% !important;
-            width: 100% !important;
             max-height: 25% !important;
+            width: 100%;
         }
 
         .grid-pane {
@@ -38,57 +96,48 @@
             width: 100% !important;
         }
     }
-
-    /* スクロール領域の基本枠（中身の配置とスクロール可否） */
-    .scroll-pane {
-        background-color: white;
-        border: 1px solid #ccc;
-        padding: 10px;
-        display: flex;
-        flex-direction: column;
-        min-height: 0;
-        overflow-y: auto;
-        overflow-x: auto;
-    }
-
-    .tree-pane {
-        flex: 0 0 300px;
-        min-width: 250px;
-        min-height: 0; /* ← 必須 */
-    }
-
-    .grid-pane {
-        flex: 2;
-        min-width: 0;
-        min-height: 0; /* ← 必須 */
-    }
 </style>
 
-<div class="app-container">
-    @* A. ツリーコンポーネント (イベント処理を外部結合) *@
-    <AknTreeView TKey="int"
-                 TreeData="TreeData"
-                 OnNodeSelected="HandleNodeSelection"
-                 OnNodeDropped="HandleNodeDrop"
-                 @ref="_treeview" />
 
-    @* B. グリッドコンポーネント (イベント処理を外部結合) *@
-    @* ソート機能を無効化する場合（AllowSorting="false" を渡す） *@
-    <AknListView TKey="int"
-                 ListDataItems="GridDataItems"
-                 Columns="Columns"
-                 AllowSorting="true"
-                 OnRenameRequested="HandleRename"
-                 OnRowClicked="HandleGridClick"
-                 OnRowDoubleClicked="HandleGridDoubleClick"
-                 OnRowDropped="HandleGridReorder"
-                 OnSortRequested="HandleSortRequest"
-                 @ref="_listview" />
+<div class="zmst-view-root">
+    <div class="top-bar">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="HandleCreate">新規作成</MudButton>
+        <MudButton Variant="Variant.Outlined" Color="Color.Info" OnClick="HandleEdit">編集</MudButton>
+        <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="HandleDelete">削除</MudButton>
+    </div>
+
+    <div class="app-container">
+        <div class="tree-pane">
+            <div class="scroll-pane">
+                <AknTreeView TKey="int"
+                             TreeData="TreeData"
+                             OnNodeSelected="HandleNodeSelection"
+                             OnNodeDropped="HandleNodeDrop"
+                             @ref="_treeview" />
+            </div>
+        </div>
+
+        <div class="grid-pane">
+            <div class="scroll-pane">
+                <AknListView TKey="int"
+                             ListDataItems="GridDataItems"
+                             Columns="Columns"
+                             AllowSorting="true"
+                             OnRenameRequested="HandleRename"
+                             OnRowClicked="HandleGridClick"
+                             OnRowDoubleClicked="HandleGridDoubleClick"
+                             OnRowDropped="HandleGridReorder"
+                             OnSortRequested="HandleSortRequest"
+                             @ref="_listview" />
+            </div>
+        </div>
+    </div>
 </div>
+
 
 @code {
     private bool _initialized = false;
-
+    
     protected override async Task OnInitializedAsync()
     {
         ZmstMgr = GlobalState.ZmstEntityMgr;
@@ -103,6 +152,26 @@
         SetManager(ZmstMgr);
 
         AddDefaultColumns();
+        
+        // ★ これが無いと @ref がセットされない
+        await InvokeAsync(StateHasChanged);
     }
+
+
+    private async Task HandleCreate()
+    {
+        await CreateNewItemAsync()!;
+    }
+
+    private void HandleEdit()
+    {
+        BeginEditSelectedItem();
+    }
+
+    private async Task HandleDelete()
+    {
+        await DeleteSelectedItemAsync()!;
+    }
+
 
 }
