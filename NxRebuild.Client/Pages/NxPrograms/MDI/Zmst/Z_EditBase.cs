@@ -49,7 +49,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
         public Dictionary<string, decimal?> NutritionValues { get; set; } = new();
 
         public Dictionary<string, object?> WorkingRaw { get; set; } = new();
-        public List<TanMEntity> WorkingTanList { get; set; } = new();
+        public List<Dictionary<string, object?>> WorkingTanList { get; set; } = new();
 
         // 単位追加用
         public int NewTanCd { get; set; }

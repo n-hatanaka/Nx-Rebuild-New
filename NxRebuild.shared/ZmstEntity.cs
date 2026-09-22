@@ -89,18 +89,7 @@ namespace NxRebuild.shared {
     }
 
 
-    public class TanMEntity {
-        public Dictionary<string, object?> Raw { get; private set; }
 
-        public TanMEntity(Dictionary<string, object> row) {
-            Raw = NxTypeMapper.ConvertRow("tan_m", row);
-        }
-
-        public TanMEntity DeepCopy() {
-            return new TanMEntity(new Dictionary<string, object>(this.Raw));
-        }
-
-    }
     //IZmstEntity インターフェース
     public interface IZmstEntity : IBaseDataObj<int> {
         List<TanMEntity> TanList { get; }
@@ -189,19 +178,7 @@ namespace NxRebuild.shared {
         }
 
 
-        public void CreateWorkingMemory(
-                        Dictionary<string, object?> workingRaw,
-                        List<TanMEntity> workingTanList) {
-            // Raw の Deep Copy
-            workingRaw.Clear();
-            foreach (var kv in _rawData)
-                workingRaw[kv.Key] = kv.Value;
 
-            // TanList の Deep Copy
-            workingTanList.Clear();
-            foreach (var t in TanList)
-                workingTanList.Add(t.DeepCopy());
-        }
 
         // ---------------------------------------------------------
         // 物理削除（tan_m）

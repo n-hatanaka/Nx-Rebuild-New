@@ -217,7 +217,34 @@ namespace NxRebuild.shared {
             // 正本化された辞書をそのまま保持
             _rawData = normalized;
         }
-     
+        
+        
+        public void CreateWorkingMemory(
+            Dictionary<string, object?> workingRaw,
+            List<Dictionary<string, object?>>? w_SubTblList = null)
+        {
+            // Raw の Deep Copy
+            workingRaw.Clear();
+            foreach (var kv in _rawData)
+                workingRaw[kv.Key] = kv.Value;
+        
+            // SubTblList の Deep Copy（UI が使う場合のみ）
+            if (w_SubTblList != null)
+            {
+                w_SubTblList.Clear();
+        
+                foreach (var t in TanList)
+                {
+                    // ★ TanMEntity.DeepCopy を使わず、ここで直接 Raw の DeepCopy を作る
+                    var rawCopy = new Dictionary<string, object?>();
+                    foreach (var kv in t.Raw)
+                        rawCopy[kv.Key] = kv.Value;
+        
+                    w_SubTblList.Add(rawCopy);
+                }
+            }
+        }  
+      
         // テーブルからデータを取得してJSON文字列にする
         public string TblToJson() {
             string sql = CreateJSONsql();
@@ -357,16 +384,154 @@ namespace NxRebuild.shared {
                 Console.WriteLine(ex.StackTrace);
             }
         }
+// =======================================================
+// 保存の標準実
+// =======================================================
+
+public virtual Task<bool> SaveAsync(
+    Dictionary<string, object?> workingRaw,
+    List<Dictionary<string, object?>>? w_SubTblList = null)
+{
+    using var tran = DBcon.BeginTransaction();
+
+    try
+    {
+        // ★ メインテーブル保存（_w_tblName）
+        if (!await SaveWorkingMainAsync(workingRaw, tran))
+        {
+            tran.Rollback();
+            return false;
+        }
+
+        // ★ サブテーブル保存（_ws_tblName）
+        if (!await SaveWorkingSubAsync(w_SubTblList, tran))
+        {
+            tran.Rollback();
+            return false;
+        }
+
+        // ★ 継承先で追加の確定処理
+        if (!await SaveQueryExec(tran))
+        {
+            tran.Rollback();
+            return false;
+        }
+
+        // ★ コミット
+        tran.Commit();
+
+        // ★ 正本 Raw に反映
+        ApplyWorkingToRaw(workingRaw);
+
+        return true;
+    }
+    catch
+    {
+        tran.Rollback();
+        return false;
+    }
+}
 
 
+// =======================================================
+// メインテーブル保存（WorkingRaw → _w_tblName）
+// =======================================================
 
-        public abstract Task<bool> SaveAsync();
+protected virtual async Task<bool> SaveWorkingMainAsync(
+    Dictionary<string, object?> workingRaw,
+    IDbTransaction tran)
+{
+    var cols = new List<string>();
+    var vals = new List<string>();
 
-        //DBへの処理でのみ使用
-        public abstract Task<bool> SaveQueryExec(IDbTransaction transaction);
+    foreach (var kv in workingRaw)
+    {
+        cols.Add($@"""{kv.Key}""");
+        vals.Add($@"@{kv.Key}");
+    }
+
+    string sql = $@"
+        INSERT INTO ""{_w_tblName}""
+        ({string.Join(", ", cols)})
+        VALUES ({string.Join(", ", vals)});
+    ";
+
+    var rows = await DBcon.ExecuteAsync(sql, workingRaw, tran);
+    return rows == 1;
+}
+
+
+// =======================================================
+// サブテーブル保存（DELETE → INSERT 再構築）
+// =======================================================
+
+protected virtual async Task<bool> SaveWorkingSubAsync(
+    List<Dictionary<string, object?>>? w_SubTblList,
+    IDbTransaction tran)
+{
+    if (w_SubTblList == null)
+        return true;
+
+    // ★ DELETE
+    string delSql = $@"
+        DELETE FROM ""{_ws_tblName}""
+        WHERE ""{_idColName}"" = @DataID
+          AND ""tenant_code"" = @TenantCode;
+    ";
+
+    await DBcon.ExecuteAsync(delSql, new {
+        DataID = this.DataID,
+        TenantCode = this.TenantCode
+    }, tran);
+
+    // ★ INSERT 再構築
+    foreach (var row in w_SubTblList)
+    {
+        var cols = new List<string>();
+        var vals = new List<string>();
+
+        foreach (var kv in row)
+        {
+            cols.Add($@"""{kv.Key}""");
+            vals.Add($@"@{kv.Key}");
+        }
+
+        string insSql = $@"
+            INSERT INTO ""{_ws_tblName}""
+            ({string.Join(", ", cols)})
+            VALUES ({string.Join(", ", vals)});
+        ";
+
+        var rows = await DBcon.ExecuteAsync(insSql, row, tran);
+        if (rows != 1)
+            return false;
+    }
+
+    return true;
+}
+
+
+// =======================================================
+// 正本 Raw に反映
+// =======================================================
+
+protected void ApplyWorkingToRaw(Dictionary<string, object?> workingRaw)
+{
+    _rawData.Clear();
+    foreach (var kv in workingRaw)
+        _rawData[kv.Key] = kv.Value;
+}
+
+
+// =======================================================
+// 継承先で必ず実装する確定処理
+// =======================================================
+
+public abstract Task<bool> SaveQueryExec(IDbTransaction transaction);
+
 
         //データロックメソッド。
-        //ロックされてるか確認したくなってもどーせロックが目的なので意味
+        //ロックされてるか確認したくなってもロックが目的なので意味
         //が無いのでこれを呼び出せ。
         public virtual async Task<LockStatus>
             SetLockAsync(LockStatus lockStatus) {
