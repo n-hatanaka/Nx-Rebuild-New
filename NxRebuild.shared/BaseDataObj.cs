@@ -388,23 +388,21 @@ namespace NxRebuild.shared {
 // 保存の標準実
 // =======================================================
 
-public virtual Task<bool> SaveAsync(
+public virtual async Task<bool> SaveAsync(
     Dictionary<string, object?> workingRaw,
-    List<Dictionary<string, object?>>? w_SubTblList = null)
+    List<List<Dictionary<string, object?>>>? subTables = null)
 {
     using var tran = DBcon.BeginTransaction();
 
     try
     {
-        // ★ メインテーブル保存（_w_tblName）
-        if (!await SaveWorkingMainAsync(workingRaw, tran))
+        if (!await DeleteQueryExec(tran))
         {
             tran.Rollback();
             return false;
         }
-
-        // ★ サブテーブル保存（_ws_tblName）
-        if (!await SaveWorkingSubAsync(w_SubTblList, tran))
+        // ★ Working 全体保存（メイン＋サブ）
+        if (!await SaveWorkingAsync(workingRaw, subTables, tran))
         {
             tran.Rollback();
             return false;
@@ -432,7 +430,21 @@ public virtual Task<bool> SaveAsync(
     }
 }
 
+protected virtual async Task<bool> SaveWorkingAsync(
+    Dictionary<string, object?> workingRaw,
+    List<List<Dictionary<string, object?>>>? subTables,
+    IDbTransaction tran)
+{
+    // ★ メインテーブル保存
+    if (!await SaveWorkingMainAsync(workingRaw, tran))
+        return false;
 
+    // ★ サブテーブル保存（具象側で追加）
+    if (!await SaveWorkingSubAsync(subTables, tran))
+        return false;
+
+    return true;
+}
 // =======================================================
 // メインテーブル保存（WorkingRaw → _w_tblName）
 // =======================================================
@@ -441,6 +453,9 @@ protected virtual async Task<bool> SaveWorkingMainAsync(
     Dictionary<string, object?> workingRaw,
     IDbTransaction tran)
 {
+    
+
+    // ★ 次に INSERT（WorkingRaw をそのまま書き込む）
     var cols = new List<string>();
     var vals = new List<string>();
 
@@ -450,13 +465,13 @@ protected virtual async Task<bool> SaveWorkingMainAsync(
         vals.Add($@"@{kv.Key}");
     }
 
-    string sql = $@"
+    string insSql = $@"
         INSERT INTO ""{_w_tblName}""
         ({string.Join(", ", cols)})
         VALUES ({string.Join(", ", vals)});
     ";
 
-    var rows = await DBcon.ExecuteAsync(sql, workingRaw, tran);
+    var rows = await DBcon.ExecuteAsync(insSql, workingRaw, tran);
     return rows == 1;
 }
 
@@ -464,51 +479,14 @@ protected virtual async Task<bool> SaveWorkingMainAsync(
 // =======================================================
 // サブテーブル保存（DELETE → INSERT 再構築）
 // =======================================================
-
-protected virtual async Task<bool> SaveWorkingSubAsync(
-    List<Dictionary<string, object?>>? w_SubTblList,
+protected virtual Task<bool> SaveWorkingSubAsync(
+    List<List<Dictionary<string, object?>>>? subTables,
     IDbTransaction tran)
 {
-    if (w_SubTblList == null)
-        return true;
-
-    // ★ DELETE
-    string delSql = $@"
-        DELETE FROM ""{_ws_tblName}""
-        WHERE ""{_idColName}"" = @DataID
-          AND ""tenant_code"" = @TenantCode;
-    ";
-
-    await DBcon.ExecuteAsync(delSql, new {
-        DataID = this.DataID,
-        TenantCode = this.TenantCode
-    }, tran);
-
-    // ★ INSERT 再構築
-    foreach (var row in w_SubTblList)
-    {
-        var cols = new List<string>();
-        var vals = new List<string>();
-
-        foreach (var kv in row)
-        {
-            cols.Add($@"""{kv.Key}""");
-            vals.Add($@"@{kv.Key}");
-        }
-
-        string insSql = $@"
-            INSERT INTO ""{_ws_tblName}""
-            ({string.Join(", ", cols)})
-            VALUES ({string.Join(", ", vals)});
-        ";
-
-        var rows = await DBcon.ExecuteAsync(insSql, row, tran);
-        if (rows != 1)
-            return false;
-    }
-
-    return true;
+    // ★ スモールエンティティはサブ無しが基本
+    return Task.FromResult(true);
 }
+
 
 
 // =======================================================
@@ -527,8 +505,17 @@ protected void ApplyWorkingToRaw(Dictionary<string, object?> workingRaw)
 // 継承先で必ず実装する確定処理
 // =======================================================
 
-public abstract Task<bool> SaveQueryExec(IDbTransaction transaction);
-
+/// <summary>
+/// 扱うエンティティが単一レコードが主になると思われる為、ピュアバーチャルではなく
+/// virtual とし、デフォルト実装は true を返すだけとする。
+/// 具象クラスが複数テーブル・複数レコードを扱う場合は、
+/// ワークテーブルを同じスキーマで作成し、
+/// そちらから本テーブルへ書き込む処理をここに記述する。
+/// </summary>
+public virtual Task<bool> SaveQueryExec(IDbTransaction transaction)
+{
+    return Task.FromResult(true);
+}
 
         //データロックメソッド。
         //ロックされてるか確認したくなってもロックが目的なので意味
