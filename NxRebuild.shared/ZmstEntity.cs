@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Linq;
@@ -258,52 +258,21 @@ namespace NxRebuild.shared {
 
             return DBcon.ExecuteScalar<int>(sql, new { TenantCode }, tran);
         }
+      
+protected override int? EnsureIDForSave(IDbTransaction tran){
+    if (this.DataID == 0)
+    {
+        // ★ Zmst は保存時採番（新規レコード）
+        int newId = GenerateDataID(tran);
+        return newId;
+    }
+    else
+    {
+        // ★ 既存レコード（採番不要）
+        return this.DataID;
+    }
+}
 
-        // ---------------------------------------------------------
-        // SaveAsync（Zmst + tan_m）
-        // ---------------------------------------------------------
-        public async Task<bool> SaveAsync(
-            Dictionary<string, object?> workingRaw,
-            List<List<Dictionary<string, object?>>>? subTables = null) {
-            using var tran = DBcon.BeginTransaction();
-        
-            try
-            {
-                // ★ Zmst は保存時採番（DataID == 0 のときだけ採番）
-                if (this.DataID == 0)
-                {
-                    this.DataID = GenerateDataID(tran);
-                }
-
-                if (!await DeleteQueryExec(tran)) {
-                    tran.Rollback();
-                    return false;
-                }
-
-                // ★ Working 全体保存（メイン＋サブ）
-                if (!await SaveWorkingAsync(workingRaw, subTables, tran)) {
-                    tran.Rollback();
-                    return false;
-                }
-
-                // ★ 継承先で追加の確定処理
-                if (!await SaveQueryExec(tran)) {
-                    tran.Rollback();
-                    return false;
-                }
-
-                // ★ コミット
-                tran.Commit();
-
-                // ★ 正本 Raw に反映
-                ApplyWorkingToRaw(workingRaw);
-
-                return true;
-            } catch {
-                tran.Rollback();
-                return false;
-            }
-        }
 
         public override async Task<bool> ReNameQueryExec(string newName, IDbTransaction dbTransaction) {
             try {

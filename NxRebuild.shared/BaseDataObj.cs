@@ -393,6 +393,14 @@ namespace NxRebuild.shared {
                 Console.WriteLine(ex.StackTrace);
             }
         }
+
+// =======================================================
+// 保存の時にDataIDを確定させる場合はここにその処理を記述(ZmstEntity参照)
+// =======================================================
+
+protected virtual TKey? EnsureIDForSave(IDbTransaction tran){
+    return this.dataID;
+}
 // =======================================================
 // 保存の標準実
 // =======================================================
@@ -410,6 +418,11 @@ public virtual async Task<bool> SaveAsync(
             tran.Rollback();
             return false;
         }
+
+        
+        this.DataID = EnsureIDForSave(tran);
+        
+      
         // ★ Working 全体保存（メイン＋サブ）
         if (!await SaveWorkingAsync(workingRaw, subTables, tran))
         {
