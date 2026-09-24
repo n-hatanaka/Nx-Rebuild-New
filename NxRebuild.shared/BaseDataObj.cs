@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Data;
 using System.Data.Common;
+using System.Diagnostics;
 using System.Net.Http.Json; // GetFromJsonAsync用
 using System.Net.Sockets;
 using System.Text;
@@ -217,34 +218,42 @@ namespace NxRebuild.shared {
             // 正本化された辞書をそのまま保持
             _rawData = normalized;
         }
-        
-        
+
+
         public void CreateWorkingMemory(
             Dictionary<string, object?> workingRaw,
-            List<Dictionary<string, object?>>? w_SubTblList = null)
-        {
+            List<List<Dictionary<string, object?>>>? workingSubList = null) {
             // Raw の Deep Copy
             workingRaw.Clear();
             foreach (var kv in _rawData)
                 workingRaw[kv.Key] = kv.Value;
-        
-            // SubTblList の Deep Copy（UI が使う場合のみ）
-            if (w_SubTblList != null)
-            {
-                w_SubTblList.Clear();
-        
-                foreach (var t in TanList)
+
+            // SubRecColList の Deep Copy（ネスト対応）
+            if (workingSubList != null) {
+                workingSubList.Clear();
+
+                foreach (var subRecCol in SubRecColList) // ★ コピー元は SubRecColList
                 {
-                    // ★ TanMEntity.DeepCopy を使わず、ここで直接 Raw の DeepCopy を作る
-                    var rawCopy = new Dictionary<string, object?>();
-                    foreach (var kv in t.Raw)
-                        rawCopy[kv.Key] = kv.Value;
-        
-                    w_SubTblList.Add(rawCopy);
+                    var newSubCol = new List<Dictionary<string, object?>>();
+
+                    foreach (var rec in subRecCol) // Dictionary<string, object?>
+                    {
+                        var newDict = new Dictionary<string, object?>();
+                        foreach (var kv in rec)
+                            newDict[kv.Key] = kv.Value;
+
+                        newSubCol.Add(newDict);
+                    }
+
+                    workingSubList.Add(newSubCol);
                 }
             }
-        }  
-      
+        }
+
+
+
+
+
         // テーブルからデータを取得してJSON文字列にする
         public string TblToJson() {
             string sql = CreateJSONsql();

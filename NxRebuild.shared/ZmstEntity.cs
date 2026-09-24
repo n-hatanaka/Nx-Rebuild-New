@@ -55,7 +55,10 @@ namespace NxRebuild.shared {
         // ---------------------------------------------------------
         // ★ 保存禁止：常に false
         // ---------------------------------------------------------
-        public override Task<bool> SaveAsync() {
+        public override async Task<bool> SaveAsync(
+            Dictionary<string, object?> workingRaw,
+            List<List<Dictionary<string, object?>>>? subTables = null) {
+
             return Task.FromResult(false);
         }
 
@@ -178,41 +181,41 @@ namespace NxRebuild.shared {
         // 物理削除（保存前に既存レコードの削除の為のみに使う）
         // Zmstもtam_mも削除してはいけない
         // ---------------------------------------------------------
-public override async Task<bool> DeleteQueryExec(IDbTransaction transaction)
-{
-    try
-    {
-        // ★ サブテーブル tan_m を削除（Zmst 固定世界線）
-        string delSubSql = $@"
-            DELETE FROM ""tan_m""
-            WHERE ""parent_id"" = @DataID
-              AND ""tenant_code"" = @TenantCode;
-        ";
+        public override async Task<bool> DeleteQueryExec(IDbTransaction transaction)
+        {
+            try
+            {
+                // ★ サブテーブル tan_m を削除（Zmst 固定世界線）
+                string delSubSql = $@"
+                    DELETE FROM ""tan_m""
+                    WHERE ""parent_id"" = @DataID
+                      AND ""tenant_code"" = @TenantCode;
+                ";
 
-        await DBcon.ExecuteAsync(delSubSql, new {
-            DataID = this.DataID,
-            TenantCode = this.TenantCode
-        }, transaction);
+                await DBcon.ExecuteAsync(delSubSql, new {
+                    DataID = this.DataID,
+                    TenantCode = this.TenantCode
+                }, transaction);
 
-        // ★ メインテーブル zmst を削除
-        string delMainSql = $@"
-            DELETE FROM ""zmst""
-            WHERE ""id"" = @DataID
-              AND ""tenant_code"" = @TenantCode;
-        ";
+                // ★ メインテーブル zmst を削除
+                string delMainSql = $@"
+                    DELETE FROM ""zmst""
+                    WHERE ""id"" = @DataID
+                      AND ""tenant_code"" = @TenantCode;
+                ";
 
-        await DBcon.ExecuteAsync(delMainSql, new {
-            DataID = this.DataID,
-            TenantCode = this.TenantCode
-        }, transaction);
+                await DBcon.ExecuteAsync(delMainSql, new {
+                    DataID = this.DataID,
+                    TenantCode = this.TenantCode
+                }, transaction);
 
-        return true;
-    }
-    catch
-    {
-        return false;
-    }
-}
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
 
 
 
@@ -259,8 +262,9 @@ public override async Task<bool> DeleteQueryExec(IDbTransaction transaction)
         // ---------------------------------------------------------
         // SaveAsync（Zmst + tan_m）
         // ---------------------------------------------------------
-        public override async Task<bool> SaveAsync()
-        {
+        public async Task<bool> SaveAsync(
+            Dictionary<string, object?> workingRaw,
+            List<List<Dictionary<string, object?>>>? subTables = null) {
             using var tran = DBcon.BeginTransaction();
         
             try
@@ -270,28 +274,32 @@ public override async Task<bool> DeleteQueryExec(IDbTransaction transaction)
                 {
                     this.DataID = GenerateDataID(tran);
                 }
-        
-                // ★ 正本テーブル（zmst / tan_m）を DELETE → INSERT で再構築
-                if (!await DeleteQueryExec(tran))
-                {
+
+                if (!await DeleteQueryExec(tran)) {
                     tran.Rollback();
                     return false;
                 }
-        
-                // ★ zmst / tan_m の INSERT（具象側の確定処理）
-                if (!await SaveQueryExec(tran))
-                {
+
+                // ★ Working 全体保存（メイン＋サブ）
+                if (!await SaveWorkingAsync(workingRaw, subTables, tran)) {
                     tran.Rollback();
                     return false;
                 }
-        
-                // ★ コミット（世界線確定）
+
+                // ★ 継承先で追加の確定処理
+                if (!await SaveQueryExec(tran)) {
+                    tran.Rollback();
+                    return false;
+                }
+
+                // ★ コミット
                 tran.Commit();
-        
+
+                // ★ 正本 Raw に反映
+                ApplyWorkingToRaw(workingRaw);
+
                 return true;
-            }
-            catch
-            {
+            } catch {
                 tran.Rollback();
                 return false;
             }
@@ -336,39 +344,39 @@ public override async Task<bool> DeleteQueryExec(IDbTransaction transaction)
             }
         }
       
-protected override async Task<bool> SaveWorkingSubAsync(
-    List<Dictionary<string, object?>>? w_SubTblList,
-    IDbTransaction tran)
-{
-    if (w_SubTblList == null)
-        return true;
-
-
-    // ★ INSERT 再構築
-    foreach (var row in w_SubTblList)
-    {
-        var cols = new List<string>();
-        var vals = new List<string>();
-
-        foreach (var kv in row)
+        protected override async Task<bool> SaveWorkingSubAsync(
+            List<List<Dictionary<string, object?>>>? w_SubTblList,
+            IDbTransaction tran)
         {
-            cols.Add($@"""{kv.Key}""");
-            vals.Add($@"@{kv.Key}");
+            if (w_SubTblList == null)
+                return true;
+
+
+            // ★ INSERT 再構築
+            foreach (var row in w_SubTblList)
+            {
+                var cols = new List<string>();
+                var vals = new List<string>();
+
+                foreach (var kv in row)
+                {
+                    cols.Add($@"""{kv.Key}""");
+                    vals.Add($@"@{kv.Key}");
+                }
+
+                string insSql = $@"
+                    INSERT INTO ""tan_m""
+                    ({string.Join(", ", cols)})
+                    VALUES ({string.Join(", ", vals)});
+                ";
+
+                var rows = await DBcon.ExecuteAsync(insSql, row, tran);
+                if (rows != 1)
+                    return false;
+            }
+
+            return true;
         }
-
-        string insSql = $@"
-            INSERT INTO ""tan_m""
-            ({string.Join(", ", cols)})
-            VALUES ({string.Join(", ", vals)});
-        ";
-
-        var rows = await DBcon.ExecuteAsync(insSql, row, tran);
-        if (rows != 1)
-            return false;
-    }
-
-    return true;
-}
        
     }
 }
