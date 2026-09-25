@@ -237,27 +237,41 @@ namespace NxRebuild.shared {
             var records = await LoadRecordsAsync();
 
             foreach (var record in records) {
-                var obj = new ZmstEntity();
-                obj.DBcon = DBcon;
-                obj.TenantCode = TenantCode;
-                obj.CurrUsrID = CurrentUserID;
+                var dict = (IDictionary<string, object>)record;
 
-                obj.Setproperties((IDictionary<string, object>)record);
+                var obj = new ZmstEntity {
+                    DBcon = DBcon,
+                    TenantCode = TenantCode,
+                    CurrUsrID = CurrentUserID
+                };
 
-                if (record["_tan_m_rows"] is List<Dictionary<string, object>> subRows) {
-                    foreach (var row in subRows) {
-                        obj.TanList.Add(new TanMEntity(row));
+                // Zmst の行をセット
+                obj.Setproperties(dict);
+
+                // -----------------------------
+                // ★ SubTables のロード
+                // -----------------------------
+                obj.SubTables.Clear();
+
+                if (dict.TryGetValue("_subTables", out var subObj) &&
+                    subObj is List<List<Dictionary<string, object?>>> subTables) {
+                    // 深いコピー（安全のため）
+                    foreach (var tbl in subTables) {
+                        obj.SubTables.Add(
+                            tbl.Select(row => new Dictionary<string, object?>(row)).ToList()
+                        );
                     }
-                } else {
-                    obj.TanList.Clear();
                 }
 
                 _dataList.Add(obj);
             }
 
+
+            // 親子関係セット
             foreach (var obj in _dataList) {
                 SetParent((ZmstEntity)obj);
             }
+
         }
 
     }

@@ -88,27 +88,6 @@ namespace NxRebuild.shared
             return true;
         }
     
-        public override async Task<bool> SaveAsync()
-        {
-            using var tran = DBcon.BeginTransaction();
-            try
-            {
-                var ok = await SaveQueryExec(tran);
-                if (!ok)
-                {
-                    tran.Rollback();
-                    return false;
-                }
-    
-                tran.Commit();
-                return true;
-            }
-            catch
-            {
-                tran.Rollback();
-                return false;
-            }
-        }
 
         public override async Task<bool> SaveQueryExec(IDbTransaction transaction) {
             try {

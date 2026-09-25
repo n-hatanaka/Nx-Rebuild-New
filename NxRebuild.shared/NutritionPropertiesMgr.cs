@@ -53,12 +53,12 @@ namespace NxRebuild.shared {
 
 
         // 削除は行わない → 空のリストを返す
-        public override Task<List<int>> DeleteData(IEnumerable<int> dataIDs) {
+        public override Task<List<int>> DeleteData(IEnumerable<int> dataIDs, bool softDelete) {
             return Task.FromResult(new List<int>());
         }
 
         // 削除は行わない → false を返す
-        public override Task<bool> DeleteDataObj(int dataID) {
+        public override Task<bool> DeleteDataObj(int dataID, bool softDelete) {
             return Task.FromResult(false);
         }
 

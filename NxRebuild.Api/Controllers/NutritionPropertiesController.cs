@@ -67,7 +67,7 @@ namespace NxRebuild.Api.Controllers {
             target.Visible = newVal;
         
             // ② SaveAsync（内部で SaveQueryExec + トランザクション）
-            var ok = await target.SaveAsync();
+            var ok = await target.SaveAsync(target._rawData, null);
             if (!ok)
                 return StatusCode(500, "Update failed");
         

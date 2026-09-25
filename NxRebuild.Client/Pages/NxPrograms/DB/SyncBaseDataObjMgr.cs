@@ -142,7 +142,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             return true;
         }
 
-        public virtual async Task<List<TKey>> DeleteData(IEnumerable<TKey> dataIDs) {
+        public virtual async Task<List<TKey>> DeleteData(IEnumerable<TKey> dataIDs, bool softDelete = false) {
 
             var url = $"{ApiRoute}/Delete";
 
@@ -176,8 +176,8 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             return failedLst;
         }
 
-        public virtual async Task<bool> DeleteDataObj(TKey dataID) {
-            return await _baseDataObjMgr.DeleteDataObj(dataID);
+        public virtual async Task<bool> DeleteDataObj(TKey dataID, bool softDelete = false) {
+            return await _baseDataObjMgr.DeleteDataObj(dataID, softDelete);
         }
 
         protected class SyncAllResult {

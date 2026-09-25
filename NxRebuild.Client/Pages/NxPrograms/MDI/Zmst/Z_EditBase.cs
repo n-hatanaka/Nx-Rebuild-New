@@ -49,6 +49,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
         public Dictionary<string, decimal?> NutritionValues { get; set; } = new();
 
         public Dictionary<string, object?> WorkingRaw { get; set; } = new();
+        public List<List<Dictionary<string, object?>>> WorkingSubTables { get; set; } = new();
         public List<Dictionary<string, object?>> WorkingTanList { get; set; } = new();
 
         // 単位追加用
@@ -106,7 +107,17 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
                 ?? throw new Exception($"LocalCode={LocalCode} の Zmst がロードされていません。");
 
             // ★ DeepCopy を Entity にやらせる
-            Entity.CreateWorkingMemory(WorkingRaw, WorkingTanList);
+            Entity.CreateWorkingMemory(WorkingRaw, WorkingSubTables);
+
+
+
+            // TanList は WorkingSubTables[0]
+            if (WorkingSubTables.Count == 0)
+                WorkingSubTables.Add(new List<Dictionary<string, object?>>());
+
+            WorkingTanList = WorkingSubTables[0];
+
+
 
             // UI バインド用の値を WorkingRaw から取り出す
             ZName = WorkingRaw["Z_name"]?.ToString();
@@ -145,7 +156,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
                 ["jyuuryou"] = NewJyuuryou
             };
 
-            var t = new TanMEntity(raw);
+            var t = new Dictionary<string, object?>(raw);
 
             // ★ 正本ではなく WorkingTanList に追加する
             WorkingTanList.Add(t);
@@ -163,7 +174,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
             Nut.SaveToRaw(WorkingRaw);
 
             // 単位は ZmstEntity.SaveAsync 内でまとめて保存する
-            await Entity.SaveAsync();
+            await Entity.SaveAsync(WorkingRaw, WorkingSubTables);
         }
 
     }

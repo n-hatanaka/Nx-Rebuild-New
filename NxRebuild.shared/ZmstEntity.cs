@@ -59,7 +59,7 @@ namespace NxRebuild.shared {
             Dictionary<string, object?> workingRaw,
             List<List<Dictionary<string, object?>>>? subTables = null) {
 
-            return Task.FromResult(false);
+            return false;
         }
 
 
@@ -89,19 +89,30 @@ namespace NxRebuild.shared {
 
     //IZmstEntity インターフェース
     public interface IZmstEntity : IBaseDataObj<int> {
-        List<TanMEntity> TanList { get; }
+        List<Dictionary<string, object?>> TanList { get; }
         decimal? GetNutritionValue(string col);
         void SetNutritionValue(string col, decimal? value);
 
         //作業用のワーキングメモリーにディープコピー。
         void CreateWorkingMemory(
                         Dictionary<string, object?> workingRaw,
-                        List<TanMEntity> workingTanList);
+                        List<List<Dictionary<string, object?>>> workingTanList);
     }
 
     public class ZmstEntity : BaseDataObj<int>, IZmstEntity {
         // --- サブテーブル tan_m を保持する ---
-        public List<TanMEntity> TanList { get; private set; } = new();
+        public List<List<Dictionary<string, object?>>> SubTables { get; set; }
+                                                        = new List<List<Dictionary<string, object?>>>();
+        public List<Dictionary<string, object?>> TanList {
+            get {
+                // サブテーブルがまだ無い場合は作る
+                if (SubTables.Count == 0)
+                    SubTables.Add(new List<Dictionary<string, object?>>());
+
+                return SubTables[0];
+            }
+        }
+
 
         public decimal? GetNutritionValue(string col) {
             if (_rawData.TryGetValue(col, out var v))
@@ -259,19 +270,19 @@ namespace NxRebuild.shared {
             return DBcon.ExecuteScalar<int>(sql, new { TenantCode }, tran);
         }
       
-protected override int? EnsureIDForSave(IDbTransaction tran){
-    if (this.DataID == 0)
-    {
-        // ★ Zmst は保存時採番（新規レコード）
-        int newId = GenerateDataID(tran);
-        return newId;
-    }
-    else
-    {
-        // ★ 既存レコード（採番不要）
-        return this.DataID;
-    }
-}
+        protected override int EnsureIDForSave(IDbTransaction tran){
+            if (this.DataID == 0)
+            {
+                // ★ Zmst は保存時採番（新規レコード）
+                int newId = GenerateDataID(tran);
+                return newId;
+            }
+            else
+            {
+                // ★ 既存レコード（採番不要）
+                return this.DataID;
+            }
+        }
 
 
         public override async Task<bool> ReNameQueryExec(string newName, IDbTransaction dbTransaction) {
@@ -312,40 +323,40 @@ protected override int? EnsureIDForSave(IDbTransaction tran){
                 return false;
             }
         }
-      
+
         protected override async Task<bool> SaveWorkingSubAsync(
             List<List<Dictionary<string, object?>>>? w_SubTblList,
-            IDbTransaction tran)
-        {
+            IDbTransaction tran) {
             if (w_SubTblList == null)
                 return true;
 
+            // w_SubTblList = サブテーブルごとの行リスト
+            foreach (var subTableRows in w_SubTblList) {
+                // subTableRows = 1つのサブテーブルの行一覧
+                foreach (var row in subTableRows) {
+                    var cols = new List<string>();
+                    var vals = new List<string>();
 
-            // ★ INSERT 再構築
-            foreach (var row in w_SubTblList)
-            {
-                var cols = new List<string>();
-                var vals = new List<string>();
+                    foreach (var kv in row) {
+                        cols.Add($@"""{kv.Key}""");
+                        vals.Add($@"@{kv.Key}");
+                    }
 
-                foreach (var kv in row)
-                {
-                    cols.Add($@"""{kv.Key}""");
-                    vals.Add($@"@{kv.Key}");
+                    string insSql = $@"
+                                        INSERT INTO ""tan_m""
+                                        ({string.Join(", ", cols)})
+                                        VALUES ({string.Join(", ", vals)});
+                                    ";
+
+                    var affected = await DBcon.ExecuteAsync(insSql, row, tran);
+                    if (affected != 1)
+                        return false;
                 }
-
-                string insSql = $@"
-                    INSERT INTO ""tan_m""
-                    ({string.Join(", ", cols)})
-                    VALUES ({string.Join(", ", vals)});
-                ";
-
-                var rows = await DBcon.ExecuteAsync(insSql, row, tran);
-                if (rows != 1)
-                    return false;
             }
 
             return true;
         }
-       
+
+
     }
 }

@@ -67,7 +67,9 @@ namespace NxRebuild.shared {
         string TblToJson();
         Task<bool> JsonToTbl(string json);
         Task<bool> ReName(string newName);
-        Task<bool> SaveAsync();
+        Task<bool> SaveAsync(
+                        Dictionary<string, object?> workingRaw,
+                        List<List<Dictionary<string, object?>>>? subTables = null);
     }
 
     public abstract class BaseDataObj<TKey> : IBaseDataObj<TKey> {
@@ -194,7 +196,6 @@ namespace NxRebuild.shared {
 
         // この中は派生先で実装する事。
         //ここで固定のテーブル名やNameカラム名などのプロパティを設定する
-        //protected abstract void Initialize();
         public BaseDataObj() {
 
         }
@@ -232,7 +233,7 @@ namespace NxRebuild.shared {
             if (workingSubList != null) {
                 workingSubList.Clear();
 
-                foreach (var subRecCol in SubRecColList) // ★ コピー元は SubRecColList
+                foreach (var subRecCol in workingSubList) 
                 {
                     var newSubCol = new List<Dictionary<string, object?>>();
 
@@ -399,7 +400,7 @@ namespace NxRebuild.shared {
 // =======================================================
 
 protected virtual TKey? EnsureIDForSave(IDbTransaction tran){
-    return this.dataID;
+    return this.DataID;
 }
 // =======================================================
 // 保存の標準実

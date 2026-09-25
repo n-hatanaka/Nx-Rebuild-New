@@ -25,7 +25,7 @@ namespace NxRebuild.shared {
         string Ws_TblName { get; }
 
         T? Get(TKey id);
-        Task<List<TKey>> DeleteData(IEnumerable<TKey> dataIDs);
+        Task<List<TKey>> DeleteData(IEnumerable<TKey> dataIDs, bool softDelete = false);
         void SetParent(T obj);
         Task DistributeJsonData(string json);
         Task Initialize();
@@ -49,7 +49,7 @@ namespace NxRebuild.shared {
         string W_TblName { get; }
         string Ws_TblName { get; }
 
-        Task<List<TKey>> DeleteData(IEnumerable<TKey> dataIDs);
+        Task<List<TKey>> DeleteData(IEnumerable<TKey> dataIDs, bool softDelete = false);
 
         Task DistributeJsonData(string json);
         Task Initialize();
@@ -266,37 +266,55 @@ namespace NxRebuild.shared {
         // 指定したID群を順次削除し、削除に失敗したIDを返す。
         // 返り値のリストが空なら全件成功。
         // UIはこの返り値を観測して成功／部分失敗を判断する。
-        public virtual async Task<List<TKey>> DeleteData(IEnumerable<TKey> dataIDs) {
+        public virtual async Task<List<TKey>> DeleteData(IEnumerable<TKey> dataIDs, bool softDelete = false) {
             var failedLst = new List<TKey>();
 
             foreach (var id in dataIDs) {
-                if (!await DeleteDataObj(id))
-                    failedLst.Add(id);
+                try {
+                    if (!await DeleteDataObj(id, softDelete))
+                        failedLst.Add(id);   // 正常系の失敗
+                } catch {
+                    failedLst.Add(id);       // 異常系の破綻も「失敗」として扱う
+                }
             }
 
             return failedLst;
         }
 
 
+
         //指定したデータを削除し、_dataListからオブジェクトを削除
-        public virtual async Task<bool> DeleteDataObj(TKey dataID) {
-            var target = (BaseDataObj<TKey>)_dataList.FirstOrDefault(x => ((BaseDataObj<TKey>)x).DataID.Equals(dataID));
+        public virtual async Task<bool> DeleteDataObj(TKey dataID, bool softDelete = false) {
+            var target = (BaseDataObj<TKey>)_dataList
+                .FirstOrDefault(x => ((BaseDataObj<TKey>)x).DataID.Equals(dataID));
 
-            if (target != null) {
-                // 見つかった場合の処理
-                var transaction = DBcon.BeginTransaction();
-                if (!(await target.DeleteQueryExec(transaction)))
+            if (target == null)
+                return false;
+
+            var transaction = DBcon.BeginTransaction();
+
+            try {
+                bool result = softDelete
+                    ? await target.SoftDeleteQueryExec(transaction)
+                    : await target.DeleteQueryExec(transaction);
+
+                if (!result) {
                     transaction.Rollback();
-                else {
-                    transaction.Commit();
-                    _dataList.Remove(target);
-
-                    return true;
+                    return false;   // 正常系の失敗
                 }
 
+                transaction.Commit();
+
+                if (!softDelete)
+                    _dataList.Remove(target);
+
+                return true;
+            } catch {
+                transaction.Rollback();
+                throw;  // 異常系の破綻
             }
-            return false;
         }
+
 
         public virtual void RemoveFromList(BaseDataObj<TKey> obj) {
             _dataList.Remove(obj);

@@ -65,7 +65,10 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         public Task<bool> JsonToTbl(string json) => _dataObj.JsonToTbl(json);
 
 
-        public Task<bool> SaveAsync() => _dataObj.SaveAsync();
+        public Task<bool> SaveAsync(
+                Dictionary<string, object?> workingRaw,
+                List<List<Dictionary<string, object?>>>? subTables = null) 
+                    => _dataObj.SaveAsync(workingRaw, subTables);
 
         public TKey DataID {
             get => _dataObj.DataID;
