@@ -6,7 +6,6 @@ using NxRebuild.shared;
 namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
     public abstract class AknListViewBase<TKey> : ComponentBase where TKey : notnull {
 
-
         [Parameter] public List<MyDataObj<TKey>> ListDataItems { get; set; } = new(); // 表示するデータ一覧
         [Parameter] public List<GridColumn> Columns { get; set; } = new(); // カラム定義リスト
         [Parameter] public bool AllowSorting { get; set; } = true; // データのソートを許可するかどうか
@@ -52,8 +51,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
                     ? ListDataItems.OrderBy(i => i.Name).ToList() // 昇順に並べ替え
                     : ListDataItems.OrderByDescending(i => i.Name).ToList(); // 降順に並べ替え
             } else { // 数値でソートする場合
-                Func<MyDataObj<TKey>, object> keySelector = i =>
-                {
+                Func<MyDataObj<TKey>, object> keySelector = i => {
                     if (!i.ExtraData.TryGetValue(key, out var val) || val == null) {
                         return string.Empty; // データが空なら空文字を返す
                     }
@@ -71,15 +69,16 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
             ListDataItems.Clear();
             ListDataItems.AddRange(sortedList); // ソート後のリストを反映
 
-            base.StateHasChanged(); // 状態が変更されたことを通知
+            // ★ 再描画は 1 回だけ、親と競合しないよう InvokeAsync 経由で行う
+            _ = InvokeAsync(StateHasChanged);
         }
-
-
 
 
         public virtual void BuildGridFromObj(IBaseDataObj<TKey> obj) {
             ListDataItems.Clear();
             ListDataItems.Add(new MyDataObj<TKey>(obj));
+            // ★ 明示的に再描画（ここも 1 回だけ）
+            _ = InvokeAsync(StateHasChanged);
         }
 
 
@@ -90,7 +89,9 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
 
         public async Task HandleClick(MyDataObj<TKey> item, MouseEventArgs e) {
             var now = DateTime.Now;
-            if (item == _lastClickedItem && (now - _lastClickTime).TotalMilliseconds < 300) { // ダブルクリック処理中なら何もしない
+
+            // ★ ダブルクリック判定：300ms 以内に同じアイテムが再クリックされたらダブルクリック扱い
+            if (item == _lastClickedItem && (now - _lastClickTime).TotalMilliseconds < 300) {
                 _lastClickTime = DateTime.MinValue; // 最終クリック時間をリセット
                 _lastClickedItem = null;
 
@@ -103,16 +104,20 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
             _lastClickTime = now; // 最終クリック時間を更新
             _lastClickedItem = item; // 最後にクリックされたアイテムを保存
 
-            await Task.Delay(300); // 0.3秒の遅延
-            if (_lastClickedItem != item) return; // クリックがキャンセルされたなら何もしない
+            // ★ UI スレッドをブロックしないよう、遅延処理は InvokeAsync 経由で投げる
+            _ = InvokeAsync(async () => {
+                await Task.Delay(300); // 0.3秒の遅延（UI スレッドとは分離）
 
-            if (item.IsSelected) {
-                await StartEditingListItem(item); // 選択されているアイテムを編集モードに遷移
-            } else {
-                if (OnRowClicked.HasDelegate) {
-                    await OnRowClicked.InvokeAsync((item, e)); // 行クリックイベントを呼び出す
+                if (_lastClickedItem != item) return; // クリックがキャンセルされたなら何もしない
+
+                if (item.IsSelected) {
+                    await StartEditingListItem(item); // 選択されているアイテムを編集モードに遷移
+                } else {
+                    if (OnRowClicked.HasDelegate) {
+                        await OnRowClicked.InvokeAsync((item, e)); // 行クリックイベントを呼び出す
+                    }
                 }
-            }
+            });
         }
 
         public async Task HandleDoubleClick(MyDataObj<TKey> item) {
@@ -121,6 +126,8 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
             if (OnRowDoubleClicked.HasDelegate) {
                 await OnRowDoubleClicked.InvokeAsync(item); // ダブルクリックイベントを呼び出す
             }
+
+            _isDoubleClicking = false;
         }
 
         public async Task HandleListEditKey(KeyboardEventArgs e, MyDataObj<TKey> item) {
@@ -142,18 +149,23 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
 
             item.EditingName = item.Name;   // 編集前の名前を保持
 
-            base.StateHasChanged(); // 状態が変更されたことを通知
+            // ★ 再描画は InvokeAsync 経由で 1 回だけ
+            await InvokeAsync(StateHasChanged);
 
-            await Task.Delay(50); // 0.05秒の遅延
-            if (_listInputRef.Context != null) {
-                await _listInputRef.FocusAsync(); // フォーカスを設定
-            }
+            // ★ フォーカス設定も UI スレッドをブロックしないように行う
+            await InvokeAsync(async () => {
+                await Task.Delay(50); // 0.05秒の遅延
+                if (_listInputRef.Context != null) {
+                    await _listInputRef.FocusAsync(); // フォーカスを設定
+                }
+            });
         }
 
         public void CancelRename(MyDataObj<TKey> item) {
             item.IsEditing = false;
             item.EditingName = item.Name;
-            StateHasChanged();
+            // ★ 再描画は 1 回だけ
+            _ = InvokeAsync(StateHasChanged);
         }
 
         public string FormatValue(object val, string format) { // 値をフォーマットするメソッド

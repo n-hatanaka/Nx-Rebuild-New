@@ -43,16 +43,23 @@ else
         <h4>基本情報</h4>
 
         <div class="mb-3">
-            <label>料理名</label>
+            <label>材料コード</label>
+            <InputText class="form-control" @bind-Value="ZCode" />
+        </div>
+
+        <div class="mb-3">
+            <label>材料名</label>
             <InputText class="form-control" @bind-Value="ZName" />
         </div>
 
         <div class="mb-3">
             <label>食品群</label>
             <InputSelect class="form-control" @bind-Value="GunCd">
-                @foreach (var g in GunList)
+                @foreach (var g in GunList.Where(x => x.ParentID != 0))
                 {
-                    <option value="@g.DataID">@g.DataName</option>
+                    <option value="@g.DataID">
+                        @(g.ParentDataObj.DataName + "・" + g.DataName)
+                    </option>
                 }
             </InputSelect>
         </div>
@@ -106,7 +113,10 @@ else
             <InputNumber class="form-control" @bind-Value="NewJyuuryou" />
         </div>
 
-        <button class="btn btn-secondary" @onclick="AddTanUnit">追加</button>
+        <button type="button" class="btn btn-secondary" @onclick="AddTanUnit">
+            単位追加
+        </button>
+
 
         <h5 class="mt-3">追加済み単位（jun順）</h5>
         <ul>

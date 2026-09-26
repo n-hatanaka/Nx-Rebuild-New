@@ -44,7 +44,7 @@ namespace NxRebuild.shared {
         Guid CurrUsrID { get; set; }
         TKey DataID { get; set; }
         string DataName { get; }
-        NxDataType DataType { get; }
+        NxDataType DataType { get; set; }
         IDbConnection DBcon { get; set; }
         string ParentIDColName { get; }
         TKey ParentID {  get; set; }
@@ -108,10 +108,14 @@ namespace NxRebuild.shared {
 
 
         public object SelfObjMgr { get; set; }
-        public Guid TenantCode { get; set; }
         public IDbConnection DBcon { get; set; }
 
         // --- 【変更】プロパティ実装：変数からJSON（_rawData）への参照へ切り替え ---
+
+        public Guid TenantCode { 
+            get => Guid.Parse(_rawData["tenant_code"].ToString()); 
+            set => _rawData["tenant_code"] = value.ToString(); 
+        }
 
         public TKey DataID {
             get => (TKey)_rawData[_idColName];
@@ -146,7 +150,10 @@ namespace NxRebuild.shared {
         }
 
 
-        public NxDataType DataType => _datatype; // ※_datatypeはメタデータ側管理ならそのままでOK
+        public NxDataType DataType {
+            get => _datatype;
+            set => _datatype = value;
+        }
 
         public DateTime Update_at {
             get {
@@ -408,8 +415,8 @@ public virtual async Task<bool> SaveAsync(
             return false;
         }
 
-        
-        this.DataID = EnsureIDForSave(tran);
+
+        workingRaw[IdColName] = EnsureIDForSave(tran);
         
       
         // ★ Working 全体保存（メイン＋サブ）
@@ -454,7 +461,7 @@ protected virtual async Task<bool> SaveWorkingAsync(
         return false;
 
     // ★ サブテーブル保存（具象側で追加）
-    if (!await SaveWorkingSubAsync(subTables, tran))
+    if (!await SaveWorkingSubAsync(subTables, workingRaw, tran))
         return false;
 
     return true;
@@ -467,10 +474,12 @@ protected virtual async Task<bool> SaveWorkingMainAsync(
     Dictionary<string, object?> workingRaw,
     IDbTransaction tran)
 {
-    
+
+    //ローカル書き込み用なのでとりあえずPC時間で
+    workingRaw["Update_at"] = DateTime.UtcNow;
 
     // ★ 次に INSERT（WorkingRaw をそのまま書き込む）
-    var cols = new List<string>();
+            var cols = new List<string>();
     var vals = new List<string>();
 
     foreach (var kv in workingRaw)
@@ -495,6 +504,7 @@ protected virtual async Task<bool> SaveWorkingMainAsync(
 // =======================================================
 protected virtual Task<bool> SaveWorkingSubAsync(
     List<List<Dictionary<string, object?>>>? subTables,
+    Dictionary<string, object?> MainWorkingRaw,
     IDbTransaction tran)
 {
     // ★ スモールエンティティはサブ無しが基本

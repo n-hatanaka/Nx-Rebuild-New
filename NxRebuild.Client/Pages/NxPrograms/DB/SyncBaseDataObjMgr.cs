@@ -69,8 +69,12 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         }
 
         // Base の新規作成を透過ラップ
-        public virtual TBase CreateNewDataObj() {
-            return _baseDataObjMgr.CreateNewDataObj();
+        public virtual TBase CreateNewDataObj(TKey parentID) {
+            return _baseDataObjMgr.CreateNewDataObj(parentID);
+        }
+
+        public virtual void InsertNewDataItem(TBase obj) {
+            _baseDataObjMgr.InsertNewDataItem(obj);
         }
 
 

@@ -81,7 +81,11 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
             get => _dataObj.DataName;
         }
-        public NxDataType DataType => _dataObj.DataType;
+        public NxDataType DataType {
+            get => _dataObj.DataType;
+            set => _dataObj.DataType = value;
+        }
+
         public DateTime Update_at {
             get => _dataObj.Update_at;
         }

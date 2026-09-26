@@ -323,26 +323,41 @@ namespace NxRebuild.shared {
         // 
         // ---------------------------------------------------------
         public int GenerateDataID(IDbTransaction tran) {
-            string sql = $@"
-                        SELECT COALESCE(MAX(""LocalCode""), 0) + 1
-                        FROM ""{_tblName}""
-                        WHERE ""tenant_code"" = @TenantCode
-                        FOR UPDATE;
-                    ";
+            bool isSQLite = DBcon.ConnectionString.Contains("mode=memory", StringComparison.OrdinalIgnoreCase);
+
+            string sql;
+
+            if (!isSQLite) {
+                // PostgreSQL / MySQL / SQLServer（FOR UPDATE が使える世界線）
+                sql = $@"
+                            SELECT COALESCE(MAX(""LocalCode""), 0) + 1
+                            FROM ""{_tblName}""
+                            WHERE ""tenant_code"" = @TenantCode
+                            FOR UPDATE;
+                        ";
+            } else {
+                // SQLite（FOR UPDATE が使えない世界線）
+                sql = $@"
+                            SELECT COALESCE(MAX(""LocalCode""), 0) + 1
+                            FROM ""{_tblName}""
+                            WHERE ""tenant_code"" = @TenantCode;
+                        ";
+            }
 
             return DBcon.ExecuteScalar<int>(sql, new { TenantCode }, tran);
         }
-      
+
+
         protected override int EnsureIDForSave(IDbTransaction tran){
             if (this.DataID == 0)
             {
-                // ★ Zmst は保存時採番（新規レコード）
+                // Zmst は保存時採番（新規レコード）
                 int newId = GenerateDataID(tran);
                 return newId;
             }
             else
             {
-                // ★ 既存レコード（採番不要）
+                // 既存レコード（採番不要）
                 return this.DataID;
             }
         }
@@ -389,6 +404,7 @@ namespace NxRebuild.shared {
 
         protected override async Task<bool> SaveWorkingSubAsync(
             List<List<Dictionary<string, object?>>>? w_SubTblList,
+            Dictionary<string, object?> MainWorkingRaw,
             IDbTransaction tran) {
             if (w_SubTblList == null)
                 return true;
@@ -397,6 +413,11 @@ namespace NxRebuild.shared {
             foreach (var subTableRows in w_SubTblList) {
                 // subTableRows = 1つのサブテーブルの行一覧
                 foreach (var row in subTableRows) {
+                    //新規レコードには未確定のコードがあり編集時書き込まれないためここで設定する
+                    row["tenant_code"] = this.TenantCode;
+                    row["LocalCode"] = MainWorkingRaw["LocalCode"];
+                    row["Z_Code"] = MainWorkingRaw["Z_code"];
+
                     var cols = new List<string>();
                     var vals = new List<string>();
 

@@ -45,9 +45,8 @@ namespace NxRebuild.shared {
             DataType = NxDataType.Zairyou;
         }
         protected override int GenerateDataID() {
-            throw new InvalidOperationException(
-                "ZmstEntityMgr は採番をしないので ZmstentityでGenerateDataID を使用してください。"
-            );
+            //"ZmstEntityMgr は採番をしないので ZmstentityでGenerateDataID を使用してください。"
+            return 0;
         }
 
         public override ZmstEntity? Get(int id) {
@@ -192,6 +191,7 @@ namespace NxRebuild.shared {
 
                 var obj = new ZmstEntity {
                     DBcon = DBcon,
+                    SelfObjMgr = this,
                     TenantCode = TenantCode,
                     CurrUsrID = CurrentUserID
                 };

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using NxRebuild.Client.Pages.NxPrograms.DB;
+using NxRebuild.Client.Pages.NxPrograms.MDI.Zmst;
 using NxRebuild.Client.Services;
 using NxRebuild.shared;
 
@@ -194,12 +195,9 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
 
             TreeData.Clear();
 
-            // 1. ルートノードだけ追加（親が null のもの）
+            // ★ フォルダで、親が null のものだけ root
             var roots = DataMgr.DataList
-                        .Where(o =>
-                            o.DataType == NxDataType.Folder ||
-                            (o.DataType == NxDataType.root || o.ParentDataObj == null));
-
+                .Where(o => o.DataType == NxDataType.root);
 
             foreach (var root in roots) {
                 var node = new MyTreeData<TKey>(root) { IsExpanded = true };
@@ -210,9 +208,11 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
             StateHasChanged();
         }
 
+
         private void BuildChildren(MyTreeData<TKey> parentNode, IEnumerable<IBaseDataObj<TKey>> all) {
             var children = all
-                .Where(o => o.DataType == NxDataType.Folder && o.ParentDataObj == parentNode.ItemData);
+                .Where(o => o.DataType == NxDataType.Folder &&
+                            o.ParentDataObj == parentNode.ItemData);
 
             foreach (var child in children) {
                 var childNode = new MyTreeData<TKey>(child) { IsExpanded = true };
@@ -220,6 +220,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
                 parentNode.Children.Add(childNode);
             }
         }
+
 
         // ---------------------------------------------------------
         // ★ DataObj → GridView へ流し込む（IBaseDataObj を MyDataObj に投影）
@@ -274,14 +275,35 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
             //if (DataMgr == null || SelectedFolder == null)
             //    return;
 
-            //// DataMgr 側の「新規作成」抽象 API を呼ぶ（存在する前提）
-            //var newObj = await DataMgr.CreateNewAsync(SelectedFolder);
+            //var parentID = SelectedFolder.DataID;
 
-            //if (newObj != null) {
-            //    // グリッド再構築
-            //    BuildGridFromFolder(SelectedFolder);
-            //}
+            //// ★ 1. 孤立オブジェクト生成
+            //var newObj = DataMgr.CreateNewDataObj(parentID);
+
+            //// ★ 2. 編集画面を開く（閉じたら保存済み）
+            //Manager.Open<Z_Edit>(
+            //    $"新規作成: {newObj.DataName}",
+            //    new Dictionary<string, object>
+            //    {
+            //        { "LocalCode", newObj.DataID },
+            //        { "IsNew", true }
+            //    },
+            //    async () => {
+            //        // ★ 3. 編集画面が閉じた → 保存済みとみなす
+
+            //        // ツリー再構築
+            //        BuildTreeFromMgr();
+
+            //        // 選択フォルダのリスト再構築
+            //        if (SelectedFolder != null)
+            //            BuildGridFromFolder(SelectedFolder);
+
+            //        StateHasChanged();
+            //    }
+            //);
         }
+
+
 
         [Inject] protected WindowManagerBase Manager { get; set; } = default!;
 

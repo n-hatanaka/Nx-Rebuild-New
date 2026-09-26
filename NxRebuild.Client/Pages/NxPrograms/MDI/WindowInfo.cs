@@ -4,6 +4,7 @@
     {
         public Guid Id { get; set; } = Guid.NewGuid();
         public string Title { get; set; } = "";
+        public Func<Task>? OnClosed { get; set; }
         public Type ComponentType { get; set; } = default!;
         public Dictionary<string, object>? Parameters { get; set; }
         public double X { get; set; } = 100;

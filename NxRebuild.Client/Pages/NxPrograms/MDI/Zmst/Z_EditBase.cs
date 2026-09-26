@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Components;
+using Microsoft.JSInterop;
 using NxRebuild.Client.Pages.NxPrograms.DB;
 using NxRebuild.Client.Services;
 using NxRebuild.shared;
@@ -40,7 +41,12 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
     }
 
     public partial class Z_EditBase : ComponentBase {
+        [Parameter] public bool IsNew { get; set; }
         [Parameter] public int LocalCode { get; set; }
+        [Parameter] public EventCallback OnSaved { get; set; }
+        [Inject] IJSRuntime JS { get; set; } = default!;
+
+
         public List<CategoryEntity> GunList { get => GlobalState.ZmstEntityMgr.GunList; }
         public IZmstEntity Entity { get; set; }
 
@@ -60,6 +66,14 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
 
 
         // 基本情報
+
+        public string ZCode {
+            get => WorkingRaw.TryGetValue("Z_code", out var v)
+                    ? v?.ToString() ?? ""
+                    : "";
+            set => WorkingRaw["Z_code"] = value;
+        }
+
         public string ZName {
             get => WorkingRaw.TryGetValue("Z_name", out var v)
                     ? v?.ToString() ?? ""
@@ -122,6 +136,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
 
             // UI バインド用の値を WorkingRaw から取り出す
             ZName = WorkingRaw["Z_name"]?.ToString();
+            ZCode = WorkingRaw["Z_code"]?.ToString();
             GunCd = Convert.ToInt32(WorkingRaw["gun_cd"]);
             Txt = WorkingRaw["Txt"]?.ToString();
 
@@ -148,7 +163,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
 
         public void AddTanUnit() {
             var raw = new Dictionary<string, object?> {
-                ["tenant_code"] = WorkingRaw["tenant_code"],
+                ["tenant_code"] = Entity.TenantCode,
                 ["Z_Code"] = WorkingRaw["Z_code"],
                 ["LocalCode"] = Entity.DataID,
                 ["tan_cd"] = NewTanCd,
@@ -167,16 +182,33 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
             NewTanName = "";
             NewJun = 0;
             NewJyuuryou = 0;
+            return;
         }
 
 
         public async Task SaveAsync() {
-            // ★ NutrientModel の内容を WorkingRaw に反映
-            Nut.SaveToRaw(WorkingRaw);
+            try {
+                //  NutrientModel の内容を WorkingRaw に反映
+                Nut.SaveToRaw(WorkingRaw);
 
-            // 単位は ZmstEntity.SaveAsync 内でまとめて保存する
-            await Entity.SaveAsync(WorkingRaw, WorkingSubTables);
+                //  INSERT / UPDATE は Entity.SaveAsync が判定する
+                await Entity.SaveAsync(WorkingRaw, WorkingSubTables);
+
+                //  保存成功 → 親画面を更新（Window は閉じない）
+                await OnSaved.InvokeAsync();   // ← これを Z_Edit に追加する
+
+                //  成功メッセージ（任意）
+                await JS.InvokeVoidAsync("aknAlert", "保存しました。");
+
+
+            } catch (Exception ex) {
+                // エラー処理
+                Console.WriteLine($"Z_EditBase.SaveAsync:保存中にエラーが発生しました: {ex.Message}");
+                throw;
+            }
+
         }
+
 
     }
 

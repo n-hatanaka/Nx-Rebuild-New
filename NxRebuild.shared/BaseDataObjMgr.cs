@@ -25,6 +25,10 @@ namespace NxRebuild.shared {
         string Ws_TblName { get; }
 
         T? Get(TKey id);
+
+        T CreateNewDataObj(TKey parentID);
+        void InsertNewDataItem(T obj);
+
         Task<List<TKey>> DeleteData(IEnumerable<TKey> dataIDs, bool softDelete = false);
         void SetParent(T obj);
         Task DistributeJsonData(string json);
@@ -161,17 +165,36 @@ namespace NxRebuild.shared {
             return root;
         }
 
-        public virtual T CreateNewDataObj() {
+        // 新規レコードを生成する。
+        // UI側で新規作成ボタンを押したときに呼び出す。
+        public virtual T CreateNewDataObj(TKey parentID) {
             var dataObj = new T();
             dataObj.DBcon = DBcon;
             dataObj.SelfObjMgr = this;
             dataObj.Setproperties(GetEmptySchema());
+
+            // UI から渡された親IDだけセット
+            dataObj.ParentID = parentID;
             dataObj.TenantCode = TenantCode;
             dataObj.CurrUsrID = CurrentUserID;
             dataObj.DataID = GenerateDataID();
-            _dataList.Add(dataObj);
+            dataObj.DataType = this.DataType;
+            // ここではまだ _dataList に入れない
+            // DataID は仮で OK（保存時に確定でもいい）
             return dataObj;
         }
+
+        //createnewDataObj()で生成したオブジェクトを_dataListに追加
+        //子リストに追加する
+        public void InsertNewDataItem(T obj) {
+            // _dataList に追加
+            _dataList.Add(obj);
+
+            // 親をセット
+            SetParent(obj);
+
+        }
+
 
         // 新規レコードの場合に必要になる空のレコードを生成する。
         protected Dictionary<string, object?> GetEmptySchema()

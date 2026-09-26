@@ -48,6 +48,32 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI {
                 OnWindowsChanged?.Invoke();
         }
 
+        public void Open<T>(string title, Dictionary<string, object> parameters, Func<Task> onClosed) {
+            var win = new WindowInfo {
+                Title = title,
+                ComponentType = typeof(T),
+                Parameters = parameters,
+                X = 120 + Windows.Count * 20,
+                Y = 80 + Windows.Count * 20,
+                Z = ++_zCounter,
+                OnClosed = onClosed
+            };
+
+            Windows.Add(win);
+
+            if (!IsDragging)
+                OnWindowsChanged?.Invoke();
+        }
+
+        public async Task Close(WindowInfo win) {
+            Windows.Remove(win);
+
+            if (win.OnClosed != null)
+                await win.OnClosed.Invoke();
+
+        }
+
+
         public void Close(Guid id) {
             Windows.RemoveAll(w => w.Id == id);
 

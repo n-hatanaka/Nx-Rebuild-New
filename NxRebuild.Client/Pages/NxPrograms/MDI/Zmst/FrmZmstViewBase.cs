@@ -60,6 +60,26 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
         //    StateHasChanged();
         //}
 
+        public override async Task CreateNewItemAsync() {
+            if (DataMgr == null || SelectedFolder == null)
+                return;
+
+            var parentID = SelectedFolder.DataID;
+
+            //  1. 孤立オブジェクト生成
+            var newObj = DataMgr.CreateNewDataObj(parentID);
+
+            //  2. 編集画面を開く（閉じたら保存済み）
+            Manager.Open<Z_Edit>(
+                $"新規作成: {newObj.DataName}",
+                new Dictionary<string, object>
+                {
+                    { "LocalCode", newObj.DataID },
+                    { "IsNew", true },
+                    { "OnSaved", EventCallback.Factory.Create(this, OnChildSaved) }
+                }
+            );
+        }
         // ---------------------------------------------------------
         // ダブルクリック → 編集画面へ遷移（後で作る）
         // ---------------------------------------------------------
@@ -75,11 +95,21 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
                     $"材料編集: {baseObj.DataName}",
                     new Dictionary<string, object>
                     {
-                        { "LocalCode", baseObj.DataID }
+                        { "LocalCode", baseObj.DataID },
+                        { "IsNew", false },
+                        { "OnSaved", EventCallback.Factory.Create(this, OnChildSaved) }
                     }
                 );
             }
         }
+        private async Task OnChildSaved() {
+            // ツリーは通常変わらないので再構築不要
+            if (SelectedFolder != null)
+                BuildGridFromFolder(SelectedFolder);
+
+            StateHasChanged();
+        }
+
         public override void HandleGridDoubleClick(MyDataObj<int> item) {
             Console.WriteLine($"材料編集画面へ遷移: {item.Name}");
 
