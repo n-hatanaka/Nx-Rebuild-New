@@ -61,7 +61,8 @@ namespace NxRebuild.shared {
         DateTime Update_at { get;  }
         string W_TblName { get;  }
         string Ws_TblName { get;  }
-
+        void CreateWorkingMemory(Dictionary<string, object?> workingRaw);
+        void CreateWorkingSubTables(List<List<Dictionary<string, object?>>> workingSubList);
         Task<LockStatus> DataOpen();
         Task<LockStatus> DataClose();
         string TblToJson();
@@ -84,6 +85,9 @@ namespace NxRebuild.shared {
         protected string _s_tblName;//材料など詳細データが格納されるテーブル名
         protected string _infoTbl;//_tblNameに加え栄養素などの集計結果が入っているテーブル
 
+        //ワークテーブル名、ワークテーブルを持たない場合は
+        //_tblName,_s_tblName
+        //と同じ値を設定すること
         protected string _w_tblName;
         protected string _ws_tblName;
 
@@ -222,37 +226,21 @@ namespace NxRebuild.shared {
 
 
         public void CreateWorkingMemory(
-            Dictionary<string, object?> workingRaw,
-            List<List<Dictionary<string, object?>>>? workingSubList = null) {
+            Dictionary<string, object?> workingRaw) {
             // Raw の Deep Copy
             workingRaw.Clear();
             foreach (var kv in _rawData)
                 workingRaw[kv.Key] = kv.Value;
 
-            // SubRecColList の Deep Copy（ネスト対応）
-            if (workingSubList != null) {
-                workingSubList.Clear();
-
-                foreach (var subRecCol in workingSubList) 
-                {
-                    var newSubCol = new List<Dictionary<string, object?>>();
-
-                    foreach (var rec in subRecCol) // Dictionary<string, object?>
-                    {
-                        var newDict = new Dictionary<string, object?>();
-                        foreach (var kv in rec)
-                            newDict[kv.Key] = kv.Value;
-
-                        newSubCol.Add(newDict);
-                    }
-
-                    workingSubList.Add(newSubCol);
-                }
-            }
+            return;
         }
 
-
-
+        public virtual void CreateWorkingSubTables(
+                List<List<Dictionary<string, object?>>> workingSubList) {
+            // 抽象側は何もしない
+            // 具象側が必要なときだけ override する(zmstEntity参照）
+            return;
+        }
 
 
         // テーブルからデータを取得してJSON文字列にする
@@ -445,10 +433,13 @@ public virtual async Task<bool> SaveAsync(
         ApplyWorkingToRaw(workingRaw);
 
         return true;
-    }
-    catch
+    } 
+    catch (Exception ex) 
     {
-        tran.Rollback();
+                Console.WriteLine("BaseDataObj.SaveAsync ERROR:");
+                Console.WriteLine(ex.Message);
+                Console.WriteLine(ex.StackTrace);
+                tran.Rollback();
         return false;
     }
 }

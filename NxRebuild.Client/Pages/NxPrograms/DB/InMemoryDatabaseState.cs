@@ -75,11 +75,14 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
                     // 外部キー定義
                     foreach (var fk in table.ForeignKeys) {
-                        // 例: FOREIGN KEY("user_id") REFERENCES "users"("id")
+                        var fromCols = string.Join(", ", fk.FromColumns.Select(c => $"\"{c}\""));
+                        var toCols = string.Join(", ", fk.ToColumns.Select(c => $"\"{c}\""));
+
                         columnDefs.Add(
-                            $"FOREIGN KEY(\"{fk.FromColumn}\") REFERENCES \"{fk.ToTable}\"(\"{fk.ToColumn}\")"
+                            $"FOREIGN KEY({fromCols}) REFERENCES \"{fk.ToTable}\"({toCols})"
                         );
                     }
+
 
                     var columnsSql = string.Join(", ", columnDefs);
                     var createTableSql = $"CREATE TABLE \"{table.TableName}\" ({columnsSql});";

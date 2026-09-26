@@ -93,10 +93,8 @@ namespace NxRebuild.shared {
         decimal? GetNutritionValue(string col);
         void SetNutritionValue(string col, decimal? value);
 
-        //作業用のワーキングメモリーにディープコピー。
-        void CreateWorkingMemory(
-                        Dictionary<string, object?> workingRaw,
-                        List<List<Dictionary<string, object?>>> workingTanList);
+        Task LoadSubTablesFromRaw();
+
     }
 
     public class ZmstEntity : BaseDataObj<int>, IZmstEntity {
@@ -133,11 +131,72 @@ namespace NxRebuild.shared {
             _s_tblName = "tan_m";  // サブテーブル
 
             _infoTbl = "";
-            _w_tblName = "";
-            _ws_tblName = "";
+
+            //Zmst,tan_mはワークテーブルを持たないので同じテーブル名を設定する。
+            _w_tblName = "Zmst";
+            _ws_tblName = "tan_m";
 
             _datatype = NxDataType.Zairyou;
         }
+
+        // ---------------------------------------------------------
+        // サブテーブル編集用ワーキングメモリ　
+        // ---------------------------------------------------------
+        public override void CreateWorkingSubTables(
+                            List<List<Dictionary<string, object?>>> workingSubList) {
+            workingSubList.Clear();
+
+            foreach (var subRecCol in SubTables) {
+                var newSubCol = new List<Dictionary<string, object?>>();
+
+                foreach (var rec in subRecCol) {
+                    var newDict = new Dictionary<string, object?>();
+                    foreach (var kv in rec)
+                        newDict[kv.Key] = kv.Value;
+
+                    newSubCol.Add(newDict);
+                }
+
+                workingSubList.Add(newSubCol);
+            }
+        }
+
+        // ---------------------------------------------------------
+        // サブテーブルの読み込み（tan_m）
+        // ---------------------------------------------------------
+        public async Task LoadSubTablesFromRaw() {
+            SubTables.Clear(); // 一旦クリア
+
+            string sqlSub = $@"
+                                SELECT *
+                                FROM ""{_s_tblName}""
+                                WHERE ""tenant_code"" = @tc
+                                  AND ""LocalCode"" = @lc;
+                            ";
+
+            var tc = TenantCode.ToString();
+            var lc = this.DataID;
+
+            var rawTanRows = await DBcon.QueryAsync<dynamic>(
+                sqlSub,
+                new { tc, lc }
+            );
+
+            var tanRows = rawTanRows
+                .Select(r => NxTypeMapper.ConvertRow(_s_tblName, (IDictionary<string, object>)r))
+                .ToList();
+
+            var subList = new List<Dictionary<string, object?>>();
+
+            foreach (var row in tanRows)
+                subList.Add(new Dictionary<string, object?>(row));
+
+            SubTables.Add(subList);
+        }
+
+
+
+
 
         // ---------------------------------------------------------
         // JSON生成 SQL（Zmst + tan_m）
@@ -199,31 +258,35 @@ namespace NxRebuild.shared {
                 // ★ サブテーブル tan_m を削除（Zmst 固定世界線）
                 string delSubSql = $@"
                     DELETE FROM ""tan_m""
-                    WHERE ""parent_id"" = @DataID
-                      AND ""tenant_code"" = @TenantCode;
+                    WHERE ""{_idColName}"" = @dataID
+                      AND ""tenant_code"" = @tenantCode;
                 ";
 
                 await DBcon.ExecuteAsync(delSubSql, new {
-                    DataID = this.DataID,
-                    TenantCode = this.TenantCode
+                    dataID = this.DataID,
+                    tenantCode = this.TenantCode
                 }, transaction);
 
                 // ★ メインテーブル zmst を削除
                 string delMainSql = $@"
                     DELETE FROM ""zmst""
-                    WHERE ""id"" = @DataID
-                      AND ""tenant_code"" = @TenantCode;
+                    WHERE ""{_idColName}"" = @dataID
+                      AND ""tenant_code"" = @tenantCode;
                 ";
 
                 await DBcon.ExecuteAsync(delMainSql, new {
-                    DataID = this.DataID,
-                    TenantCode = this.TenantCode
+                    dataID = this.DataID,
+                    tenantCode = this.TenantCode
                 }, transaction);
 
                 return true;
-            }
-            catch
+            } 
+            catch (Exception ex) 
             {
+                Console.WriteLine("DeleteQueryExec ERROR:");
+                Console.WriteLine(ex.Message);
+                Console.WriteLine(ex.StackTrace);
+
                 return false;
             }
         }

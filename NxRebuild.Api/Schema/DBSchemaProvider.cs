@@ -52,13 +52,18 @@ namespace NxRebuild.Api.Schema {
                     });
                 }
 
-                foreach (var fk in foreignKeys.Where(f => f.FromTable == tableName)) {
+                var grouped = foreignKeys
+                    .Where(f => f.FromTable == tableName)
+                    .GroupBy(f => new { f.ToTable, ConstraintName = f.ConstraintName });
+
+                foreach (var g in grouped) {
                     converted.ForeignKeys.Add(new ForeignKeyInfo {
-                        FromColumn = fk.FromColumn,
-                        ToTable = fk.ToTable,
-                        ToColumn = fk.ToColumn
+                        FromColumns = g.Select(x => x.FromColumn).ToList(),
+                        ToTable = g.Key.ToTable,
+                        ToColumns = g.Select(x => x.ToColumn).ToList()
                     });
                 }
+
 
                 result.Add(converted);
             }
@@ -111,19 +116,26 @@ namespace NxRebuild.Api.Schema {
         private async Task<IEnumerable<ForeignKeyRaw>> GetForeignKeysAsync(NpgsqlConnection con) {
             const string sql = @"
             SELECT
+                tc.constraint_name,
                 kcu.table_name AS FromTable,
                 kcu.column_name AS FromColumn,
                 ccu.table_name AS ToTable,
                 ccu.column_name AS ToColumn
             FROM information_schema.table_constraints AS tc
             JOIN information_schema.key_column_usage AS kcu
-              ON tc.constraint_name = kcu.constraint_name
-              AND tc.table_schema = kcu.table_schema
-            JOIN information_schema.constraint_column_usage AS ccu
-              ON ccu.constraint_name = tc.constraint_name
-              AND ccu.table_schema = tc.table_schema
+                ON tc.constraint_name = kcu.constraint_name
+                AND tc.table_schema = kcu.table_schema
+            JOIN information_schema.referential_constraints AS rc
+                ON tc.constraint_name = rc.constraint_name
+                AND tc.table_schema = rc.constraint_schema
+            JOIN information_schema.key_column_usage AS ccu
+                ON rc.unique_constraint_name = ccu.constraint_name
+                AND rc.unique_constraint_schema = ccu.table_schema
+                -- ★ここが重要：参照元と参照先の「列の順序（1番目、2番目）」を一致させる
+                AND kcu.ordinal_position = ccu.ordinal_position
             WHERE tc.constraint_type = 'FOREIGN KEY'
-              AND tc.table_schema = 'public';
+                AND tc.table_schema = 'public'
+            ORDER BY FromTable, kcu.constraint_name, kcu.ordinal_position;
         ";
 
             return await con.QueryAsync<ForeignKeyRaw>(sql);
@@ -150,5 +162,7 @@ namespace NxRebuild.Api.Schema {
         public string FromColumn { get; set; } = string.Empty;
         public string ToTable { get; set; } = string.Empty;
         public string ToColumn { get; set; } = string.Empty;
+        public string ConstraintName { get; set; } = string.Empty;
     }
+
 }

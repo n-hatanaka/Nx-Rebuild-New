@@ -5,11 +5,12 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore.Metadata.Conventions;
 using Microsoft.EntityFrameworkCore.Metadata.Internal;
 using NxRebuild.Api.Models;
-using NxRebuild.shared;
 using NxRebuild.Api.Schema;
+using NxRebuild.shared;
 using System.Data;
 using System.Diagnostics.Contracts;
 using System.Threading.Tasks;
+using static Dapper.SqlMapper;
 
 
 namespace NxRebuild.Api.Controllers {
@@ -62,12 +63,15 @@ namespace NxRebuild.Api.Controllers {
             var target = (mgr.DataList.FirstOrDefault(x => x.DataID == dataId) as NutritionProperty);
             if (target == null)
                 return BadRequest("Data not found");
-        
+
+            Dictionary<string, object> WorkingRaw = new Dictionary<string, object?>();
+            target.CreateWorkingMemory(WorkingRaw);
+
             // ① オブジェクトの状態を変える
-            target.Visible = newVal;
+            WorkingRaw["Visible"] = newVal;
         
             // ② SaveAsync（内部で SaveQueryExec + トランザクション）
-            var ok = await target.SaveAsync(target._rawData, null);
+            var ok = await target.SaveAsync(WorkingRaw);
             if (!ok)
                 return StatusCode(500, "Update failed");
         

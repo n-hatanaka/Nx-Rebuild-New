@@ -16,6 +16,7 @@ namespace NxRebuild.shared {
     // ---------------------------------------------------------
     // ZmstEntityMgr
     // カラム数80弱+小さいサブテーブル（単位マスタ）を持つ
+    // マスタデータのため、全体をロードしてキャッシュする方法をとる
     // ツリー構造を作るためのスキーマ設計でないため、本来の想定外の実装を行う
     // 
     // ---------------------------------------------------------
@@ -75,80 +76,30 @@ namespace NxRebuild.shared {
 
 
         // ---------------------------------------------------------
-        // Zmst + tan_m をまとめてロードする
+        // Zmst をまとめてロードする
         // ---------------------------------------------------------
         public override async Task<IEnumerable<dynamic>> LoadRecordsAsync() {
-            // --- Zmst ---
             string sqlMain = $@"
-                                SELECT *
-                                FROM ""{_tblName}""
-                                WHERE ""tenant_code"" = @tc;
-                            ";
+                                    SELECT *
+                                    FROM ""{_tblName}""
+                                    WHERE ""tenant_code"" = @tc;
+                                ";
 
-            var tc = TenantCode.ToString(); // Guid → string
+            var tc = TenantCode.ToString();
 
-            // ---------------------------------------------------------
-            // ★ Zmst を正本化して取得
-            // ---------------------------------------------------------
             var rawZmstRows = await DBcon.QueryAsync<dynamic>(
                 sqlMain,
                 new { tc }
             );
 
+            // Zmst の正本化
             var zmstRows = rawZmstRows
                 .Select(r => NxTypeMapper.ConvertRow(_tblName, (IDictionary<string, object>)r))
                 .ToList();
 
-
-            // ---------------------------------------------------------
-            // ★ tan_m を正本化して取得
-            // ---------------------------------------------------------
-            string sqlSub = $@"
-                                SELECT *
-                                FROM ""{_s_tblName}""
-                                WHERE ""tenant_code"" = @tc;
-                            ";
-
-            var rawTanRows = await DBcon.QueryAsync<dynamic>(
-                sqlSub,
-                new { tc }
-            );
-            //なぜかDapperがDapperRowとして返してくる場合があるので、Dictionary<string, object>に変換する。
-            var tanRows = rawTanRows
-                .Select(r => NxTypeMapper.ConvertRow(_s_tblName, (IDictionary<string, object>)r))
-                .ToList();
-
-
-            // ---------------------------------------------------------
-            // ★ LocalCode ごとにグループ化（正本化後なので安全）
-            // ---------------------------------------------------------
-            var tanGroups = tanRows
-                .GroupBy(r => (int)r["LocalCode"])
-                .ToDictionary(g => g.Key, g => g.ToList());
-
-
-            // ---------------------------------------------------------
-            // ★ Zmst + tan_m を合成して返す
-            // ---------------------------------------------------------
-            var result = new List<Dictionary<string, object>>();
-
-            foreach (var zmst in zmstRows) {
-                // LocalCode は正本化済みなので安全
-                int localCode = (int)zmst["LocalCode"];
-
-                // Zmst の行をそのまま返す（Initialize → Setproperties で使う）
-                result.Add(zmst);
-
-                // tan_m の行を ZmstEntity 内で保持するために追加
-                if (tanGroups.TryGetValue(localCode, out var tanList)) {
-                    zmst["_tan_m_rows"] = tanList;
-                } else {
-                    zmst["_tan_m_rows"] = new List<Dictionary<string, object>>();
-                }
-            }
-
-            return result;
+            return zmstRows;
         }
+
 
 
         // ---------------------------------------------------------
@@ -251,17 +202,7 @@ namespace NxRebuild.shared {
                 // -----------------------------
                 // ★ SubTables のロード
                 // -----------------------------
-                obj.SubTables.Clear();
-
-                if (dict.TryGetValue("_subTables", out var subObj) &&
-                    subObj is List<List<Dictionary<string, object?>>> subTables) {
-                    // 深いコピー（安全のため）
-                    foreach (var tbl in subTables) {
-                        obj.SubTables.Add(
-                            tbl.Select(row => new Dictionary<string, object?>(row)).ToList()
-                        );
-                    }
-                }
+                await obj.LoadSubTablesFromRaw();
 
                 _dataList.Add(obj);
             }

@@ -59,6 +59,8 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             set => _dataObj.SelfObjMgr = value;
         }
         // DataObjのメソッドへのアクセスラッパー
+        public void CreateWorkingMemory(Dictionary<string, object?> wirkingRaw) => _dataObj.CreateWorkingMemory(wirkingRaw);
+        public void CreateWorkingSubTables(List<List<Dictionary<string, object?>>>? subTables) => _dataObj.CreateWorkingSubTables(subTables);
         public Task<LockStatus> SetLockAsync(LockStatus lockStatus) => _dataObj.SetLockAsync(lockStatus);
         public string TblToJson() => _dataObj.TblToJson();
 

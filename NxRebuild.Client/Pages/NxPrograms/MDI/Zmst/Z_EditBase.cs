@@ -105,10 +105,11 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
             // すでにロード済みの読み出すだけ
             Entity = zm.Get(LocalCode)
                 ?? throw new Exception($"LocalCode={LocalCode} の Zmst がロードされていません。");
-
+                        
             // ★ DeepCopy を Entity にやらせる
-            Entity.CreateWorkingMemory(WorkingRaw, WorkingSubTables);
+            Entity.CreateWorkingMemory(WorkingRaw);
 
+            Entity.CreateWorkingSubTables(WorkingSubTables);
 
 
             // TanList は WorkingSubTables[0]
