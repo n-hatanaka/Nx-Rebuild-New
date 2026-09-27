@@ -55,13 +55,14 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                 var dataId = item.Key;
                 var dataJson = item.Data;
 
+                var tran = DBcon.BeginTransaction();
                 // ⑤ 既存 DataObj を探す
                 var target = _baseDataObjMgr.DataList
                     .FirstOrDefault(x => x.DataID.Equals(dataId));
 
                 if (target != null) {
-                    // ⑥ 既存オブジェクトに世界線を流し込む
-                    await target.JsonToTbl(dataJson);
+                    // ⑥ 既存オブジェクト流し込む
+                    await target.JsonToTbl(dataJson,tran);
                 } else {
                     // ⑦ 新規作成
                     var newSyncObj = CreateNewSyncDataObj();
@@ -69,13 +70,14 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                     // DataID をセット（必要なら）
                     newSyncObj.DataID = dataId;
 
-                    // ⑧ 世界線を流し込む
-                    await newSyncObj.JsonToTbl(dataJson);
+                    // ⑧ 流し込む
+                    await newSyncObj.JsonToTbl(dataJson,tran);
 
                     // ⑨ DataList に追加
                     _baseDataObjMgr._dataList.Add(newSyncObj);
 
                 }
+                tran.Commit();
             }
 
             return true;

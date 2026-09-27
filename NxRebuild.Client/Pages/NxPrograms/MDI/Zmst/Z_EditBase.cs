@@ -117,7 +117,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
                 ?? throw new Exception("NutProperties が初期化されていません。");
 
             // すでにロード済みの読み出すだけ
-            Entity = zm.Get(LocalCode)
+            Entity = (IZmstEntity)zm.Get(LocalCode)
                 ?? throw new Exception($"LocalCode={LocalCode} の Zmst がロードされていません。");
                         
             // ★ DeepCopy を Entity にやらせる

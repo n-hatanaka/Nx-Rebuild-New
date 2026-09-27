@@ -348,7 +348,7 @@ namespace NxRebuild.shared {
         }
 
 
-        protected override int EnsureIDForSave(IDbTransaction tran){
+        public override int EnsureIDForSave(IDbTransaction tran){
             if (this.DataID == 0)
             {
                 // Zmst は保存時採番（新規レコード）
@@ -402,7 +402,7 @@ namespace NxRebuild.shared {
             }
         }
 
-        protected override async Task<bool> SaveWorkingSubAsync(
+        public override async Task<bool> SaveWorkingSubAsync(
             List<List<Dictionary<string, object?>>>? w_SubTblList,
             Dictionary<string, object?> MainWorkingRaw,
             IDbTransaction tran) {

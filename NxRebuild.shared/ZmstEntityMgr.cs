@@ -49,7 +49,7 @@ namespace NxRebuild.shared {
             return 0;
         }
 
-        public override ZmstEntity? Get(int id) {
+        public override IZmstEntity? Get(int id) {
             // _dataList が null の場合は何も返さない
             if (_dataList == null)
                 return null;
@@ -65,7 +65,7 @@ namespace NxRebuild.shared {
                     continue;
 
                 // ZmstEntity だけ返す
-                if (obj is ZmstEntity zmst)
+                if (obj is IZmstEntity zmst)
                     return zmst;
             }
 
@@ -105,6 +105,8 @@ namespace NxRebuild.shared {
         // Initialize（gun_m + Zmst + tan_m を DataList に突っ込む）
         // ---------------------------------------------------------
         public override async Task Initialize() {
+
+            this.DataType = NxDataType.Zairyou;
 
             CreateRoot();
 
@@ -193,7 +195,8 @@ namespace NxRebuild.shared {
                     DBcon = DBcon,
                     SelfObjMgr = this,
                     TenantCode = TenantCode,
-                    CurrUsrID = CurrentUserID
+                    CurrUsrID = CurrentUserID,
+                    DataType = this.DataType
                 };
 
                 // Zmst の行をセット

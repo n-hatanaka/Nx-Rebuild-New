@@ -1,98 +1,94 @@
-﻿//using Dapper;
-//using NxRebuild.shared;
-//using System;
-//using System.Collections.Generic;
-//using System.Data;
-//using System.Net.Http;
-//using System.Net.Http.Json;
-//using System.Threading.Tasks;
+﻿using Dapper;
+using NxRebuild.shared;
+using System;
+using System.Collections.Generic;
+using System.Data;
+using System.Net.Http;
+using System.Net.Http.Json;
+using System.Threading.Tasks;
 
-//namespace NxRebuild.Client.Pages.NxPrograms.DB {
-//    public class SyncZmstEntity : SyncBaseDataObj<int> {
-//        public override string ApiRoute => "/api/Zmst";
+namespace NxRebuild.Client.Pages.NxPrograms.DB {
+    public class SyncZmstEntity : SyncBaseDataObj<int> , IBaseDataObj<int>, IZmstEntity {
+        public override string ApiRoute => "/api/Zmst";
 
-//        // --- ZmstEntity の具象インスタンスを生成 ---
-//        protected override BaseDataObj<int> CreateBaseDataObj() {
-//            return new ZmstEntity();
-//        }
+        // --- ZmstEntity の具象インスタンスを生成 ---
+        protected override BaseDataObj<int> CreateBaseDataObj() {
+            return new ZmstEntity();
+        }
 
-//        // --- ZmstEntity へのアクセスを簡略化するためのプロパティ ---
-//        private ZmstEntity Zmst => (ZmstEntity)_dataObj;
+        public List<List<Dictionary<string, object?>>> SubTables => Zmst.SubTables;
 
-//        // --- tan_m のリストを直接参照できるようにする ---
-//        public List<TanMEntity> TanList => Zmst.TanList;
+        // --- ZmstEntity へのアクセスを簡略化するためのプロパティ ---
+        private ZmstEntity Zmst => (ZmstEntity)_dataObj;
 
-//        // --- SaveAsync（同期世界線） ---
-//        public async Task<bool> SaveAsync() {
-//            // 1. Base世界線で保存（ローカルDB）
-//            bool ok = await _dataObj.SaveAsync();
-//            if (!ok)
-//                return false;
+        public List<Dictionary<string, object?>> TanList => Zmst.TanList;
 
-//            // 2. Sync世界線 → APIへ送信
-//            var json = _dataObj.TblToJson();
+        public decimal? GetNutritionValue(string col) {
+            return Zmst.GetNutritionValue(col);
+        }
 
-//            var url = $"{ApiRoute}/Save/{DataID}";
-//            HttpResponseMessage response;
+        public void SetNutritionValue(string col, decimal? value) {
+            Zmst.SetNutritionValue(col, value);
+        }
 
-//            try {
-//                response = await Http.PostAsJsonAsync(url, json);
-//            } catch {
-//                return false;
-//            }
+        public async Task LoadSubTablesFromRaw() => Zmst.LoadSubTablesFromRaw();
 
-//            if (!response.IsSuccessStatusCode)
-//                return false;
+        // --- SaveAsync（同期保存） ---
+        public override async Task<bool> SaveAsync(
+                Dictionary<string, object?> workingRaw,
+                List<List<Dictionary<string, object?>>>? subTables = null) 
+        {
+            using var tran = DBcon.BeginTransaction();
 
-//            // 3. APIが返す正本世界線の JSON をローカルDBに反映
-//            var updatedJson = await response.Content.ReadAsStringAsync();
-//            var updatedRecords = System.Text.Json.JsonSerializer
-//                .Deserialize<List<Dictionary<string, object>>>(updatedJson);
+            try {
+                if (!await Zmst.DeleteQueryExec(tran)) {
+                    tran.Rollback();
+                    return false;
+                }
 
-//            if (updatedRecords == null)
-//                return false;
 
-//            using IDbTransaction tran = DBcon.BeginTransaction();
+                workingRaw[IdColName] = Zmst.EnsureIDForSave(tran);
 
-//            try {
-//                // JSON → テーブル反映（Base世界線）
-//                foreach (var record in updatedRecords) {
-//                    string tbl = record.ContainsKey("_table_type")
-//                        ? record["_table_type"].ToString()
-//                        : Zmst.TblName;
 
-//                    var normalized = NxTypeMapper.ConvertRow(tbl, record);
+                // ★ Working 全体保存（メイン＋サブ）
+                if (!await Zmst.SaveWorkingAsync(workingRaw, subTables, tran)) {
+                    tran.Rollback();
+                    return false;
+                }
 
-//                    string columns = string.Join(", ", normalized.Keys);
-//                    string values = string.Join(", ", normalized.Keys.Select(k => "@" + k));
+                var PostJSON = Zmst.TblToJson(this.DataID, tran);
 
-//                    DBcon.Execute(
-//                        $"INSERT OR REPLACE INTO {tbl} ({columns}) VALUES ({values})",
-//                        normalized,
-//                        tran
-//                    );
-//                }
+                var url = $"{ApiRoute}/Save/{DataID}";
 
-//                tran.Commit();
-//            } catch {
-//                tran.Rollback();
-//                return false;
-//            }
+                HttpResponseMessage response;
 
-//            // 4. メモリ上のプロパティを更新
-//            await Updateproperties();
+                response = await Http.PostAsJsonAsync(url, PostJSON);
 
-//            return true;
-//        }
+                // ★ コミット
+                tran.Commit();
 
-//        // --- ReName（同期世界線） ---
-//        public async Task<bool> ReName(string newName) {
-//            return await base.ReName(newName);
-//        }
+                // ★ 正本 Raw に反映
+                ApplyWorkingToRaw(workingRaw);
 
-//        // --- DataOpen（排他制御） ---
-//        public async Task<LockStatus> DataOpen() {
-//            return await _dataObj.DataOpen();
-//        }
-//    }
-//}
+                return true;
+            } catch (Exception ex) {
+                Console.WriteLine("SyncZmstEntity.SaveAsync ERROR:");
+                Console.WriteLine(ex.Message);
+                Console.WriteLine(ex.StackTrace);
+                tran.Rollback();
+                return false;
+            }
+
+        }
+
+        // --- ReName（同期世界線） ---
+        public async Task<bool> ReName(string newName) {
+            return await base.ReName(newName);
+        }
+
+        // --- DataOpen（排他制御） ---
+        public async Task<LockStatus> DataOpen() {
+            return await _dataObj.DataOpen();
+        }
+    }
+}

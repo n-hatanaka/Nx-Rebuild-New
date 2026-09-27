@@ -56,7 +56,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             // 派生先で BaseDataObjMgr を生成すること
         }
 
-        public virtual TBase? Get(TKey id) => _baseDataObjMgr.Get(id);
+        public virtual IBaseDataObj<TKey>? Get(TKey id) => _baseDataObjMgr.Get(id);
         protected virtual TSync CreateNewSyncDataObj() {
             var newSyncObj = new TSync();
             newSyncObj.Http = _http;
@@ -64,7 +64,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             return newSyncObj;
         }
         // Base の SetParent を透過ラップ
-        public virtual void SetParent(TBase obj) {
+        public virtual void SetParent(IBaseDataObj<TKey> obj) {
             _baseDataObjMgr.SetParent(obj);
         }
 
@@ -118,6 +118,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             if (!response.IsSuccessStatusCode)
                 return false;
 
+            var tran = DBcon.BeginTransaction();
             var json = await response.Content.ReadAsStringAsync();
             var syncResult = JsonSerializer.Deserialize<SyncAllResult>(json);
 
@@ -133,12 +134,12 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                     .FirstOrDefault(x => x.DataID.Equals(dataId));
 
                 if (target != null) {
-                    await target.JsonToTbl(dataJson);
+                    await target.JsonToTbl(dataJson,tran);
                 }
                 else {
                     var newSyncObj = CreateNewSyncDataObj();
                     newSyncObj.DataID = dataId;
-                    await newSyncObj.JsonToTbl(dataJson);
+                    await newSyncObj.JsonToTbl(dataJson,tran);
                     _baseDataObjMgr._dataList.Add(newSyncObj);
                 }
             }

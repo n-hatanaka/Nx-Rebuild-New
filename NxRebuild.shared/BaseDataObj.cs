@@ -66,7 +66,8 @@ namespace NxRebuild.shared {
         Task<LockStatus> DataOpen();
         Task<LockStatus> DataClose();
         string TblToJson();
-        Task<bool> JsonToTbl(string json);
+        string TblToJson(TKey id, IDbTransaction tran);
+        Task<bool> JsonToTbl(string json, IDbTransaction tran);
         Task<bool> ReName(string newName);
         Task<bool> SaveAsync(
                         Dictionary<string, object?> workingRaw,
@@ -252,10 +253,17 @@ namespace NxRebuild.shared {
 
         // テーブルからデータを取得してJSON文字列にする
         public string TblToJson() {
-            string sql = CreateJSONsql();
+            string sql = CreateJSONsql();            
             var result = DBcon.Query<dynamic>(sql, new { dataID = DataID, tenantCode = TenantCode });
             return JsonSerializer.Serialize(result);
         }
+        // テーブルからデータを取得してJSON文字列にする（保存処理中に使用する、トランザクション付き）
+        public string TblToJson(TKey id, IDbTransaction tran) {
+            string sql = CreateJSONsql();
+            var result = DBcon.Query<dynamic>(sql, new { dataID = id, tenantCode = TenantCode }, tran);
+            return JsonSerializer.Serialize(result);
+        }
+
         protected abstract string CreateJSONsql();
         //{ JSON生成用のビュー。以下実装例
         // 各レコードに自動的に "_table_type" というキーが追加される
@@ -266,43 +274,38 @@ namespace NxRebuild.shared {
         //        WHERE s.parent_id = @dataID";
         //}
 
-        public async Task<bool> JsonToTbl(string json) {
+        public async Task<bool> JsonToTbl(string json, IDbTransaction tran) {
             var records = JsonSerializer.Deserialize<List<Dictionary<string, object>>>(json);
-            // JSONを受け取ってテーブルに保存（Delete & Insert）
-            var transaction = DBcon.BeginTransaction();
-            // 1. Delete: 対象テーブル削除
-            var result = await DeleteQueryExec(transaction);
+
+            var result = await DeleteQueryExec(tran);
             if (!result) {
-                transaction.Rollback();
                 return false;
             }
 
             try {
                 foreach (var record in records) {
-                   string targetTable = record.ContainsKey("_table_type")
-                       ? record["_table_type"].ToString()
-                       : _tblName;
-               
-                   // ★ 型マップ正本化（必須）
-                   var normalized = NxTypeMapper.ConvertRow(targetTable, record);
-               
-                   var columns = string.Join(", ", normalized.Keys);
-                   var values = string.Join(", ", normalized.Keys.Select(k => "@" + k));
-               
-                   DBcon.Execute(
-                       $"INSERT INTO {targetTable} ({columns}) VALUES ({values})",
-                       normalized,
-                       transaction
-                   );
+                    string targetTable = record.ContainsKey("_table_type")
+                        ? record["_table_type"].ToString()
+                        : _tblName;
+
+                    var normalized = NxTypeMapper.ConvertRow(targetTable, record);
+
+                    var columns = string.Join(", ", normalized.Keys);
+                    var values = string.Join(", ", normalized.Keys.Select(k => "@" + k));
+
+                    DBcon.Execute(
+                        $"INSERT INTO {targetTable} ({columns}) VALUES ({values})",
+                        normalized,
+                        tran
+                    );
                 }
-                transaction.Commit();
                 return true;
 
             } catch (Exception ex) {
-                transaction.Rollback();
                 return false;
             }
         }
+
 
         public abstract Task<LockStatus> DataOpen();
 
@@ -394,7 +397,7 @@ namespace NxRebuild.shared {
 // 保存の時にDataIDを確定させる場合はここにその処理を記述(ZmstEntity参照)
 // =======================================================
 
-protected virtual TKey? EnsureIDForSave(IDbTransaction tran){
+public virtual TKey? EnsureIDForSave(IDbTransaction tran){
     return this.DataID;
 }
 // =======================================================
@@ -451,7 +454,7 @@ public virtual async Task<bool> SaveAsync(
     }
 }
 
-protected virtual async Task<bool> SaveWorkingAsync(
+public virtual async Task<bool> SaveWorkingAsync(
     Dictionary<string, object?> workingRaw,
     List<List<Dictionary<string, object?>>>? subTables,
     IDbTransaction tran)
@@ -470,7 +473,7 @@ protected virtual async Task<bool> SaveWorkingAsync(
 // メインテーブル保存（WorkingRaw → _w_tblName）
 // =======================================================
 
-protected virtual async Task<bool> SaveWorkingMainAsync(
+public virtual async Task<bool> SaveWorkingMainAsync(
     Dictionary<string, object?> workingRaw,
     IDbTransaction tran)
 {
@@ -502,7 +505,7 @@ protected virtual async Task<bool> SaveWorkingMainAsync(
 // =======================================================
 // サブテーブル保存（DELETE → INSERT 再構築）
 // =======================================================
-protected virtual Task<bool> SaveWorkingSubAsync(
+public virtual Task<bool> SaveWorkingSubAsync(
     List<List<Dictionary<string, object?>>>? subTables,
     Dictionary<string, object?> MainWorkingRaw,
     IDbTransaction tran)
@@ -517,7 +520,7 @@ protected virtual Task<bool> SaveWorkingSubAsync(
 // 正本 Raw に反映
 // =======================================================
 
-protected void ApplyWorkingToRaw(Dictionary<string, object?> workingRaw)
+public void ApplyWorkingToRaw(Dictionary<string, object?> workingRaw)
 {
     _rawData.Clear();
     foreach (var kv in workingRaw)

@@ -24,13 +24,13 @@ namespace NxRebuild.shared {
         string W_TblName { get;  }
         string Ws_TblName { get; }
 
-        T? Get(TKey id);
+        IBaseDataObj<TKey>? Get(TKey id);
 
         T CreateNewDataObj(TKey parentID);
         void InsertNewDataItem(T obj);
 
         Task<List<TKey>> DeleteData(IEnumerable<TKey> dataIDs, bool softDelete = false);
-        void SetParent(T obj);
+        void SetParent(IBaseDataObj<TKey> obj);
         Task DistributeJsonData(string json);
         Task Initialize();
         string LoadMultipleDataAsJson(List<TKey> idList);
@@ -57,6 +57,7 @@ namespace NxRebuild.shared {
 
         Task DistributeJsonData(string json);
         Task Initialize();
+        T CreateNewDataObj(TKey parentID);
         string LoadMultipleDataAsJson(List<TKey> idList);
         void RemoveFromList(BaseDataObj<TKey> obj);
     }
@@ -118,16 +119,17 @@ namespace NxRebuild.shared {
         // --------------------------------------------------
         // idで指定されたDataObjを返す
         // --------------------------------------------------
-        public virtual T? Get(TKey id) {
+        public virtual IBaseDataObj<TKey>? Get(TKey id) {
             return _dataList
-                .OfType<T>()
                 .FirstOrDefault(x => EqualityComparer<TKey>.Default.Equals(x.DataID, id));
         }
+
 
         public BaseDataObjMgr(IDbConnection db , Guid tenantCode , Guid currUserID) {
             DBcon = db;
             TenantCode = tenantCode;
             CurrentUserID = currUserID;
+
             //テーブル名などの基本情報は派生先のコンストラクタでハードコードする事。
             //Initialize()はインスタンス生成元が呼び出す事(この中で呼んではいけない)
         }
@@ -245,7 +247,7 @@ namespace NxRebuild.shared {
         }
 
         // 親子関係を設定する（新規作成の場合はUIがここに新しいDataObjを渡す。
-        public virtual void SetParent(T obj) {
+        public virtual void SetParent(IBaseDataObj<TKey> obj) {
             // 親ID列が存在しない世界線
             if (string.IsNullOrEmpty(obj.ParentIDColName)) {
                 obj.ParentDataObj = null;
@@ -366,9 +368,9 @@ namespace NxRebuild.shared {
         }
 
         //クライアントから送られたJSONをDataObjに振り分ける
-            //リアルセーブ（＝サーバー側の永続化）ができない限り、
-            //インメモリ世界線は“正本”になれない。
-            //だから巨大 JSON を分配して BaseObj に流し込むメソッドが必要になる。
+        //リアルセーブ（＝サーバー側の永続化）ができない限り、
+        //インメモリ世界線は“正本”になれない。
+        //だから巨大 JSON を分配して BaseObj に流し込むメソッドが必要になる。
         //APIからのみ使用する。
         public async Task DistributeJsonData(string json) {
             // 1. JSON全体をレコードのリストにパース
@@ -380,23 +382,33 @@ namespace NxRebuild.shared {
                 r.ContainsKey("parent_id") ? r["parent_id"] : r["id"]
             );
 
-            foreach (var group in groupedRecords) {
-                var id = (TKey)Convert.ChangeType(group.Key, typeof(TKey));
+            var tran = DBcon.BeginTransaction();
+            try {
 
-                // 3. IDに対応するオブジェクトを探す
-                var obj = DataList.FirstOrDefault(d => d.DataID.Equals(id));
+                foreach (var group in groupedRecords) {
+                    var id = (TKey)Convert.ChangeType(group.Key, typeof(TKey));
 
-                if (obj == null) {
-                    // 存在しなければ新規作成
-                    obj = new T();
-                    obj.DataID = id; // IDをセット
-                    _dataList.Add(obj);
+                    // 3. IDに対応するオブジェクトを探す
+                    var obj = DataList.FirstOrDefault(d => d.DataID.Equals(id));
+
+                    if (obj == null) {
+                        // 存在しなければ新規作成
+                        obj = new T();
+                        obj.DataID = id; // IDをセット
+                        _dataList.Add(obj);
+                    }
+
+                    // 4. そのオブジェクト専用のJSONを作成して渡す
+                    // グループ化したレコードを再度JSON文字列にして、個別のJsonToTblへ流し込む
+                    string individualJson = JsonSerializer.Serialize(group.ToList());
+                    await obj.JsonToTbl(individualJson, tran);
                 }
 
-                // 4. そのオブジェクト専用のJSONを作成して渡す
-                // グループ化したレコードを再度JSON文字列にして、個別のJsonToTblへ流し込む
-                string individualJson = JsonSerializer.Serialize(group.ToList());
-                await obj.JsonToTbl(individualJson);
+                tran.Commit();
+            } catch (Exception ex) {
+                // エラーが発生した場合はトランザクションをロールバック
+                tran.Rollback();
+                throw new Exception("Failed to distribute JSON data.", ex);
             }
         }
     }

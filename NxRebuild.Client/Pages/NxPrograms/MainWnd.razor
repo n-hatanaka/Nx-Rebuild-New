@@ -152,8 +152,8 @@ else
 
                 GlobalState.NutProperties.Initialize();
 
-                //あとで差し替える事GlobalState.ZmstEntityMgr = new ZmstEntityMgr(DbState.Connection, Http, customAuth, tenantGuid, currentUserGuid);
-                GlobalState.ZmstEntityMgr = new ZmstEntityMgr(DbState.Connection, tenantGuid, currentUserGuid);
+                //デバッグ差し替え用GlobalState.ZmstEntityMgr = new ZmstEntityMgr(DbState.Connection, Http, customAuth, tenantGuid, currentUserGuid);
+                GlobalState.ZmstEntityMgr = new SyncZmstEntityMgr(DbState.Connection, Http, customAuth, tenantGuid, currentUserGuid);
                 await GlobalState.ZmstEntityMgr.Initialize();
             }
             catch (Exception ex)

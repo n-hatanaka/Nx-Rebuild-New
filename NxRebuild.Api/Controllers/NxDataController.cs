@@ -209,6 +209,8 @@ namespace NxRebuild.Api.Controllers {
 
         [HttpPost("ReName/{dataId}/{tenantCode}/{newName}")]
         public async Task<IActionResult> Rename(TKey dataId, string newName) {
+
+            await CreateObjMgr();
             // ① DataObj を取得
             var dataObj = _dataObjMgr.DataList
                 .FirstOrDefault(d => d.DataID.Equals(dataId)) as BaseDataObj<TKey>;

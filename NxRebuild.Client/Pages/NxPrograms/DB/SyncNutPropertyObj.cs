@@ -40,6 +40,11 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             throw new NotImplementedException();
         }
 
+
+        public override Task<bool> SaveAsync(Dictionary<string, object?> workingRaw, List<List<Dictionary<string, object?>>>? subTables = null) {
+            throw new NotImplementedException();
+        }
+
         public async Task<bool> NutVisibleChg(bool NewVal) {
             var url = $"{ApiRoute}/Visible/{DataID}/{NewVal}";
             HttpResponseMessage response;

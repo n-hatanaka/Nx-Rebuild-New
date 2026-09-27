@@ -15,8 +15,6 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         HttpClient Http { get; set; }
         CustomAuthStateProvider Auth { get; set; }
         Task<LockStatus> SetLockAsync(LockStatus lockStatus);
-        Task<bool>       JsonToTbl(string json);
-        string           TblToJson();
     }
 
 
@@ -24,7 +22,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
     //UIからはインターフェース経由でaccessさせる。
     //オブジェクトの作成と削除はマネージャークラスから行う。
     public abstract class SyncBaseDataObj<TKey> : ISyncBaseDataObj<TKey> {
-        protected BaseDataObj<TKey> _dataObj;
+        public BaseDataObj<TKey> _dataObj;
 
         protected BaseDataObj<TKey> DataObj { get => _dataObj;}
 
@@ -64,13 +62,13 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         public Task<LockStatus> SetLockAsync(LockStatus lockStatus) => _dataObj.SetLockAsync(lockStatus);
         public string TblToJson() => _dataObj.TblToJson();
 
-        public Task<bool> JsonToTbl(string json) => _dataObj.JsonToTbl(json);
+        public string TblToJson(TKey dataId, IDbTransaction transaction) => _dataObj.TblToJson(dataId, transaction);
 
+        public Task<bool> JsonToTbl(string json, IDbTransaction transaction) => _dataObj.JsonToTbl(json, transaction);
 
-        public Task<bool> SaveAsync(
+        public abstract Task<bool> SaveAsync(
                 Dictionary<string, object?> workingRaw,
-                List<List<Dictionary<string, object?>>>? subTables = null) 
-                    => _dataObj.SaveAsync(workingRaw, subTables);
+                List<List<Dictionary<string, object?>>>? subTables = null);
 
         public TKey DataID {
             get => _dataObj.DataID;
@@ -113,6 +111,8 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         public string InfoTbl => _dataObj.InfoTbl;
         public string W_TblName => _dataObj.W_TblName;
         public string Ws_TblName => _dataObj.Ws_TblName;
+
+        public void ApplyWorkingToRaw(Dictionary<string, object?> workingRaw) => _dataObj.ApplyWorkingToRaw(workingRaw);
 
         public virtual async Task Updateproperties() => await _dataObj.Updateproperties();
 
