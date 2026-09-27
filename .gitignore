@@ -14,7 +14,6 @@ _obj/
 *.pdb
 *.cache
 *.json
-*.csv
 !.noai.json
 *.nuget
 !appsettings.json
