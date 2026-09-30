@@ -1,3 +1,6 @@
+This repository uses publicly available data from the Japanese Standard Tables of Food Composition (文部科学省), which is released as open data. No commercial datasets are included.
+
+
 ### NxTypeMapper Added
 NxTypeMapper is now available in this repository.  
 It is a **universal type‑conversion engine** that absorbs non‑isomorphic type differences  
