@@ -6,6 +6,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Data;
+using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 
@@ -40,12 +41,10 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         public IBaseDataObj<TKey>? ParentDataObj { get => _dataObj.ParentDataObj; 
                                             set => _dataObj.ParentDataObj = value; }
 
-        protected abstract BaseDataObj<TKey> CreateBaseDataObj();
 
         public SyncBaseDataObj() {
-            _dataObj = CreateBaseDataObj()
-                ?? throw new InvalidOperationException("CreateBaseDataObj returned null");
         }
+
 
         public IDbConnection DBcon {
             get => _dataObj.DBcon;
@@ -120,9 +119,149 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         //    _dataObj = baseObj ?? throw new ArgumentNullException(nameof(baseObj));
         //}
 
-        public async Task<LockStatus> DataOpen() => await _dataObj.DataOpen();
+        public async Task<LockStatus> DataOpen() {
+            // ① Auth から UserID と UserName を取得
+            var authState = await Auth.GetAuthenticationStateAsync();
+            var userId = authState.User.FindFirst("sub")?.Value;
+            var userName = authState.User.Identity?.Name;
 
-        public async Task<LockStatus> DataClose() => await _dataObj.DataClose();
+            // ② ロック要求（DB側で正しいロック情報が生成される）
+            var req = new {
+                DataId = this.DataID,
+                LockStatus = new LockStatus {
+                    Exists = true,
+                    IsLocked = true,            // ★ DataOpen はロックする
+                    LockedByUserId = userId,
+                    LockedByUserName = userName
+                }
+            };
+
+            var url = $"{ApiRoute}/SetLockStatus";
+
+            HttpResponseMessage response;
+
+            try {
+                response = await Http.PostAsJsonAsync(url, req);
+            } catch (Exception ex) {
+                // ★ ネットワークレベルの失敗
+                return new LockStatus {
+                    HasError = true,
+                    ErrorMessage = $"通信エラー: {ex.Message}",
+                    IsLocked = false
+                };
+            }
+
+            if (!response.IsSuccessStatusCode) {
+                // ★ HTTP レベルの失敗
+                return new LockStatus {
+                    HasError = true,
+                    ErrorMessage = $"HTTPエラー: {response.StatusCode}",
+                    IsLocked = false
+                };
+            }
+
+            LockStatus? lockStatus = null;
+
+            try {
+                lockStatus = await response.Content.ReadFromJsonAsync<LockStatus>();
+            } catch (Exception ex) {
+                // ★ JSON パース失敗
+                return new LockStatus {
+                    HasError = true,
+                    ErrorMessage = $"レスポンス解析エラー: {ex.Message}",
+                    IsLocked = false
+                };
+            }
+
+            if (lockStatus == null) {
+                // ★ JSON は読めたが中身が null
+                return new LockStatus {
+                    HasError = true,
+                    ErrorMessage = "ロック情報が返されませんでした",
+                    IsLocked = false
+                };
+            }
+
+            // ③ ロック失敗なら DataOpen しない
+            if (!lockStatus.IsLocked || lockStatus.HasError)
+                return lockStatus;
+
+            // ④ ロック成功後に DataOpen
+            return await _dataObj.DataOpen();
+        }
+
+
+        public async Task<LockStatus> DataClose() {
+            // ① Auth から UserID と UserName を取得
+            var authState = await Auth.GetAuthenticationStateAsync();
+            var userId = authState.User.FindFirst("sub")?.Value;
+            var userName = authState.User.Identity?.Name;
+
+            // ② ロック解除要求（IsLocked = false）
+            var req = new {
+                DataId = this.DataID,
+                LockStatus = new LockStatus {
+                    Exists = true,
+                    IsLocked = false,           // ★ロック解除
+                    LockedByUserId = null,      // ★解除なので null
+                    LockedByUserName = null
+                }
+            };
+
+            var url = $"{ApiRoute}/SetLockStatus";
+
+            HttpResponseMessage response;
+
+            try {
+                response = await Http.PostAsJsonAsync(url, req);
+            } catch (Exception ex) {
+                // ★ ネットワークレベルの失敗
+                return new LockStatus {
+                    HasError = true,
+                    ErrorMessage = $"通信エラー: {ex.Message}",
+                    IsLocked = true   // ★解除できていないので true 扱い
+                };
+            }
+
+            if (!response.IsSuccessStatusCode) {
+                // ★ HTTP レベルの失敗
+                return new LockStatus {
+                    HasError = true,
+                    ErrorMessage = $"HTTPエラー: {response.StatusCode}",
+                    IsLocked = true
+                };
+            }
+
+            LockStatus? lockStatus = null;
+
+            try {
+                lockStatus = await response.Content.ReadFromJsonAsync<LockStatus>();
+            } catch (Exception ex) {
+                // ★ JSON パース失敗
+                return new LockStatus {
+                    HasError = true,
+                    ErrorMessage = $"レスポンス解析エラー: {ex.Message}",
+                    IsLocked = true
+                };
+            }
+
+            if (lockStatus == null) {
+                // ★ JSON は読めたが中身が null
+                return new LockStatus {
+                    HasError = true,
+                    ErrorMessage = "ロック解除情報が返されませんでした",
+                    IsLocked = true
+                };
+            }
+
+            // ③ ロック解除失敗なら DataClose しない
+            if (lockStatus.IsLocked || lockStatus.HasError)
+                return lockStatus;
+
+            // ④ ロック解除成功後に DataClose 実行
+            return await _dataObj.DataClose();
+        }
+
 
         public virtual async Task<bool> ReName(string newName) {
             // 1. バリデーション

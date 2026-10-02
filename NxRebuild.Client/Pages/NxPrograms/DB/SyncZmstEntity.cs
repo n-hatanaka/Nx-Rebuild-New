@@ -11,10 +11,6 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
     public class SyncZmstEntity : SyncBaseDataObj<int> , IBaseDataObj<int>, IZmstEntity {
         public override string ApiRoute => "/api/Zmst";
 
-        // --- ZmstEntity の具象インスタンスを生成 ---
-        protected override BaseDataObj<int> CreateBaseDataObj() {
-            return new ZmstEntity();
-        }
 
         public List<List<Dictionary<string, object?>>> SubTables => Zmst.SubTables;
 
@@ -86,9 +82,8 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             return await base.ReName(newName);
         }
 
-        // --- DataOpen（排他制御） ---
-        public async Task<LockStatus> DataOpen() {
-            return await _dataObj.DataOpen();
-        }
+
+
+
     }
 }

@@ -40,15 +40,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         public IDbConnection DBcon { get => _baseDataObjMgr.DBcon; set => _baseDataObjMgr.DBcon = value; }
 
         public IEnumerable<IBaseDataObj<TKey>> DataList {
-            get {
-                foreach (var obj in _baseDataObjMgr._dataList) {
-                    if (obj is SyncBaseDataObj<TKey> syncObj) {
-                        if (syncObj.Http == null) syncObj.Http = _http;
-                        if (syncObj.Auth == null) syncObj.Auth = _auth;
-                    }
-                }
-                return _baseDataObjMgr._dataList.Cast<IBaseDataObj<TKey>>();
-            }
+            get => _baseDataObjMgr._dataList.Cast<IBaseDataObj<TKey>>();            
         }
 
         public SyncBaseDataObjMgr(IDbConnection db, HttpClient http, CustomAuthStateProvider auth,
@@ -57,10 +49,11 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         }
 
         public virtual IBaseDataObj<TKey>? Get(TKey id) => _baseDataObjMgr.Get(id);
-        protected virtual TSync CreateNewSyncDataObj() {
+        protected virtual TSync CreateNewSyncDataObj(TBase baseDataObj) {
             var newSyncObj = new TSync();
             newSyncObj.Http = _http;
             newSyncObj.Auth = _auth;
+            newSyncObj._dataObj = baseDataObj;
             return newSyncObj;
         }
         // Base の SetParent を透過ラップ
@@ -69,8 +62,10 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         }
 
         // Base の新規作成を透過ラップ
-        public virtual TBase CreateNewDataObj(TKey parentID) {
-            return _baseDataObjMgr.CreateNewDataObj(parentID);
+        public virtual TSync CreateNewDataObj(TKey parentID) {
+            var newBase = _baseDataObjMgr.CreateNewDataObj(parentID);
+            var newObj = CreateNewSyncDataObj(newBase);
+            return newObj;
         }
 
         public virtual void InsertNewDataItem(TBase obj) {
@@ -81,26 +76,36 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         // データベースからデータを取得する（クライアント・サーバー共用）
         public virtual async Task Initialize() {
 
-            var records = await LoadRecordsAsync();
+            // BaseDataObjでプロパティをロード
+            await _baseDataObjMgr.Initialize();
 
-            foreach (var record in records) {
+            // ★ Sync 用の新しいリストを作る
+            var syncList = new List<IBaseDataObj<TKey>>();
 
-                // DapperRow → IDictionary<string, object> をそのまま使う
-                var dict = (IDictionary<string, object>)record;
+            foreach (var baseObj in _baseDataObjMgr.DataList) {
 
-                TSync readData = CreateNewSyncDataObj();
-                readData.DBcon = DBcon;
-                readData.TenantCode = TenantCode;
-                readData.CurrUsrID = CurrentUserID;
-                readData.Http = _http;
-                readData.Auth = _auth;
-                readData.Setproperties(dict.ToDictionary(k => k.Key, v => v.Value));
+                var syncObj = new TSync();
+                syncObj.Http = _http;
+                syncObj.Auth = _auth;
+                syncObj._dataObj = (TBase)baseObj;
+                syncObj.SelfObjMgr = this;
+                syncObj.DBcon = DBcon;
+                syncObj.TenantCode = TenantCode;
+                syncObj.CurrUsrID = CurrentUserID;
 
-                _baseDataObjMgr._dataList.Add(readData);
+                // BaseDataObjの rawData をコピー
+                syncObj.Setproperties(((TBase)baseObj)._rawData);
+
+                syncList.Add(syncObj);
             }
-            //  全オブジェクトに対して親子関係をセット
-            foreach (var obj in _baseDataObjMgr.DataList) {
-                SetParent((TBase)obj);
+
+            // ★ Base の DataList を Sync のリストで丸ごと挿げ替え
+            if (syncList != null) {
+                _baseDataObjMgr._dataList = syncList;
+
+                foreach (var obj in _baseDataObjMgr._dataList) {
+                    SetParent(obj);
+                }
             }
         }
 
@@ -137,7 +142,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                     await target.JsonToTbl(dataJson,tran);
                 }
                 else {
-                    var newSyncObj = CreateNewSyncDataObj();
+                    var newSyncObj = CreateNewDataObj();
                     newSyncObj.DataID = dataId;
                     await newSyncObj.JsonToTbl(dataJson,tran);
                     _baseDataObjMgr._dataList.Add(newSyncObj);

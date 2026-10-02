@@ -55,6 +55,9 @@ namespace NxRebuild.shared {
 
         Task<List<TKey>> DeleteData(IEnumerable<TKey> dataIDs, bool softDelete = false);
 
+        IBaseDataObj<TKey>? Get(TKey id);
+
+
         Task DistributeJsonData(string json);
         Task Initialize();
         T CreateNewDataObj(TKey parentID);
@@ -123,6 +126,8 @@ namespace NxRebuild.shared {
             return _dataList
                 .FirstOrDefault(x => EqualityComparer<TKey>.Default.Equals(x.DataID, id));
         }
+
+
 
 
         public BaseDataObjMgr(IDbConnection db , Guid tenantCode , Guid currUserID) {

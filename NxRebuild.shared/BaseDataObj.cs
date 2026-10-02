@@ -72,6 +72,7 @@ namespace NxRebuild.shared {
         Task<bool> SaveAsync(
                         Dictionary<string, object?> workingRaw,
                         List<List<Dictionary<string, object?>>>? subTables = null);
+        Task<LockStatus> SetLockAsync(LockStatus lockStatus);
     }
 
     public abstract class BaseDataObj<TKey> : IBaseDataObj<TKey> {
@@ -393,156 +394,156 @@ namespace NxRebuild.shared {
             }
         }
 
-// =======================================================
-// 保存の時にDataIDを確定させる場合はここにその処理を記述(ZmstEntity参照)
-// =======================================================
+        // =======================================================
+        // 保存の時にDataIDを確定させる場合はここにその処理を記述(ZmstEntity参照)
+        // =======================================================
 
-public virtual TKey? EnsureIDForSave(IDbTransaction tran){
-    return this.DataID;
-}
-// =======================================================
-// 保存の標準実
-// =======================================================
-
-public virtual async Task<bool> SaveAsync(
-    Dictionary<string, object?> workingRaw,
-    List<List<Dictionary<string, object?>>>? subTables = null)
-{
-    using var tran = DBcon.BeginTransaction();
-
-    try
-    {
-        if (!await DeleteQueryExec(tran))
-        {
-            tran.Rollback();
-            return false;
+        public virtual TKey? EnsureIDForSave(IDbTransaction tran){
+            return this.DataID;
         }
+        // =======================================================
+        // 保存の標準実
+        // =======================================================
+
+        public virtual async Task<bool> SaveAsync(
+            Dictionary<string, object?> workingRaw,
+            List<List<Dictionary<string, object?>>>? subTables = null)
+        {
+            using var tran = DBcon.BeginTransaction();
+
+            try
+            {
+                if (!await DeleteQueryExec(tran))
+                {
+                    tran.Rollback();
+                    return false;
+                }
 
 
-        workingRaw[IdColName] = EnsureIDForSave(tran);
+                workingRaw[IdColName] = EnsureIDForSave(tran);
         
       
-        // ★ Working 全体保存（メイン＋サブ）
-        if (!await SaveWorkingAsync(workingRaw, subTables, tran))
-        {
-            tran.Rollback();
-            return false;
+                // ★ Working 全体保存（メイン＋サブ）
+                if (!await SaveWorkingAsync(workingRaw, subTables, tran))
+                {
+                    tran.Rollback();
+                    return false;
+                }
+
+                // ★ 継承先で追加の確定処理
+                if (!await SaveQueryExec(tran))
+                {
+                    tran.Rollback();
+                    return false;
+                }
+
+                // ★ コミット
+                tran.Commit();
+
+                // ★ 正本 Raw に反映
+                ApplyWorkingToRaw(workingRaw);
+
+                return true;
+            } 
+            catch (Exception ex) 
+            {
+                        Console.WriteLine("BaseDataObj.SaveAsync ERROR:");
+                        Console.WriteLine(ex.Message);
+                        Console.WriteLine(ex.StackTrace);
+                        tran.Rollback();
+                return false;
+            }
         }
 
-        // ★ 継承先で追加の確定処理
-        if (!await SaveQueryExec(tran))
+        public virtual async Task<bool> SaveWorkingAsync(
+            Dictionary<string, object?> workingRaw,
+            List<List<Dictionary<string, object?>>>? subTables,
+            IDbTransaction tran)
         {
-            tran.Rollback();
-            return false;
+            // ★ メインテーブル保存
+            if (!await SaveWorkingMainAsync(workingRaw, tran))
+                return false;
+
+            // ★ サブテーブル保存（具象側で追加）
+            if (!await SaveWorkingSubAsync(subTables, workingRaw, tran))
+                return false;
+
+            return true;
+        }
+        // =======================================================
+        // メインテーブル保存（WorkingRaw → _w_tblName）
+        // =======================================================
+
+        public virtual async Task<bool> SaveWorkingMainAsync(
+            Dictionary<string, object?> workingRaw,
+            IDbTransaction tran)
+        {
+
+            //ローカル書き込み用なのでとりあえずPC時間で
+            workingRaw["Update_at"] = DateTime.UtcNow;
+
+            // ★ 次に INSERT（WorkingRaw をそのまま書き込む）
+                    var cols = new List<string>();
+            var vals = new List<string>();
+
+            foreach (var kv in workingRaw)
+            {
+                cols.Add($@"""{kv.Key}""");
+                vals.Add($@"@{kv.Key}");
+            }
+
+            string insSql = $@"
+                INSERT INTO ""{_w_tblName}""
+                ({string.Join(", ", cols)})
+                VALUES ({string.Join(", ", vals)});
+            ";
+
+            var rows = await DBcon.ExecuteAsync(insSql, workingRaw, tran);
+            return rows == 1;
         }
 
-        // ★ コミット
-        tran.Commit();
 
-        // ★ 正本 Raw に反映
-        ApplyWorkingToRaw(workingRaw);
-
-        return true;
-    } 
-    catch (Exception ex) 
-    {
-                Console.WriteLine("BaseDataObj.SaveAsync ERROR:");
-                Console.WriteLine(ex.Message);
-                Console.WriteLine(ex.StackTrace);
-                tran.Rollback();
-        return false;
-    }
-}
-
-public virtual async Task<bool> SaveWorkingAsync(
-    Dictionary<string, object?> workingRaw,
-    List<List<Dictionary<string, object?>>>? subTables,
-    IDbTransaction tran)
-{
-    // ★ メインテーブル保存
-    if (!await SaveWorkingMainAsync(workingRaw, tran))
-        return false;
-
-    // ★ サブテーブル保存（具象側で追加）
-    if (!await SaveWorkingSubAsync(subTables, workingRaw, tran))
-        return false;
-
-    return true;
-}
-// =======================================================
-// メインテーブル保存（WorkingRaw → _w_tblName）
-// =======================================================
-
-public virtual async Task<bool> SaveWorkingMainAsync(
-    Dictionary<string, object?> workingRaw,
-    IDbTransaction tran)
-{
-
-    //ローカル書き込み用なのでとりあえずPC時間で
-    workingRaw["Update_at"] = DateTime.UtcNow;
-
-    // ★ 次に INSERT（WorkingRaw をそのまま書き込む）
-            var cols = new List<string>();
-    var vals = new List<string>();
-
-    foreach (var kv in workingRaw)
-    {
-        cols.Add($@"""{kv.Key}""");
-        vals.Add($@"@{kv.Key}");
-    }
-
-    string insSql = $@"
-        INSERT INTO ""{_w_tblName}""
-        ({string.Join(", ", cols)})
-        VALUES ({string.Join(", ", vals)});
-    ";
-
-    var rows = await DBcon.ExecuteAsync(insSql, workingRaw, tran);
-    return rows == 1;
-}
-
-
-// =======================================================
-// サブテーブル保存（DELETE → INSERT 再構築）
-// =======================================================
-public virtual Task<bool> SaveWorkingSubAsync(
-    List<List<Dictionary<string, object?>>>? subTables,
-    Dictionary<string, object?> MainWorkingRaw,
-    IDbTransaction tran)
-{
-    // ★ スモールエンティティはサブ無しが基本
-    return Task.FromResult(true);
-}
+        // =======================================================
+        // サブテーブル保存（DELETE → INSERT 再構築）
+        // =======================================================
+        public virtual Task<bool> SaveWorkingSubAsync(
+            List<List<Dictionary<string, object?>>>? subTables,
+            Dictionary<string, object?> MainWorkingRaw,
+            IDbTransaction tran)
+        {
+            // ★ スモールエンティティはサブ無しが基本
+            return Task.FromResult(true);
+        }
 
 
 
-// =======================================================
-// 正本 Raw に反映
-// =======================================================
+        // =======================================================
+        // 正本 Raw に反映
+        // =======================================================
 
-public void ApplyWorkingToRaw(Dictionary<string, object?> workingRaw)
-{
-    _rawData.Clear();
-    foreach (var kv in workingRaw)
-        _rawData[kv.Key] = kv.Value;
-}
+        public void ApplyWorkingToRaw(Dictionary<string, object?> workingRaw)
+        {
+            _rawData.Clear();
+            foreach (var kv in workingRaw)
+                _rawData[kv.Key] = kv.Value;
+        }
 
 
-// =======================================================
-// 継承先で必ず実装する確定処理
-// =======================================================
-
-/// <summary>
-/// 扱うエンティティが単一レコードが主になると思われる為、ピュアバーチャルではなく
-/// virtual とし、デフォルト実装は true を返すだけとする。
-/// 具象クラスが複数テーブル・複数レコードを扱う場合は、
-/// ワークテーブルを同じスキーマで作成し、
-/// そちらから本テーブルへ書き込む処理をここに記述する。
-/// </summary>
-public virtual Task<bool> SaveQueryExec(IDbTransaction transaction)
-{
-    return Task.FromResult(true);
-}
+        // =======================================================
+        // 継承先で必ず実装する確定処理
+        /// <summary>
+        /// 扱うエンティティが単一レコードが主になると思われる為、ピュアバーチャルではなく
+        /// virtual とし、デフォルト実装は true を返すだけとする。
+        /// 具象クラスが複数テーブル・複数レコードを扱う場合は、
+        /// ワークテーブルを同じスキーマで作成し、
+        /// そちらから本テーブルへ書き込む処理をここに記述する。
+        /// </summary>
+        /// 
+        // =======================================================
+        public virtual Task<bool> SaveQueryExec(IDbTransaction transaction)
+        {
+            return Task.FromResult(true);
+        }
 
         //データロックメソッド。
         //ロックされてるか確認したくなってもロックが目的なので意味

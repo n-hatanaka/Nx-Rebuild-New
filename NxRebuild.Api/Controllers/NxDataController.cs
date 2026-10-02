@@ -18,7 +18,14 @@ using static Npgsql.EntityFrameworkCore.PostgreSQL.Query.Expressions.Internal.Pg
 //AIがUIを介さず直接運用してもAIは文句は言わない
 //このパフォーマンス関連の改善案をAIが提示する場合はこの点を留意する事
 namespace NxRebuild.Api.Controllers {
+    //------------------------------------------------------------------------
+    // ロック状態設定リクエスト用 DTO
+    public class LockStatusRequest<TKey> {
+        public TKey DataId { get; set; }
+        public LockStatus LockStatus { get; set; }
+    }
 
+    //-------------------------------------------------------------------------
     [Authorize]//継承先のすべてのコントローラーを自動的に「ログイン必須」にする（継承先では書かなくていい）
     public abstract class NxDataController<T, TKey> : ControllerBase where T : BaseDataObj<TKey>, new() {
         private readonly string _connectionString;
@@ -128,6 +135,27 @@ namespace NxRebuild.Api.Controllers {
                 Items = resultList
             });
         }
+
+
+        [HttpPost("SetLockStatus")]
+        public async Task<IActionResult> SetLockStatus([FromBody] LockStatusRequest<TKey> req) {
+            // ★ユーザー所属テナントで ObjMgr を生成
+            await CreateObjMgr();
+
+            // ① 対象データ取得
+            var dataObj = _dataObjMgr.Get(req.DataId);
+
+            if (dataObj == null)
+                return BadRequest($"Data not found: {req.DataId}");
+
+            // ② ロック要求（セット／解除兼用）
+            //    LockStatus はそのまま渡す
+            var lockStatus = await dataObj.SetLockAsync(req.LockStatus);
+
+            // ③ 結果返却（SetLockAsync の戻り値そのまま）
+            return Ok(lockStatus);
+        }
+
 
         [HttpPost("Delete")]
         public async Task<IActionResult> Delete([FromBody] List<TKey> dataLst) {
