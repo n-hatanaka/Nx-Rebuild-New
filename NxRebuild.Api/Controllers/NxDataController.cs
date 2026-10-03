@@ -10,6 +10,7 @@ using NxRebuild.Api.Schema;
 using NxRebuild.shared;
 using System.Data;
 using System.Diagnostics.Contracts;
+using System.Text.Json;
 using static Npgsql.EntityFrameworkCore.PostgreSQL.Query.Expressions.Internal.PgTableValuedFunctionExpression;
 //ところどころ冗長な部分を認めるものの基本的には冪等性の確保と、可読性保守性を優先したもの
 //AIの改善案では60%前後の処理時間改善が見込まれるとの考察はあるものの可読性を著しく損
@@ -234,6 +235,114 @@ namespace NxRebuild.Api.Controllers {
         }
 
 
+        [HttpPost("Save/{dataId}")]
+        public virtual async Task<IActionResult> Save(TKey? dataId, [FromBody] string ReceiveJson) {
+            await CreateObjMgr();
+
+            TKey realID = dataId ?? default;
+
+            // 既存 or 新規オブジェクト取得
+            var obj = _dataObjMgr.Get(realID)
+                      ?? _dataObjMgr.CreateNewDataObj(default);
+
+
+            // ロック確認
+            var lockst = new LockStatus { IsLocked = true, LockedByUserId = _userID };
+            var lockinfo = await obj.SetLockAsync(lockst);
+            if (!lockinfo.IsLocked || lockinfo.LockedByUserId != _userID)
+                return BadRequest("Lock failed");
+
+            using var tran = _db.BeginTransaction();
+
+            var SaveJson = ReceiveJson;
+
+
+            // ★ JSON を Dictionary に変換
+            var workingRaw = JsonSerializer.Deserialize<List<TableJson>>(SaveJson);
+
+
+            var Table = workingRaw.First(t => t.Table == this._tblName);
+            var Row = Table.Rows.First();
+
+            try {
+                // ★ 新規なら ID 採番
+                if (EqualityComparer<TKey>.Default.Equals(realID, default)) {
+                    realID = EnsureIDForSave(obj, tran);
+                    Row[obj.IdColName] = realID;
+
+                    // サブテーブルも書き換え
+                    foreach (var tbl in workingRaw.Where(t => t.Table != this._tblName)) {
+                        foreach (var row in tbl.Rows) {
+                            row[obj.IdColName] = realID;
+                            row["tenant_code"] = obj.TenantCode;
+                        }
+                    }
+                }
+
+                var NowUpdate_at = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.ffffffZ");
+
+                Row["Update_at"] = NowUpdate_at;
+
+
+                // ★ テーブル書き込み前フック
+                if (!await BeforeSaveProcess(obj, workingRaw, tran)) {
+                    tran.Rollback();
+                    return BadRequest("BeforeSaveProcess failed");
+                }
+
+                SaveJson = JsonSerializer.Serialize(workingRaw);
+
+                // ★ 保存処理へ
+                if (!await obj.JsonToTbl(SaveJson, tran)) {
+                    tran.Rollback();
+                    return BadRequest("JsonToTbl failed");
+                }
+
+
+                //ロック情報がJSONで更新されてしまうのであらためて設定
+                await obj.SetLockAsync(lockst, tran);
+
+                // ★ テーブル書き込み後フック
+                if (!await AfterSaveProcess(obj, workingRaw, tran)) {
+                    tran.Rollback();
+                    return BadRequest("AfterSaveProcess failed");
+                }
+
+
+                tran.Commit();
+
+                return Ok(new { NewID = realID, UpdateAt = NowUpdate_at });
+            } catch (Exception ex) {
+                tran.Rollback();
+                return BadRequest(ex.Message);
+            }
+        }
+        // =======================================================
+        // 保存の前後に追加処理を行いたい場合は継承先で
+        // BeforeSaveProcess / AfterSaveProcess をオーバーライドする
+        // =======================================================
+        protected virtual Task<bool> BeforeSaveProcess(
+                                                IBaseDataObj<TKey> obj,
+                                                List<TableJson> workingRaw,
+                                                IDbTransaction tran) {
+            return Task.FromResult(true);
+        }
+
+        protected virtual Task<bool> AfterSaveProcess(
+                                                IBaseDataObj<TKey> obj,
+                                                List<TableJson> workingRaw,
+                                                IDbTransaction tran) {
+            return Task.FromResult(true);
+        }
+
+
+        // =======================================================
+        // 保存の時にDataIDを確定させる場合は継承先で
+        // オーバーライドして処理を記述(ZmstController参照)
+        // =======================================================
+        protected virtual TKey EnsureIDForSave(IBaseDataObj<TKey> obj, IDbTransaction tran) {
+            return obj.DataID;
+        }
 
 
         [HttpPost("ReName/{dataId}/{newName}")]
