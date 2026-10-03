@@ -36,11 +36,12 @@ namespace NxRebuild.Api.Controllers {
             EnsureConnection(); // _db を初期化（NxDataController側で定義）
 
             Guid uid;
-        
-            if (_userID == "anonymous")
-                uid = Guid.Empty; // anonymous の世界線では GUID を使わない
-            else
-                uid = Guid.Parse(_userID);
+
+            if (_userID == null || _userID == Guid.Empty) {
+                uid = Guid.Empty;   // anonymous 世界線
+            } else {
+                uid = _userID.Value; // Guid? → Guid
+            }
 
             // API初期化（共通化済み）
             await InitializeNxApi();            
@@ -107,14 +108,14 @@ namespace NxRebuild.Api.Controllers {
 
 
         [HttpPost("Delete")]
-        public async Task<IActionResult> Delete([FromBody] List<int> dataLst) {
+        public override async Task<IActionResult> Delete([FromBody] List<int> dataLst) {
             //無効化
             return Ok();
         }
 
 
-        [HttpPost("ReName/{dataId}/{tenantCode}/{newName}")]
-        public async Task<IActionResult> Rename(int dataId, string newName) {
+        [HttpPost("ReName/{dataId}/{newName}")]
+        public override async Task<IActionResult> Rename(int dataId, string newName) {
             //無効化
             return Ok();
         }

@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Dapper;
 
 namespace NxRebuild.shared {
+
     // ---------------------------------------------------------
     // CategoryEntity
     // 食品群マスタ（gun_m）を表すエンティティ
@@ -96,6 +97,7 @@ namespace NxRebuild.shared {
         Task LoadSubTablesFromRaw();
 
     }
+
 
     public class ZmstEntity : BaseDataObj<int>, IZmstEntity {
         // --- サブテーブル tan_m を保持する ---

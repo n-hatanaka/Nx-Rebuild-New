@@ -40,7 +40,9 @@ namespace NxRebuild.shared {
     // サーバー向けマネージャの機能だけを外出しするインターフェース
     public interface IsrvBaseDataObjMgr<T, TKey> where T : BaseDataObj<TKey> {
         Guid CurrentUserID { get; set; }
+
         IEnumerable<IBaseDataObj<TKey>> DataList { get; }
+
         NxDataType DataType { get; set; }
         IDbConnection DBcon { get; set; }
         DateTime Refreshed_at { get; }
@@ -60,9 +62,9 @@ namespace NxRebuild.shared {
 
         Task DistributeJsonData(string json);
         Task Initialize();
-        IBaseDataObj<TKey> CreateNewDataObj(TKey parentID);
         string LoadMultipleDataAsJson(List<TKey> idList);
         void RemoveFromList(BaseDataObj<TKey> obj);
+        IBaseDataObj<TKey> CreateNewDataObj(TKey? parentID);
     }
         //DataObjを管理するクラス
         //派生先では次のように定義する事
@@ -97,7 +99,13 @@ namespace NxRebuild.shared {
         //DataObjのList：派生したDataObjも保持できる様Objectにダウンキャストする。
         public List<IBaseDataObj<TKey>> _dataList = new List<IBaseDataObj<TKey>>();
 
-        public IEnumerable<IBaseDataObj<TKey>> DataList => _dataList;
+        /// <summary>
+        /// DataList を取得します。
+        /// </summary>
+        public IEnumerable<IBaseDataObj<TKey>> DataList
+                                => _dataList.Cast<IBaseDataObj<TKey>>();
+
+
         public DateTime Refreshed_at {
             get {
                 DateTime latestUpdate = DateTime.MinValue;
@@ -122,12 +130,11 @@ namespace NxRebuild.shared {
         // --------------------------------------------------
         // idで指定されたDataObjを返す
         // --------------------------------------------------
+
         public virtual IBaseDataObj<TKey>? Get(TKey id) {
             return _dataList
                 .FirstOrDefault(x => EqualityComparer<TKey>.Default.Equals(x.DataID, id));
         }
-
-
 
 
         public BaseDataObjMgr(IDbConnection db , Guid tenantCode , Guid currUserID) {
@@ -190,6 +197,7 @@ namespace NxRebuild.shared {
             // DataID は仮で OK（保存時に確定でもいい）
             return dataObj;
         }
+
 
         //createnewDataObj()で生成したオブジェクトを_dataListに追加
         //子リストに追加する

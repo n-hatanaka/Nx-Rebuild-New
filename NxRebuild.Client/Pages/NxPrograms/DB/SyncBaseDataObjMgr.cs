@@ -49,24 +49,21 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         }
 
         public virtual IBaseDataObj<TKey>? Get(TKey id) => _baseDataObjMgr.Get(id);
-        protected virtual TSync CreateNewSyncDataObj(BaseDataObj<TKey> baseDataObj) {
+        public virtual IBaseDataObj<TKey> CreateNewDataObj(TKey? parentID) {
             var newSyncObj = new TSync();
             newSyncObj.Http = _http;
             newSyncObj.Auth = _auth;
-            newSyncObj._dataObj = baseDataObj;
+            newSyncObj._dataObj = null;
+            newSyncObj.CurrUsrID = CurrentUserID;
             return newSyncObj;
         }
-        // Base の SetParent を透過ラップ
+
+
         public virtual void SetParent(IBaseDataObj<TKey> obj) {
             _baseDataObjMgr.SetParent(obj);
         }
 
-        // Base の新規作成を透過ラップ
-        public virtual IBaseDataObj<TKey> CreateNewDataObj(TKey? parentID) {
-            var newBase = _baseDataObjMgr.CreateNewDataObj(parentID);
-            var newObj = CreateNewSyncDataObj((BaseDataObj<TKey>)newBase);
-            return newObj;
-        }
+
 
         public virtual void InsertNewDataItem(IBaseDataObj<TKey> obj) {
             _baseDataObjMgr.InsertNewDataItem(obj);

@@ -13,6 +13,7 @@ using System.Net.Http.Json; // GetFromJsonAsync用
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
+using System.Transactions;
 using System.Xml.Linq;
 
 namespace NxRebuild.shared {
@@ -40,12 +41,6 @@ namespace NxRebuild.shared {
 
     }
 
-    public enum LockResult {
-        Success,       // ロック確保成功
-        LockedByOther, // 他人がロック中
-        RecordNone,
-        DbError        // システムエラー
-    }
 
     public interface IBaseDataObj<TKey> {
         Guid CurrUsrID { get; set; }
@@ -79,8 +74,13 @@ namespace NxRebuild.shared {
         Task<bool> SaveAsync(
                         Dictionary<string, object?> workingRaw,
                         List<List<Dictionary<string, object?>>>? subTables = null);
-        Task<LockStatus> SetLockAsync(LockStatus lockStatus);
+
+
+        Task<LockStatus> SetLockAsync(); 
+        Task<LockStatus> SetLockAsync(LockStatus lockStatus,
+                                        IDbTransaction dbTransaction = null);
     }
+
 
     public abstract class BaseDataObj<TKey> : IBaseDataObj<TKey> {
 
@@ -574,26 +574,40 @@ namespace NxRebuild.shared {
             return Task.FromResult(true);
         }
 
+        public virtual async Task<LockStatus> SetLockAsync() {
+            var lockStatus = new LockStatus {
+                IsLocked = true,
+                LockedByUserId = CurrUsrID,
+                Locked_at = DateTime.UtcNow
+            };
+            return await SetLockAsync(lockStatus);
+        }
+
+        // =======================================================
         //データロックメソッド。
         //ロックされてるか確認したくなってもロックが目的なので意味
         //が無いのでこれを呼び出せ。
+        // ======================================================
         public virtual async Task<LockStatus>
-            SetLockAsync(LockStatus lockStatus) {
-            IDbTransaction dbTransaction = DBcon.BeginTransaction();
+            SetLockAsync(LockStatus lockStatus, IDbTransaction dbTransaction = null) {
+            
+            if (dbTransaction == null) {
+                // トランザクションが渡された場合はそれを使用する
+                dbTransaction = DBcon.BeginTransaction();
+            }
+
             LockStatus Lockst = await LockedChkfromTbl(dbTransaction);
             Guid parsedGuid;
-            if (Lockst.IsLocked) {
+            if (Lockst.IsLocked && Lockst.LockedByUserId != lockStatus.LockedByUserId) {
                 //すでにロック済みの場合その情報を返す。
                 //自分のプロパティも更新
+                Lockst.HasError = true;
+                Lockst.ErrorMessage = "他のユーザーがロック中です。";
+
                 _rawData["locked_at"] = (DateTime)Lockst.Locked_at;
 
-                // 文字列をGuidに変換する
-                if (Guid.TryParse(Lockst.LockedByUserId, out parsedGuid)) {
-                    _rawData["locked_by"] = parsedGuid;
-                } else {
-                    // 万が一、DBにIDではない不正な文字列が入っていた場合の保険
-                    _rawData["locked_by"] = Guid.Empty;
-                }
+                _rawData["locked_by"] = Lockst.LockedByUserId;
+
                 dbTransaction.Commit();
                 return Lockst;
             } else {
@@ -601,35 +615,26 @@ namespace NxRebuild.shared {
                 LockResult result = await WriteLockInfoAsync(lockStatus,dbTransaction);
                 switch (result) {
                     case LockResult.Success:
-                        // 書き込み成功後、改めて最新の情報をDBから取得して返す
-                        //自分のプロパティも更新
-                        _rawData["locked_at"] = (DateTime)Lockst.Locked_at;
+                        // DBに書き込んだ後、最新のロック情報を取得
+                        var latest = await LockedChkfromTbl(dbTransaction);
 
-                        // 文字列をGuidに変換する
-                        if (Guid.TryParse(Lockst.LockedByUserId, out parsedGuid)) {
-                            _rawData["locked_by"] = parsedGuid;
-                        } else {
-                            // 万が一、DBにIDではない不正な文字列が入っていた場合の保険
-                            _rawData["locked_by"] = Guid.Empty;
-                        }
+                        // 自分のプロパティも更新
+                        _rawData["locked_at"] = latest.Locked_at ?? DateTime.MinValue;
+                        _rawData["locked_by"] = latest.LockedByUserId;
+
                         dbTransaction.Commit();
-                        return await LockedChkfromTbl(dbTransaction);
+                        return latest;
 
+                    // ロックすべきレコードが無い（新規データ）の場合、
+                    // ロックしたものとしてリクエスト内容を返す
+                    //すでにロック済みの場合その情報を返す。
                     case LockResult.RecordNone:
-                        // ロックすべきレコードが無い（新規データ）の場合、
-                        // ロックしたものとしてリクエスト内容を返す
-                        //すでにロック済みの場合その情報を返す。
-                        _rawData["locked_at"] = (DateTime)Lockst.Locked_at;
+                        _rawData["locked_at"] = lockStatus.Locked_at ?? DateTime.MinValue;
+                        _rawData["locked_by"] = lockStatus.LockedByUserId;
 
-                        // 文字列をGuidに変換する
-                        if (Guid.TryParse(Lockst.LockedByUserId, out parsedGuid)) {
-                            _rawData["locked_by"] = parsedGuid;
-                        } else {
-                            // 万が一、DBにIDではない不正な文字列が入っていた場合の保険
-                            _rawData["locked_by"] = Guid.Empty;
-                        }
                         dbTransaction.Rollback();
                         return lockStatus;
+
 
                     case LockResult.DbError:
                     default:
@@ -711,7 +716,6 @@ namespace NxRebuild.shared {
 
             // デフォルト値を設定
             bool isLocked = false;
-            string? userId = null;
             DateTime updateAt = result?.Update_at ?? DateTime.MinValue;
 
             // レコードが取れなかった場合
@@ -726,21 +730,31 @@ namespace NxRebuild.shared {
             LockStatus lockSt = new LockStatus {
                 Exists = true, // レコードあり！
                 IsLocked = locked,
-                LockedByUserId = locked ? (string)result.UserId : null,
+                LockedByUserId = result.UserId ,
                 Locked_at = (DateTime?)result.Update_at
             };
             //自分のプロパティも更新
-            Guid parsedGuid;
             _rawData["locked_at"] = lockSt.Locked_at ?? DateTime.MinValue;
 
-            // 文字列をGuidに変換する
-            if (Guid.TryParse(lockSt.LockedByUserId, out parsedGuid)) {
+            // Guid? の場合はそのまま使う
+            if (lockSt.LockedByUserId is Guid guidValue) {
+                _rawData["locked_by"] = guidValue;
+                return lockSt;
+            }
+
+            // string の場合は安全にパース
+            var raw = lockSt.LockedByUserId?.ToString();
+
+            Guid parsedGuid;
+            if (!string.IsNullOrWhiteSpace(raw) && Guid.TryParse(raw, out parsedGuid)) {
                 _rawData["locked_by"] = parsedGuid;
             } else {
-                // 万が一、DBにIDではない不正な文字列が入っていた場合の保険
-                _rawData["locked_by"] = Guid.Empty;
+                // uuid カラムには null を入れるのが正しい
+                _rawData["locked_by"] = null;
             }
+
             return lockSt;
+
 
         }
     }

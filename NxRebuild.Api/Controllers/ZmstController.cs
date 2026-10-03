@@ -27,10 +27,11 @@ namespace NxRebuild.Api.Controllers {
 
             Guid uid;
 
-            if (_userID == "anonymous")
-                uid = Guid.Empty; // anonymous の世界線では GUID を使わない
-            else
-                uid = Guid.Parse(_userID);
+            if (_userID == null || _userID == Guid.Empty) {
+                uid = Guid.Empty;   // anonymous 世界線
+            } else {
+                uid = _userID.Value; // Guid? → Guid
+            }
 
             // API初期化（共通化済み）
             await InitializeNxApi();
@@ -62,17 +63,17 @@ namespace NxRebuild.Api.Controllers {
             await CreateObjMgr();
 
             // 既存 or 新規オブジェクト取得
-            var obj = _dataObjMgr.Get(dataId);
+            var obj = (ZmstEntity)_dataObjMgr.Get(dataId);
 
             if (obj == null) {
-                obj = _dataObjMgr.CreateNewDataObj(0) as ZmstEntity;
+                obj = (ZmstEntity)_dataObjMgr.CreateNewDataObj(0);
             }
 
 
             // ロック確認
             var lockst = new LockStatus { IsLocked = true, LockedByUserId = _userID };
-            await obj.SetLockAsync(lockst);
-            if (!lockst.IsLocked || lockst.LockedByUserId != _userID)
+            var lockinfo = await obj.SetLockAsync(lockst);
+            if (!lockinfo.IsLocked || lockinfo.LockedByUserId != _userID)
                 return BadRequest("Lock failed");
 
             using var tran = _db.BeginTransaction();
@@ -116,6 +117,9 @@ namespace NxRebuild.Api.Controllers {
                     tran.Rollback();
                     return BadRequest("JsonToTbl failed");
                 }
+
+                //ロック情報がJSONで更新されてしまうのであらためて設定
+                await obj.SetLockAsync(lockst);
 
                 tran.Commit();
 

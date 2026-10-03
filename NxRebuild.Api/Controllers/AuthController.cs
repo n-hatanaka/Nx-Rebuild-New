@@ -45,7 +45,7 @@ public class AuthController : ControllerBase
         {
             new Claim(JwtRegisteredClaimNames.Sub, user.Id),
             new Claim(JwtRegisteredClaimNames.Email, user.Email!),
-            new Claim("tenant_code", user.TenantCode)
+            new Claim("tenant_code", user.TenantCode.ToString())
         };
 
         var key = new SymmetricSecurityKey(

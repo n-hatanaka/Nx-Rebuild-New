@@ -13,6 +13,10 @@ namespace NxRebuild.shared {
     public interface IZmstEntityMgr : IBaseDataObjMgr<ZmstEntity, int> {
         List<CategoryEntity> GunList { get; }
     }
+
+    public interface IsrvZmstEntityMgr : IZmstEntityMgr, IsrvBaseDataObjMgr<ZmstEntity, int> {
+
+    }
     // ---------------------------------------------------------
     // ZmstEntityMgr
     // カラム数80弱+小さいサブテーブル（単位マスタ）を持つ
@@ -20,7 +24,7 @@ namespace NxRebuild.shared {
     // ツリー構造を作るためのスキーマ設計でないため、本来の想定外の実装を行う
     // 
     // ---------------------------------------------------------
-    public class ZmstEntityMgr : BaseDataObjMgr<ZmstEntity, int>, IZmstEntityMgr {
+    public class ZmstEntityMgr : BaseDataObjMgr<ZmstEntity, int>, IZmstEntityMgr, IsrvZmstEntityMgr {
         // ---------------------------------------------------------
         // 食品群リスト
         // ---------------------------------------------------------

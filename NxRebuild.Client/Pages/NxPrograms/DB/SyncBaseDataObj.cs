@@ -15,7 +15,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
     public interface ISyncBaseDataObj<TKey>: IBaseDataObj<TKey> {
         HttpClient Http { get; set; }
         CustomAuthStateProvider Auth { get; set; }
-        Task<LockStatus> SetLockAsync(LockStatus lockStatus);
+        
     }
 
 
@@ -58,7 +58,6 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         // DataObjのメソッドへのアクセスラッパー
         public void CreateWorkingMemory(Dictionary<string, object?> wirkingRaw) => _dataObj.CreateWorkingMemory(wirkingRaw);
         public void CreateWorkingSubTables(List<List<Dictionary<string, object?>>>? subTables) => _dataObj.CreateWorkingSubTables(subTables);
-        public Task<LockStatus> SetLockAsync(LockStatus lockStatus) => _dataObj.SetLockAsync(lockStatus);
         public string TblToJson() => _dataObj.TblToJson();
 
         public string TblToJson(TKey dataId, IDbTransaction transaction) => _dataObj.TblToJson(dataId, transaction);
@@ -119,10 +118,13 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         //    _dataObj = baseObj ?? throw new ArgumentNullException(nameof(baseObj));
         //}
 
-        public async Task<LockStatus> DataOpen() {
+        public async Task<LockStatus> SetLockAsync(LockStatus lockStatus, IDbTransaction dbTransaction = null) {
+            return await _dataObj.SetLockAsync(lockStatus, dbTransaction);
+        }
+
+        public async Task<LockStatus> SetLockAsync() {
             // ① Auth から UserID と UserName を取得
             var authState = await Auth.GetAuthenticationStateAsync();
-            var userId = authState.User.FindFirst("sub")?.Value;
             var userName = authState.User.Identity?.Name;
 
             // ② ロック要求（DB側で正しいロック情報が生成される）
@@ -130,8 +132,8 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                 DataId = this.DataID,
                 LockStatus = new LockStatus {
                     Exists = true,
-                    IsLocked = true,            // ★ DataOpen はロックする
-                    LockedByUserId = userId,
+                    IsLocked = true,            // ★ ロック要求
+                    LockedByUserId = CurrUsrID,
                     LockedByUserName = userName
                 }
             };
@@ -143,7 +145,6 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             try {
                 response = await Http.PostAsJsonAsync(url, req);
             } catch (Exception ex) {
-                // ★ ネットワークレベルの失敗
                 return new LockStatus {
                     HasError = true,
                     ErrorMessage = $"通信エラー: {ex.Message}",
@@ -152,7 +153,6 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             }
 
             if (!response.IsSuccessStatusCode) {
-                // ★ HTTP レベルの失敗
                 return new LockStatus {
                     HasError = true,
                     ErrorMessage = $"HTTPエラー: {response.StatusCode}",
@@ -160,12 +160,11 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                 };
             }
 
-            LockStatus? lockStatus = null;
+            LockStatus? serverStatus;
 
             try {
-                lockStatus = await response.Content.ReadFromJsonAsync<LockStatus>();
+                serverStatus = await response.Content.ReadFromJsonAsync<LockStatus>();
             } catch (Exception ex) {
-                // ★ JSON パース失敗
                 return new LockStatus {
                     HasError = true,
                     ErrorMessage = $"レスポンス解析エラー: {ex.Message}",
@@ -173,8 +172,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                 };
             }
 
-            if (lockStatus == null) {
-                // ★ JSON は読めたが中身が null
+            if (serverStatus == null) {
                 return new LockStatus {
                     HasError = true,
                     ErrorMessage = "ロック情報が返されませんでした",
@@ -182,14 +180,38 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                 };
             }
 
-            // ③ ロック失敗なら DataOpen しない
-            if (!lockStatus.IsLocked || lockStatus.HasError)
-                return lockStatus;
+            // ③ UI 側のローカル状態を更新（世界線整合）
+            _rawData["locked_at"] = serverStatus.Locked_at ?? DateTime.MinValue;
+            _rawData["locked_by"] = serverStatus.LockedByUserId;
 
-            // ④ ロック成功後に DataOpen
+            // ④ サーバーが返した LockStatus をそのまま返す
+            return serverStatus;
+        }
+
+        public async Task<LockStatus> DataOpen() {
+            // ① まずロック要求を送る（サーバーが最新の LockStatus を返す）
+            var lockStatus = await SetLockAsync();
+
+            // ② ロック失敗（他人がロック中 or エラー）
+            if (!lockStatus.IsLocked || lockStatus.HasError) {
+                // UI 側のローカル状態も更新しておく
+                _rawData["locked_at"] = lockStatus.Locked_at ?? DateTime.MinValue;
+                _rawData["locked_by"] = lockStatus.LockedByUserId;
+
+                return lockStatus;
+            }
+
+            // ③ ロック成功 → データを開く
             await _dataObj.DataOpen();
+
+            // ④ UI 側のローカル状態を反映（世界線整合）
+            _rawData["locked_at"] = lockStatus.Locked_at ?? DateTime.MinValue;
+            _rawData["locked_by"] = lockStatus.LockedByUserId;
+
+            // ⑤ ロック成功した LockStatus を返す
             return lockStatus;
         }
+
 
 
         public async Task<LockStatus> DataClose() {

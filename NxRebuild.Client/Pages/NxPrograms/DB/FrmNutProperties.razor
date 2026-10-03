@@ -1,8 +1,9 @@
 @page "/nutrition-properties"
 @using NxRebuild.Client.Services
+@using MudBlazor
 
-<MadCard Class="ma-4 pa-4">
-    <MadText Typo="Typo.h5">栄養素の表示設定</MadText>
+<MudCard Class="ma-4 pa-4">
+    <MudText Typo="Typo.h5">栄養素の表示設定</MudText>
 
     <table class="table">
         <thead>
@@ -23,7 +24,7 @@
             }
         </tbody>
     </table>
-</MadCard>
+</MudCard>
 
 @code {
     private List<SyncNutProperty> _items = new();

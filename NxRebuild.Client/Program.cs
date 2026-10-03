@@ -15,6 +15,9 @@ builder.RootComponents.Add<HeadOutlet>("head::after");
 
 builder.Services.AddAuthorizationCore();
 builder.Services.AddScoped<AuthenticationStateProvider, CustomAuthStateProvider>();
+// ② 具体型としても登録（これが必要）
+builder.Services.AddScoped<CustomAuthStateProvider>();
+
 //builder.Services.AddScoped(sp => new HttpClient
 //{
 //    BaseAddress = new Uri("http://localhost:5296/") // API の URL

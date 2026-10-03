@@ -9,9 +9,17 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
     // ★ AknTreeListViewBase<TObj, TKey> に合わせて修正
     public class FrmZmstViewBase : AknTreeListViewBase<ZmstEntity, int> {
 
-        //次の二つのフィールドは継承されるが、明記しないとrazorが認識できないので明記する
-        protected AknTreeView<int>? _treeview;
-        protected AknListView<int>? _listview;
+        //次の二つのフィールドは継承されるが、明記しないとrazorが認識できないので
+        //プロパティとして明記する
+        protected AknTreeView<int>? TreeView {
+            get => _treeview;
+            set => _treeview = value;
+        }
+
+        protected AknListView<int>? ListView {
+            get => _listview;
+            set => _listview = value;
+        }
 
         protected IZmstEntityMgr? ZmstMgr { get; set; }
 
@@ -91,35 +99,34 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
             if (item == null) return;
 
 
-            if (item.ItemData is IZmstEntity)
+            if (item.ItemData.DataType != NxDataType.Zairyou)
                 return;
 
             var baseObj = (IZmstEntity)item.ItemData;
 
             var lockst = await baseObj.DataOpen();
 
-
-            var auth = await AuthProvider.GetAuthenticationStateAsync();
-            var user = auth.User;
-            var userId = user.FindFirst("user_id")?.Value;
-
-
-            if (lockst.IsLocked && lockst.LockedByUserId == userId ) {
-                var winId = Guid.NewGuid(); // もし WindowInfo.Id を返すならそれを使う
-
-                Manager.Open<Z_Edit>(
-                    $"材料編集: {baseObj.DataName}",
-                    new Dictionary<string, object>
-                    {
-                        { "LocalCode", baseObj.DataID },
-                        { "IsNew", false },
-                        { "OnSaved", EventCallback.Factory.Create(this, OnChildSaved) },
-                        { "OnClose", EventCallback.Factory.Create(this, OnChildClosed) }
-                    }
-                );
-
+            if (lockst.HasError) {
+                // エラーが発生した場合の処理
+                Console.WriteLine(lockst.ErrorMessage);
+                return;
             }
+
+            var winId = Guid.NewGuid(); // もし WindowInfo.Id を返すならそれを使う
+
+            Manager.Open<Z_Edit>(
+                $"材料編集: {baseObj.DataName}",
+                new Dictionary<string, object>
+                {
+                    { "LocalCode", baseObj.DataID },
+                    { "IsNew", false },
+                    { "OnSaved", EventCallback.Factory.Create(this, OnChildSaved) },
+                    { "OnClose", EventCallback.Factory.Create(this, OnChildClosed) }
+                }
+            );
+
         }
+        
         private async Task OnChildClosed() {
             // 子が閉じられたときにやりたい処理を書く
             Console.WriteLine("子画面が閉じられました");

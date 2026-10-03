@@ -39,7 +39,7 @@ namespace NxRebuild.Api.Controllers {
         protected string _idColName;//テーブルのIDカラムのカラム名
         protected Guid _tenantCode;//テナントコード
         protected ApplicationUser _user;
-        protected string _userID;
+        protected Guid? _userID;
         protected string _usertenant_code;
         protected IsrvBaseDataObjMgr<T,TKey> _dataObjMgr;
 
@@ -69,13 +69,14 @@ namespace NxRebuild.Api.Controllers {
             _user = await _userMgr.GetUserAsync(User);
 
             if (_user == null) {
-                _userID = "anonymous";
+                _userID = Guid.Empty;
                 _tenantCode = Guid.Empty;
                 return;
             }
 
-            _userID = _user.Id;
-            _tenantCode = Guid.TryParse(_user.TenantCode, out var tg) ? tg : Guid.Empty;
+            // IdentityUser.Id は string なので Guid に変換する
+            _userID = Guid.TryParse(_user.Id, out var uid) ? uid : Guid.Empty;
+            _tenantCode = Guid.TryParse(_user.TenantCode, out var tc) ? tc : Guid.Empty;
         }
 
 
@@ -107,7 +108,7 @@ namespace NxRebuild.Api.Controllers {
         //}
 
         [HttpGet("sync/{refreshedAt}")]
-        public async Task<IActionResult> SyncAll(DateTime refreshedAt)
+        public virtual async Task<IActionResult> SyncAll(DateTime refreshedAt)
         {
             // DataObjMgr を生成
             await CreateObjMgr(); 
@@ -138,12 +139,12 @@ namespace NxRebuild.Api.Controllers {
 
 
         [HttpPost("SetLockStatus")]
-        public async Task<IActionResult> SetLockStatus([FromBody] LockStatusRequest<TKey> req) {
+        public virtual async Task<IActionResult> SetLockStatus([FromBody] LockStatusRequest<TKey> req) {
             // ★ユーザー所属テナントで ObjMgr を生成
             await CreateObjMgr();
 
             // ① 対象データ取得
-            var dataObj = _dataObjMgr.Get(req.DataId);
+            var dataObj = (IBaseDataObj<TKey>)_dataObjMgr.Get(req.DataId);
 
             if (dataObj == null)
                 return BadRequest($"Data not found: {req.DataId}");
@@ -158,7 +159,7 @@ namespace NxRebuild.Api.Controllers {
 
 
         [HttpPost("Delete")]
-        public async Task<IActionResult> Delete([FromBody] List<TKey> dataLst) {
+        public virtual async Task<IActionResult> Delete([FromBody] List<TKey> dataLst) {
             // ★ユーザー所属テナントで ObjMgr を生成
             await CreateObjMgr();
 
@@ -235,8 +236,8 @@ namespace NxRebuild.Api.Controllers {
 
 
 
-        [HttpPost("ReName/{dataId}/{tenantCode}/{newName}")]
-        public async Task<IActionResult> Rename(TKey dataId, string newName) {
+        [HttpPost("ReName/{dataId}/{newName}")]
+        public virtual async Task<IActionResult> Rename(TKey dataId, string newName) {
 
             await CreateObjMgr();
             // ① DataObj を取得

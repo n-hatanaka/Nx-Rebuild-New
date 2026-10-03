@@ -31,6 +31,9 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             get => ((IZmstEntityMgr)_baseDataObjMgr).GunList;
         }
 
+        public override IZmstEntity? Get(int id) {
+            return (IZmstEntity)_baseDataObjMgr.Get(id);
+        }
 
         // ---------------------------------------------------------
         // Delete（SyncDataObj → BaseDataObj → APIDataObj）
