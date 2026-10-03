@@ -119,7 +119,7 @@ namespace NxRebuild.Api.Controllers {
                 }
 
                 //ロック情報がJSONで更新されてしまうのであらためて設定
-                await obj.SetLockAsync(lockst);
+                await obj.SetLockAsync(lockst, tran);
 
                 tran.Commit();
 
