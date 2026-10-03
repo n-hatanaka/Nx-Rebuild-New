@@ -49,7 +49,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         }
 
         public virtual IBaseDataObj<TKey>? Get(TKey id) => _baseDataObjMgr.Get(id);
-        protected virtual TSync CreateNewSyncDataObj(TBase baseDataObj) {
+        protected virtual TSync CreateNewSyncDataObj(BaseDataObj<TKey> baseDataObj) {
             var newSyncObj = new TSync();
             newSyncObj.Http = _http;
             newSyncObj.Auth = _auth;
@@ -62,13 +62,13 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         }
 
         // Base の新規作成を透過ラップ
-        public virtual TSync CreateNewDataObj(TKey parentID) {
+        public virtual IBaseDataObj<TKey> CreateNewDataObj(TKey? parentID) {
             var newBase = _baseDataObjMgr.CreateNewDataObj(parentID);
-            var newObj = CreateNewSyncDataObj(newBase);
+            var newObj = CreateNewSyncDataObj((BaseDataObj<TKey>)newBase);
             return newObj;
         }
 
-        public virtual void InsertNewDataItem(TBase obj) {
+        public virtual void InsertNewDataItem(IBaseDataObj<TKey> obj) {
             _baseDataObjMgr.InsertNewDataItem(obj);
         }
 
@@ -142,12 +142,21 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                     await target.JsonToTbl(dataJson,tran);
                 }
                 else {
-                    var newSyncObj = CreateNewDataObj();
+                    var newSyncObj = CreateNewDataObj(default(TKey));
                     newSyncObj.DataID = dataId;
                     await newSyncObj.JsonToTbl(dataJson,tran);
                     _baseDataObjMgr._dataList.Add(newSyncObj);
                 }
             }
+            
+            tran.Commit();
+
+            // SetParent を再度呼び出して、全てのオブジェクトに対して親子関係を更新
+            // Tree順にデータが届く事はほぼない
+            foreach (var obj in DataList) {
+                SetParent(obj);
+            }
+
 
             return true;
         }

@@ -1,3 +1,45 @@
+# NxTypeMapper Bug Fix (Guid / DateTime / Integer Type Handling) — 2026-10
+
+## ■ Issue
+**Guid type was not supported**
+
+- PostgreSQL `uuid` columns were incorrectly mapped as CsType = string  
+- CreateEmptyRow produced `tenant_code = 0` (int)  
+- ConvertRow failed to convert string → Guid  
+- Dapper attempted to send int/string into PostgreSQL uuid columns  
+- **42804 / 42883 errors** occurred when text/int was passed to uuid
+
+**Date/time type detection was too loose and converted to TEXT**
+
+These issues caused multiple type inconsistencies.
+
+## ■ Fix
+Guid support added:
+
+- Added `"uuid" → "UUID"` to PgTypeToSqliteType  
+- Added `"UUID" → "guid"` to SqlTypeToCsType  
+- Added `"guid"` conversion logic to Convert  
+- Added `"guid" => Guid.Empty"` to GetDefaultValue  
+
+Type mapping improvements:
+
+- PgTypeToSqliteType now maps `"timestamp"`, `"date"`, `"time"` to `"DATETIME"`  
+- SqlTypeToCsType now recognizes `"DATETIME"`  
+- SqlTypeToCsType now handles `"INTEGER"`, `"INT"`, `"INT4"`, `"INT8"`  
+
+## ■ Effect
+- JSON UUIDs are correctly converted to Guid  
+- CreateEmptyRow returns proper Guid defaults  
+- normalized["tenant_code"] becomes Guid  
+- PostgreSQL receives correct uuid values  
+- **uuid-related errors (42804 / 42883) resolved**  
+- **DateTime-related errors (42804) resolved**
+
+## ■ Classification
+This is a **bug fix**.  
+Guid, DateTime, and integer type handling are now correctly integrated into NxTypeMapper.
+
+
 # NxTypeMapper Specification Update (2026-09)
 
 ## ■ Change (1)

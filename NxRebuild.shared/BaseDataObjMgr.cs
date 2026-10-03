@@ -26,8 +26,8 @@ namespace NxRebuild.shared {
 
         IBaseDataObj<TKey>? Get(TKey id);
 
-        T CreateNewDataObj(TKey parentID);
-        void InsertNewDataItem(T obj);
+        IBaseDataObj<TKey> CreateNewDataObj(TKey? parentID);
+        void InsertNewDataItem(IBaseDataObj<TKey> obj);
 
         Task<List<TKey>> DeleteData(IEnumerable<TKey> dataIDs, bool softDelete = false);
         void SetParent(IBaseDataObj<TKey> obj);
@@ -60,7 +60,7 @@ namespace NxRebuild.shared {
 
         Task DistributeJsonData(string json);
         Task Initialize();
-        T CreateNewDataObj(TKey parentID);
+        IBaseDataObj<TKey> CreateNewDataObj(TKey parentID);
         string LoadMultipleDataAsJson(List<TKey> idList);
         void RemoveFromList(BaseDataObj<TKey> obj);
     }
@@ -174,7 +174,7 @@ namespace NxRebuild.shared {
 
         // 新規レコードを生成する。
         // UI側で新規作成ボタンを押したときに呼び出す。
-        public virtual T CreateNewDataObj(TKey parentID) {
+        public virtual IBaseDataObj<TKey> CreateNewDataObj(TKey? parentID) {
             var dataObj = new T();
             dataObj.DBcon = DBcon;
             dataObj.SelfObjMgr = this;
@@ -193,7 +193,7 @@ namespace NxRebuild.shared {
 
         //createnewDataObj()で生成したオブジェクトを_dataListに追加
         //子リストに追加する
-        public void InsertNewDataItem(T obj) {
+        public void InsertNewDataItem(IBaseDataObj<TKey> obj) {
             // _dataList に追加
             _dataList.Add(obj);
 

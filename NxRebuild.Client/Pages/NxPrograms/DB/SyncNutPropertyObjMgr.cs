@@ -65,7 +65,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                     await target.JsonToTbl(dataJson,tran);
                 } else {
                     // ⑦ 新規作成
-                    var newSyncObj = CreateNewSyncDataObj();
+                    var newSyncObj = _baseDataObjMgr.CreateNewDataObj(default(int));
 
                     // DataID をセット（必要なら）
                     newSyncObj.DataID = dataId;

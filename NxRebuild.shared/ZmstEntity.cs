@@ -80,8 +80,8 @@ namespace NxRebuild.shared {
         // ---------------------------------------------------------
         // JSON生成SQLは使わないので空でOK
         // ---------------------------------------------------------
-        protected override string CreateJSONsql() {
-            return "";
+        protected override IEnumerable<(string tableName, string sql)> CreateJSONsql() {
+            yield return ("","");                
         }
     }
 
@@ -174,7 +174,7 @@ namespace NxRebuild.shared {
                                   AND ""LocalCode"" = @lc;
                             ";
 
-            var tc = TenantCode.ToString();
+            var tc = TenantCode;
             var lc = this.DataID;
 
             var rawTanRows = await DBcon.QueryAsync<dynamic>(
@@ -201,21 +201,17 @@ namespace NxRebuild.shared {
         // ---------------------------------------------------------
         // JSON生成 SQL（Zmst + tan_m）
         // ---------------------------------------------------------
-        protected override string CreateJSONsql() {
-            return $@"
-                SELECT t.*, '{_tblName}' AS _table_type
-                FROM ""{_tblName}"" t
-                WHERE t.""{_idColName}"" = @dataID
-                  AND t.""tenant_code"" = @tenantCode
+        protected override IEnumerable<(string tableName, string sql)> CreateJSONsql() {
+            yield return (_tblName,
+                $@"SELECT * FROM ""{_tblName}"" 
+                    WHERE ""{_idColName}"" = @dataID AND tenant_code = @tenantCode");
 
-                UNION ALL
-
-                SELECT s.*, '{_s_tblName}' AS _table_type
-                FROM ""{_s_tblName}"" s
-                WHERE s.""LocalCode"" = @dataID
-                  AND s.""tenant_code"" = @tenantCode;
-            ";
+            yield return (_s_tblName,
+                $@"SELECT * FROM ""{_s_tblName}"" 
+                    WHERE ""LocalCode"" = @dataID AND tenant_code = @tenantCode");
         }
+
+
 
         // ---------------------------------------------------------
         // DataOpen（編集開始前処理）
@@ -257,7 +253,7 @@ namespace NxRebuild.shared {
             {
                 // ★ サブテーブル tan_m を削除（Zmst 固定世界線）
                 string delSubSql = $@"
-                    DELETE FROM ""tan_m""
+                    DELETE FROM ""{_s_tblName}""
                     WHERE ""{_idColName}"" = @dataID
                       AND ""tenant_code"" = @tenantCode;
                 ";
@@ -269,7 +265,7 @@ namespace NxRebuild.shared {
 
                 // ★ メインテーブル zmst を削除
                 string delMainSql = $@"
-                    DELETE FROM ""zmst""
+                    DELETE FROM ""{_tblName}""
                     WHERE ""{_idColName}"" = @dataID
                       AND ""tenant_code"" = @tenantCode;
                 ";

@@ -74,12 +74,24 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI {
         }
 
 
-        public void Close(Guid id) {
-            Windows.RemoveAll(w => w.Id == id);
+        public async void Close(Guid id) {
+            var win = Windows.FirstOrDefault(w => w.Id == id);
+            if (win == null) return;
+
+            if (win.Parameters != null &&
+                win.Parameters.TryGetValue("OnClose", out var ocObj)) {
+                if (ocObj is EventCallback ec && ec.HasDelegate) {
+                    await ec.InvokeAsync();
+                }
+            }
+
+            Windows.Remove(win);
 
             if (!IsDragging)
                 OnWindowsChanged?.Invoke();
         }
+
+
 
         public void BringToFront(WindowInfo win) {
             win.Z = ++_zCounter;

@@ -1,3 +1,46 @@
+# NxTypeMapper 不具合修正（Guid  DateTime / Integer 未対応）— 2026-10
+
+## ■ 不具合内容
+**Guid 型に対応していなかった**
+
+- PostgreSQL の `uuid` 列が CsType = string と誤認される  
+- CreateEmptyRow が `tenant_code = 0`（int）を生成する  
+- ConvertRow が string → Guid に変換できない  
+- Dapper が int/string を PostgreSQL の uuid に渡す  
+- **42804 / 42883（uuid に text/int を入れようとしてエラー）** が発生
+
+**日付型の判定が甘すぎてTEXTに変換されていた**
+
+
+という型不整合が起きていた。
+
+## ■ 修正内容
+以下の Guid 対応を追加した：
+
+- PgTypeToSqliteType に `"uuid" → "UUID"` を追加  
+- SqlTypeToCsType に `"UUID" → "guid"` を追加  
+- Convert に `"guid"` の変換ロジックを追加  
+- GetDefaultValue に `"guid" => Guid.Empty"` を追加
+
+型変換の中間表現と判定条件を増やした：
+- PgTypeToSqliteTypeで "timestamp","date","time"を”DATETIME"に変換
+- SqlTypeToCsType の条件に"DATETIME”を追加
+- SqlTypeToCsType に同じく"INTEGER","INT","INT4","INT8"を追加
+
+
+## ■ 効果
+- JSON の UUID が自動で Guid に変換される  
+- CreateEmptyRow が正しい Guid 初期値を返す  
+- normalized["tenant_code"] が Guid になる  
+- PostgreSQL が uuid = uuid で受け取る  
+- **uuid 型の例外（42804 / 42883）を解決**
+- **DateTime 型の例外（42804)を解決**
+
+## ■ 位置づけ
+これは **不具合修正（BugFix）**。  
+Guid / DateTime / 整数型の判定が NxTypeMapper に正しく組み込まれた。
+
+
 # NxTypeMapper 仕様変更（2026-09）
 
 ## ■ 変更内容（1）  

@@ -92,6 +92,7 @@ namespace NxRebuild.shared {
                 "bool" => false,
                 "datetime" => DateTime.MinValue,
                 "string" => "",
+                "guid" => Guid.Empty,
                 // 未知の型は「null禁止」だが「string.Emptyも禁止」
                 _ => 0   // 数値扱いにしておく
             };
@@ -113,6 +114,12 @@ namespace NxRebuild.shared {
             // -----------------------------
             if (value is JsonElement el) {
                 switch (type) {
+                    case "guid":   // ★ 追加
+                        if (el.ValueKind == JsonValueKind.String &&
+                            Guid.TryParse(el.GetString(), out var g1))
+                            return g1;
+                        return Guid.Empty;
+
                     case "int":
                         if (el.TryGetInt64(out var l)) return (int)l;
                         return 0;
@@ -147,11 +154,16 @@ namespace NxRebuild.shared {
             // -----------------------------
             try {
                 switch (type) {
+                    case "guid":   // ★ 追加
+                        if (value is Guid) return value;
+                        if (value is string s && Guid.TryParse(s, out var g2)) return g2;
+                        return Guid.Empty;
+
                     case "int":
                         if (value is int) return value;
                         if (value is long ll) return (int)ll;
                         if (value is double dd) return (int)dd;
-                        if (value is string s && int.TryParse(s, out var si)) return si;
+                        if (value is string s1 && int.TryParse(s1, out var si)) return si;
                         return 0;
 
                     case "long":
@@ -247,35 +259,53 @@ namespace NxRebuild.shared {
         public static string PgTypeToSqliteType(string pgType) {
             var t = pgType.ToLowerInvariant();
 
-            if (t.Contains("bigint")) return "BIGINT";
-            if (t.Contains("int")) return "INTEGER";
+            if (t.Contains("uuid")) return "UUID";
+
+            // bigint / int8
+            if (t == "int8" || t.Contains("bigint")) return "BIGINT";
+
+            // integer / int4 / int
+            if (t == "int4" || t.Contains("integer") || t == "int") return "INTEGER";
+
             if (t.Contains("double") || t.Contains("real") || t.Contains("float"))
                 return "REAL";
+
             if (t.Contains("numeric") || t.Contains("decimal"))
                 return "REAL";
+
             if (t.Contains("bool")) return "BOOLEAN";
+
             if (t.Contains("char") || t.Contains("text") || t.Contains("varchar"))
                 return "TEXT";
-            if (t.Contains("date") || t.Contains("time"))
-                return "TEXT"; // SQLite は datetime を TEXT で扱う
+
+            if (t.Contains("timestamp")) return "DATETIME";
+            if (t.Contains("date")) return "DATETIME";
+            if (t.Contains("time")) return "DATETIME";
 
             return "TEXT";
         }
 
+
         /// <summary>
         /// SQLite の型文字列を C# の型名へ変換する。
+        /// SQLite は “型名を厳密に扱わない”ため表記ゆれとして表されるものも扱う.
         /// </summary>
         public static string SqlTypeToCsType(string sqliteType) {
             var t = sqliteType.ToUpperInvariant();
 
+            if (t.Contains("UUID")) return "guid";   // ★ 追加
+
             if (t.Contains("BIGINT")) return "long";
-            if (t.Contains("INT")) return "int";
+            if (t.Contains("INTEGER")) return "int";
             if (t.Contains("REAL") || t.Contains("DOUBLE") || t.Contains("FLOAT"))
                 return "double";
             if (t.Contains("TEXT") || t.Contains("CHAR") || t.Contains("CLOB"))
                 return "string";
             if (t.Contains("BOOL")) return "bool";
-            if (t.Contains("DATE") || t.Contains("TIME")) return "datetime";
+            if (t.Contains("DATETIME")) return "datetime";
+
+            if (t == "INT" || t == "INT4" || t == "INT8") return "int";
+
 
             return "string";
         }

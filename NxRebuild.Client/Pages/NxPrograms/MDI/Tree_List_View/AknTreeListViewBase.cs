@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Components.Web;
+using NxRebuild.Client.Pages.Auth;
 using NxRebuild.Client.Pages.NxPrograms.DB;
 using NxRebuild.Client.Pages.NxPrograms.MDI.Zmst;
 using NxRebuild.Client.Services;
@@ -11,7 +13,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
         where TObj : BaseDataObj<TKey>
         where TKey : notnull {
 
-
+        [Inject] protected CustomAuthStateProvider AuthProvider { get; set; }
         [Parameter] public EventCallback<MyDataObj<TKey>> OnRenameRequested { get; set; }
         [Parameter] public EventCallback<(MyDataObj<TKey> Item, MouseEventArgs Args)> OnRowClicked { get; set; }
         [Parameter] public EventCallback<MyDataObj<TKey>> OnRowDoubleClicked { get; set; }
@@ -311,7 +313,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
         /// 編集画面へ遷移（ の編集画面）
         /// ここは具象で実装すること
         /// </summary>
-        public virtual void BeginEditSelectedItem() {
+        public virtual async Task BeginEditSelectedItem() {
             //var item = GridDataItems.FirstOrDefault(x => x.IsSelected);
             //if (item == null) return;
 

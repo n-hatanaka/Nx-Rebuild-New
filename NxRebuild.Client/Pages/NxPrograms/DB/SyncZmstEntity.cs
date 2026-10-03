@@ -9,7 +9,7 @@ using System.Threading.Tasks;
 
 namespace NxRebuild.Client.Pages.NxPrograms.DB {
     public class SyncZmstEntity : SyncBaseDataObj<int> , IBaseDataObj<int>, IZmstEntity {
-        public override string ApiRoute => "/api/Zmst";
+        public override string ApiRoute => "Zmst";
 
 
         public List<List<Dictionary<string, object?>>> SubTables => Zmst.SubTables;

@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Metadata.Conventions;
 using Microsoft.EntityFrameworkCore.Metadata.Internal;
 using Npgsql;
@@ -15,6 +16,9 @@ using System.Text.Json;
 using static Npgsql.EntityFrameworkCore.PostgreSQL.Query.Expressions.Internal.PgTableValuedFunctionExpression;
 
 namespace NxRebuild.Api.Controllers {
+
+    [ApiController]
+    [Route("Zmst")]
     public class ZmstController : NxDataController<ZmstEntity, int> {
         protected override async Task CreateObjMgr() {
             await SetUserInfo();
@@ -58,8 +62,12 @@ namespace NxRebuild.Api.Controllers {
             await CreateObjMgr();
 
             // 既存 or 新規オブジェクト取得
-            var obj = _dataObjMgr.DataList.FirstOrDefault(d => d.DataID == dataId) as ZmstEntity
-                      ?? _dataObjMgr.CreateNewDataObj(0);
+            var obj = _dataObjMgr.Get(dataId);
+
+            if (obj == null) {
+                obj = _dataObjMgr.CreateNewDataObj(0) as ZmstEntity;
+            }
+
 
             // ロック確認
             var lockst = new LockStatus { IsLocked = true, LockedByUserId = _userID };
@@ -73,37 +81,33 @@ namespace NxRebuild.Api.Controllers {
 
 
             // ★ JSON を Dictionary に変換
-            var workingRaw = JsonSerializer.Deserialize<Dictionary<string, object?>>(SaveJson);
+            var workingRaw = JsonSerializer.Deserialize<List<TableJson>>(SaveJson);
 
+
+            var zmstTable = workingRaw.First(t => t.Table == this._tblName);
+            var zmstRow = zmstTable.Rows.First();
 
             try {
                 int realID = dataId;
 
                 // ★ 新規なら ID 採番
                 if (dataId == 0) {
-                    realID = obj.GenerateDataID(tran);
+                    realID = ((ZmstEntity)obj).GenerateDataID(tran);
 
-                    // ★ JSON 内の ID を新IDに書き換え
-                    workingRaw[obj.IdColName] = realID;
+                    zmstRow[obj.IdColName] = realID;
 
-                    // ★ サブテーブルも書き換え（tan_m など）
-                    if (workingRaw.ContainsKey("SubTables")) {
-                        var subTables = workingRaw["SubTables"] as List<List<Dictionary<string, object?>>>;
-
-                        if (subTables != null) {
-                            foreach (var tbl in subTables) {
-                                foreach (var row in tbl) {
-                                    row["LocalCode"] = realID;
-                                    row["tenant_code"] = obj.TenantCode;
-                                }
-                            }
+                    // サブテーブルも書き換え
+                    foreach (var tbl in workingRaw.Where(t => t.Table != this._tblName)) {
+                        foreach (var row in tbl.Rows) {
+                            row["LocalCode"] = realID;
+                            row["tenant_code"] = obj.TenantCode;
                         }
                     }
-
                 }
+
                 var NowUpdate_at = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.ffffffZ");
 
-                workingRaw["update_at"] = NowUpdate_at;
+                zmstRow["Update_at"] = NowUpdate_at;
 
                 SaveJson = JsonSerializer.Serialize(workingRaw);
 

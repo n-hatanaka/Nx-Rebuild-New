@@ -9,9 +9,6 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         // 抽象メンバーを実装
         public override string ApiRoute => "NutProperty"; // 実際のルート
 
-        protected override BaseDataObj<int> CreateBaseDataObj() {
-            return new NutritionProperty();
-        }
 
         private NutritionProperty NP => (NutritionProperty)_dataObj;
 

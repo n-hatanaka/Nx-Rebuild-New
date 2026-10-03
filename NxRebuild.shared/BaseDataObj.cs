@@ -16,6 +16,13 @@ using System.Text.Json;
 using System.Xml.Linq;
 
 namespace NxRebuild.shared {
+    //　サーバー同期用のJSON構造体
+    public class TableJson {
+        public string Table { get; set; }
+        public List<Dictionary<string, object>> Rows { get; set; }
+    }
+
+
     [Flags]
     public enum NxDataType {
         root = 0,
@@ -112,12 +119,16 @@ namespace NxRebuild.shared {
         public object SelfObjMgr { get; set; }
         public IDbConnection DBcon { get; set; }
 
-        // --- 【変更】プロパティ実装：変数からJSON（_rawData）への参照へ切り替え ---
 
-        public Guid TenantCode { 
-            get => Guid.Parse(_rawData["tenant_code"].ToString()); 
-            set => _rawData["tenant_code"] = value.ToString(); 
+        public Guid TenantCode {
+            get => _rawData.TryGetValue("tenant_code", out var v)
+                ? (v is Guid g ? g : Guid.Parse(v.ToString()!))
+                : Guid.Empty;
+
+            set => _rawData["tenant_code"] = value;   
         }
+
+        
 
         public TKey DataID {
             get => (TKey)_rawData[_idColName];
@@ -252,57 +263,75 @@ namespace NxRebuild.shared {
         }
 
 
-        // テーブルからデータを取得してJSON文字列にする
+        // テーブルからデータを取得してJSON文字列にする(ロード用
         public string TblToJson() {
-            string sql = CreateJSONsql();            
-            var result = DBcon.Query<dynamic>(sql, new { dataID = DataID, tenantCode = TenantCode });
-            return JsonSerializer.Serialize(result);
-        }
-        // テーブルからデータを取得してJSON文字列にする（保存処理中に使用する、トランザクション付き）
-        public string TblToJson(TKey id, IDbTransaction tran) {
-            string sql = CreateJSONsql();
-            var result = DBcon.Query<dynamic>(sql, new { dataID = id, tenantCode = TenantCode }, tran);
-            return JsonSerializer.Serialize(result);
+            return TblToJson(this.DataID,null);
         }
 
-        protected abstract string CreateJSONsql();
-        //{ JSON生成用のビュー。以下実装例
-        // 各レコードに自動的に "_table_type" というキーが追加される
-        //return $@"SELECT t.*, '{_tblName}' as _table_type FROM {_tblName} t
-        //        WHERE t.id = @dataID AND t.tenant_code = @tenantCode
-        //        UNION ALL
-        //        SELECT s.*, '{_s_tblName}' as _table_type FROM {_s_tblName} s
-        //        WHERE s.parent_id = @dataID";
+
+        // テーブルからデータを取得してJSON文字列にする（保存処理中に使用する、トランザクション付き）
+        public string TblToJson(TKey id, IDbTransaction tran) {
+            var sqlList = CreateJSONsql();
+            var results = new List<object>();
+
+            foreach (var (tableName, sql) in sqlList) {
+                var r = DBcon.Query<dynamic>(
+                    sql,
+                    new { dataID = id, tenantCode = TenantCode },
+                    tran
+                ).ToList();
+
+                results.Add(new { Table = tableName, Rows = r });
+            }
+
+            return JsonSerializer.Serialize(results);
+        }
+
+
+
+
+        protected abstract IEnumerable<(string tableName, string sql)> CreateJSONsql();
+        //{ JSON生成用のビュー。以下実装例        
+        //    yield return (_tblName,
+        //        $@"SELECT * FROM ""{_tblName}"" 
+        //            WHERE ""{_idColName}"" = @dataID AND tenant_code = @tenantCode");
+
+        //    yield return (_s_tblName,
+        //        $@"SELECT * FROM ""{_s_tblName}"" 
+        //            WHERE ""LocalCode"" = @dataID AND tenant_code = @tenantCode");
+
+        //    続けてサブテーブルがある場合は同様に yield return で追加する
+
         //}
 
         public async Task<bool> JsonToTbl(string json, IDbTransaction tran) {
-            var records = JsonSerializer.Deserialize<List<Dictionary<string, object>>>(json);
+            var tables = JsonSerializer.Deserialize<List<TableJson>>(json);
 
             var result = await DeleteQueryExec(tran);
-            if (!result) {
-                return false;
-            }
+            if (!result) return false;
 
             try {
-                foreach (var record in records) {
-                    string targetTable = record.ContainsKey("_table_type")
-                        ? record["_table_type"].ToString()
-                        : _tblName;
+                foreach (var table in tables) {
+                    foreach (var row in table.Rows) {
+                        var normalized = NxTypeMapper.ConvertRow(table.Table, row);
 
-                    var normalized = NxTypeMapper.ConvertRow(targetTable, record);
 
-                    var columns = string.Join(", ", normalized.Keys);
-                    var values = string.Join(", ", normalized.Keys.Select(k => "@" + k));
+                        var columns = string.Join(", ", normalized.Keys.Select(k => $@"""{k}"""));
+                        var values = string.Join(", ", normalized.Keys.Select(k => $@"@{k}"));
 
-                    DBcon.Execute(
-                        $"INSERT INTO {targetTable} ({columns}) VALUES ({values})",
-                        normalized,
-                        tran
-                    );
+                        DBcon.Execute(
+                            $@"INSERT INTO ""{table.Table}"" ({columns}) VALUES ({values})",
+                            normalized,
+                            tran
+                        );
+
+
+                    }
                 }
-                return true;
 
-            } catch (Exception ex) {
+
+                return true;
+            } catch {
                 return false;
             }
         }
@@ -702,7 +731,7 @@ namespace NxRebuild.shared {
             };
             //自分のプロパティも更新
             Guid parsedGuid;
-            _rawData["locked_at"] = (DateTime)lockSt.Locked_at;
+            _rawData["locked_at"] = lockSt.Locked_at ?? DateTime.MinValue;
 
             // 文字列をGuidに変換する
             if (Guid.TryParse(lockSt.LockedByUserId, out parsedGuid)) {

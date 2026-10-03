@@ -86,22 +86,45 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
         /// <summary>
         /// 編集画面へ遷移（Zmst の編集画面）
         /// </summary>
-        public override void BeginEditSelectedItem() {
+        public override async Task BeginEditSelectedItem() {
             var item = GridDataItems.FirstOrDefault(x => x.IsSelected);
             if (item == null) return;
 
-            if (item.ItemData is IZmstEntity baseObj) {
+
+            if (item.ItemData is IZmstEntity)
+                return;
+
+            var baseObj = (IZmstEntity)item.ItemData;
+
+            var lockst = await baseObj.DataOpen();
+
+
+            var auth = await AuthProvider.GetAuthenticationStateAsync();
+            var user = auth.User;
+            var userId = user.FindFirst("user_id")?.Value;
+
+
+            if (lockst.IsLocked && lockst.LockedByUserId == userId ) {
+                var winId = Guid.NewGuid(); // もし WindowInfo.Id を返すならそれを使う
+
                 Manager.Open<Z_Edit>(
                     $"材料編集: {baseObj.DataName}",
                     new Dictionary<string, object>
                     {
                         { "LocalCode", baseObj.DataID },
                         { "IsNew", false },
-                        { "OnSaved", EventCallback.Factory.Create(this, OnChildSaved) }
+                        { "OnSaved", EventCallback.Factory.Create(this, OnChildSaved) },
+                        { "OnClose", EventCallback.Factory.Create(this, OnChildClosed) }
                     }
                 );
+
             }
         }
+        private async Task OnChildClosed() {
+            // 子が閉じられたときにやりたい処理を書く
+            Console.WriteLine("子画面が閉じられました");
+        }
+
         private async Task OnChildSaved() {
             // ツリーは通常変わらないので再構築不要
             if (SelectedFolder != null)

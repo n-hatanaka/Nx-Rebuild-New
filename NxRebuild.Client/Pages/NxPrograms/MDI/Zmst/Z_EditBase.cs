@@ -45,7 +45,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
         [Parameter] public int LocalCode { get; set; }
         [Parameter] public EventCallback OnSaved { get; set; }
         [Inject] IJSRuntime JS { get; set; } = default!;
-
+        [Parameter] public EventCallback OnClose { get; set; }
 
         public List<CategoryEntity> GunList { get => GlobalState.ZmstEntityMgr.GunList; }
         public IZmstEntity Entity { get; set; }
@@ -209,6 +209,17 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
 
         }
 
+        public async Task CloseAsync() {
+            await OnClose.InvokeAsync();
+        }
+        public async Task OnCloseHandler() {
+            // ★ ZmstEntity のクローズ処理を呼ぶ
+            Entity?.DataClose();
+
+            Console.WriteLine($"Z_Edit(LocalCode={LocalCode}) が親により閉じられました。");
+
+            // 必要なら UI の後処理もここに書ける
+        }
 
     }
 

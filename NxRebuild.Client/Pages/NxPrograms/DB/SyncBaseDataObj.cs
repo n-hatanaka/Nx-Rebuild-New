@@ -187,7 +187,8 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                 return lockStatus;
 
             // ④ ロック成功後に DataOpen
-            return await _dataObj.DataOpen();
+            await _dataObj.DataOpen();
+            return lockStatus;
         }
 
 

@@ -58,10 +58,12 @@ namespace NxRebuild.shared
             _idColName = "No";
         }
     
-        protected override string CreateJSONsql()
+        protected override IEnumerable<(string tableName, string sql)> CreateJSONsql()
         {
-            return $@"SELECT t.* FROM ""{_tblName}"" t
-                      WHERE t.""{_idColName}"" = @dataID AND t.""tenant_code"" = @tenantCode";
+            yield return (_tblName, 
+                          $@"SELECT t.* FROM ""{_tblName}"" t
+                          WHERE t.""{_idColName}"" = @dataID AND t.""tenant_code"" = @tenantCode"
+                          );
         }
     
         public override async Task<LockStatus> DataOpen()
