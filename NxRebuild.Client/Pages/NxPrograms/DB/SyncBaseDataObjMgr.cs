@@ -199,7 +199,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             foreach (var id in dataIDs) {
                 if (!failedLst.Contains(id)) {
                     try {
-                        await DeleteDataObj(id);
+                        await _DeleteDataObj(id);
                     } catch (Exception ex) {
                         Console.WriteLine($"DeleteDataObj ERROR: ID={id}");
                         Console.WriteLine(ex.Message);

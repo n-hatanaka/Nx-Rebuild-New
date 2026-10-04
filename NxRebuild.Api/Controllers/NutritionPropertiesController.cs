@@ -108,7 +108,10 @@ namespace NxRebuild.Api.Controllers {
 
 
         [HttpPost("Delete")]
-        public override async Task<IActionResult> Delete([FromBody] List<int> dataLst) {
+        public override async Task<IActionResult> Delete(
+            [FromBody] List<int> dataLst,
+            [FromQuery] bool softDelete = false)   // ★ デフォルト false)
+        {
             //無効化
             return Ok();
         }

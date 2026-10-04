@@ -58,7 +58,7 @@ namespace NxRebuild.shared {
         }
 
         // 削除は行わない → false を返す
-        public override Task<bool> DeleteDataObj(int dataID, bool softDelete) {
+        public override Task<bool> _DeleteDataObj(int dataID, bool softDelete) {
             return Task.FromResult(false);
         }
 

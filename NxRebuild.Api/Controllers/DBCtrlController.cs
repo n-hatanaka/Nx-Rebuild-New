@@ -81,10 +81,29 @@ namespace NxRebuild.Api.Controllers {
         // PostgreSQL の生スキーマを Nx 用 DTO に変換して返す
         // -------------------------------------------------------------
         [HttpGet]
+        [HttpGet]
         public async Task<IActionResult> Get() {
             try {
                 var schemas = await _schemaProvider.GetSchemasAsync();
-                return Ok(schemas);
+
+                // ★ ベタ書きイグノアリスト
+                var ignore = new HashSet<string> {
+                    "AspNetRoleClaims",
+                    "AspNetRoles",
+                    "AspNetUserClaims",
+                    "AspNetUserLogins",
+                    "AspNetUserRoles",
+                    "AspNetUserTokens",
+                    "AspNetUsers",
+                    "__EFMigrationsHistory"
+                };
+
+                // ★ 除外フィルタ
+                var filtered = schemas
+                    .Where(x => !ignore.Contains(x.TableName))
+                    .ToList();
+
+                return Ok(filtered);
             } catch (Exception ex) {
                 return StatusCode(500, $"スキーマ取得に失敗しました: {ex.Message}");
             }

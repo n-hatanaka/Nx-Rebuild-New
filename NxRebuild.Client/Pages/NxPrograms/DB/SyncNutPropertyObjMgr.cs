@@ -87,7 +87,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             //削除は行わないので無効化
             throw new NotImplementedException();
         }
-        public override async Task<bool> DeleteDataObj(int dataID, bool softDelete = false) {
+        protected override async Task<bool> _DeleteDataObj(int dataID, bool softDelete = false) {
             //削除は行わないので無効化
             throw new NotImplementedException();    
         }

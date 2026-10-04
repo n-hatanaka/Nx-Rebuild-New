@@ -435,7 +435,7 @@ namespace NxRebuild.shared {
         // データベースからエンティティを物理削除する。
         // 派生先では TblName テーブルおよび関連するサブテーブル（s_tblName など）を完全削除すること。
 
-        public async Task<bool> SoftDeleteQueryExec(IDbTransaction transaction){
+        public virtual async Task<bool> SoftDeleteQueryExec(IDbTransaction transaction){
             // ※ API 層からのみ呼び出す。
             // 論理削除を実装する：
             //   - TblName テーブルのレコードを「削除済み」と扱える状態にする
@@ -776,13 +776,14 @@ namespace NxRebuild.shared {
 
             try {
                 int affectedRows = await DBcon.ExecuteAsync(sql, new {
-                    userId = lockStatus.LockedByUserId,
-                    lockedAt = DateTime.UtcNow,
-                    dataID = DataID,
-                    tenantCode = TenantCode,
-                    expiryTime = expiryTime,
-                    transaction
-                });
+                                                    userId = lockStatus.LockedByUserId,
+                                                    lockedAt = DateTime.UtcNow,
+                                                    dataID = DataID,
+                                                    tenantCode = TenantCode,
+                                                    expiryTime = expiryTime
+                                                    },
+                                                    transaction
+                                                );
 
                 if (affectedRows > 0) return LockResult.Success;
 
@@ -830,14 +831,30 @@ namespace NxRebuild.shared {
             }
 
             // レコードがある場合
+            // 10分以内ならロック有効
             DateTime? lockedAt = result.locked_at as DateTime?;
-            bool locked = lockedAt != null && (DateTime.UtcNow - lockedAt.Value).TotalMinutes < 10;
+
+            // 時間内ならロック有効
+            bool timeValid = lockedAt != null &&
+                             (DateTime.UtcNow - lockedAt.Value).TotalMinutes < 10;
+
+            // locked_by が自分ならロック扱いにしない
+            Guid lockedByRaw = Guid.Empty;
+            if (result.UserId != null) {
+                Guid.TryParse(result.UserId.ToString(), out lockedByRaw);
+            }
+
+            bool isMine = lockedByRaw == this.CurrUsrID;
+
+            // 最終ロック判定
+            bool locked = timeValid && isMine;
+
 
             LockStatus lockSt = new LockStatus {
                 Exists = true, // レコードあり！
                 IsLocked = locked,
-                LockedByUserId = result.UserId ,
-                Locked_at = (DateTime?)result.Update_at
+                LockedByUserId = lockedByRaw,
+                Locked_at = (DateTime?)result.locked_at
             };
             //自分のプロパティも更新
             _rawData["locked_at"] = lockSt.Locked_at ?? DateTime.MinValue;
