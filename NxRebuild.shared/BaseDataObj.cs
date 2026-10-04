@@ -694,191 +694,217 @@ namespace NxRebuild.shared {
         //ロックされてるか確認したくなってもロックが目的なので意味
         //が無いのでこれを呼び出せ。
         // ======================================================
-        public virtual async Task<LockStatus>
-            SetLockAsync(LockStatus lockStatus, IDbTransaction dbTransaction = null) {
-            
-            if (dbTransaction == null) {
-                // トランザクションが渡された場合はそれを使用する
-                dbTransaction = DBcon.BeginTransaction();
-            }
+        public virtual async Task<LockStatus> SetLockAsync(LockStatus request, IDbTransaction dbTransaction = null)
+{
+    if (dbTransaction == null)
+        dbTransaction = DBcon.BeginTransaction();
 
-            LockStatus Lockst = await LockedChkfromTbl(dbTransaction);
-            Guid parsedGuid;
-            if (Lockst.IsLocked && Lockst.LockedByUserId != lockStatus.LockedByUserId) {
-                //すでにロック済みの場合その情報を返す。
-                //自分のプロパティも更新
-                Lockst.HasError = true;
-                Lockst.ErrorMessage = "他のユーザーがロック中です。";
+    // ---- 現在のロック状態を取得 ----
+    var current = await LockedChkfromTbl(dbTransaction);
+    current.CurrUserId = request.CurrUserId;
 
-                _rawData["locked_at"] = (DateTime)Lockst.Locked_at;
+    // ---- 他人ロック中（編集不可） ----
+    if (current.IsLockedForEdit)
+    {
+        current.HasError = true;
+        current.ErrorMessage = "他のユーザーがロック中です。";
 
-                _rawData["locked_by"] = Lockst.LockedByUserId;
+        _rawData["locked_at"] = current.Locked_at ?? DateTime.MinValue;
+        _rawData["locked_by"] = current.LockedByUserId;
 
-                dbTransaction.Commit();
-                return Lockst;
-            } else {
-                //ロック情報書き込み
-                LockResult result = await WriteLockInfoAsync(lockStatus,dbTransaction);
-                switch (result) {
-                    case LockResult.Success:
-                        // DBに書き込んだ後、最新のロック情報を取得
-                        var latest = await LockedChkfromTbl(dbTransaction);
+        dbTransaction.Commit();
+        return current;
+    }
 
-                        // 自分のプロパティも更新
-                        _rawData["locked_at"] = latest.Locked_at ?? DateTime.MinValue;
-                        _rawData["locked_by"] = latest.LockedByUserId;
+    // ---- RecordNone（新規作成） → ロック不要、編集保存可 ----
+    if (!current.Exists)
+    {
+        // 新規作成なのでロック不要
+        current.HasError = false;
+        current.ErrorMessage = "";
 
-                        dbTransaction.Commit();
-                        return latest;
+        _rawData["locked_at"] = null;
+        _rawData["locked_by"] = null;
 
-                    // ロックすべきレコードが無い（新規データ）の場合、
-                    // ロックしたものとしてリクエスト内容を返す
-                    //すでにロック済みの場合その情報を返す。
-                    case LockResult.RecordNone:
-                        _rawData["locked_at"] = lockStatus.Locked_at ?? DateTime.MinValue;
-                        _rawData["locked_by"] = lockStatus.LockedByUserId;
+        dbTransaction.Commit();
+        return current;
+    }
 
-                        dbTransaction.Rollback();
-                        return lockStatus;
+    // ---- ロック情報書き込み（自分ロックを確保） ----
+    var writeResult = await WriteLockInfoAsync(request, dbTransaction);
 
+    // WriteLockInfoAsync は LockStatus を返す
+    writeResult.CurrUserId = request.CurrUserId;
 
-                    case LockResult.DbError:
-                    default:
-                        // エラー（DbError）および想定外のケース（default）の処理
-                        // ロック無し、かつHasErrorを立てて通知する
-                        dbTransaction.Rollback();
-                        return new LockStatus {
-                            Exists = false,
-                            IsLocked = false,
-                            LockedByUserId = null,
-                            Locked_at = null,
-                            HasError = true,
-                            ErrorMessage = "DBエラーが発生しました"
-                        };
-                }
-            }
+    // ---- DBエラー ----
+    if (writeResult.HasError)
+    {
+        dbTransaction.Rollback();
+        return writeResult;
+    }
+
+    // ---- 他人ロック（書き込み不可） ----
+    if (writeResult.Result == LockResult.LockedByOther)
+    {
+        writeResult.HasError = true;
+        writeResult.ErrorMessage = "他のユーザーがロック中です。";
+
+        dbTransaction.Commit();
+        return writeResult;
+    }
+
+    // ---- RecordNone（新規作成） ----
+    if (writeResult.Result == LockResult.RecordNone)
+    {
+        // 新規作成なのでロック不要
+        dbTransaction.Rollback();
+        return writeResult;
+    }
+
+    // ---- Success（自分ロック成立） ----
+    var latest = await LockedChkfromTbl(dbTransaction);
+    latest.CurrUserId = request.CurrUserId;
+
+    _rawData["locked_at"] = latest.Locked_at ?? DateTime.MinValue;
+    _rawData["locked_by"] = latest.LockedByUserId;
+
+    dbTransaction.Commit();
+    return latest;
         }
-        //
-        protected virtual async Task<LockResult> WriteLockInfoAsync(LockStatus lockStatus, IDbTransaction transaction) {
-            // 10分経過したものは期限切れとみなす
-            var expiryTime = DateTime.UtcNow.AddMinutes(-10);
+      
+protected virtual async Task<LockStatus> WriteLockInfoAsync(LockStatus lockStatus, IDbTransaction transaction)
+{
+    var expiryTime = DateTime.UtcNow.AddMinutes(-10);
 
-            // 1. まず更新を試みる
-            string sql = $@"
-                        UPDATE ""{TblName}""
-                        SET ""locked_by"" = @userId,
-                            ""locked_at"" = @lockedAt
-                        WHERE ""{IdColName}"" = @dataID
-                          AND ""tenant_code"" = @tenantCode
-                          AND (""locked_at"" IS NULL OR ""locked_at"" < @expiryTime);
-                    ";
+    string sql = $@"
+        UPDATE ""{TblName}""
+        SET ""locked_by"" = @userId,
+            ""locked_at"" = @lockedAt
+        WHERE ""{IdColName}"" = @dataID
+          AND ""tenant_code"" = @tenantCode
+          AND (""locked_at"" IS NULL OR ""locked_at"" < @expiryTime);
+    ";
 
+    try
+    {
+        int affectedRows = await DBcon.ExecuteAsync(
+            sql,
+            new {
+                userId = lockStatus.LockedByUserId,
+                lockedAt = DateTime.UtcNow,
+                dataID = DataID,
+                tenantCode = TenantCode,
+                expiryTime = expiryTime
+            },
+            transaction
+        );
 
-            try {
-                int affectedRows = await DBcon.ExecuteAsync(sql, new {
-                                                    userId = lockStatus.LockedByUserId,
-                                                    lockedAt = DateTime.UtcNow,
-                                                    dataID = DataID,
-                                                    tenantCode = TenantCode,
-                                                    expiryTime = expiryTime
-                                                    },
-                                                    transaction
-                                                );
-
-                if (affectedRows > 0) return LockResult.Success;
-
-                // 2. 更新できなかった場合、理由を調べるために再確認
-                // ここでレコードが存在するか確認する
-                var currentStatus = await LockedChkfromTbl(transaction);
-
-                // currentStatus.Update_at が MinValue ならレコード無しと判定
-                if (currentStatus.Locked_at == DateTime.MinValue) {
-                    return LockResult.RecordNone;
-                }
-
-                // レコードはあるがIsLockedがtrue＝他人がロック中
-                return LockResult.LockedByOther;
-
-            } catch (Exception ex) {
-                return LockResult.DbError;
-            }
+        // ---- ロック成功（自分ロック成立） ----
+        if (affectedRows > 0)
+        {
+            lockStatus.HasError = false;
+            lockStatus.ErrorMessage = "";
+            return lockStatus;   // Result は Success になる
         }
+
+        // ---- ロックできなかったので、現在の状態を確認 ----
+        var currentStatus = await LockedChkfromTbl(transaction);
+        currentStatus.CurrUserId = lockStatus.CurrUserId;
+
+        // ---- レコード無し（RecordNone） ----
+        if (!currentStatus.Exists)
+        {
+            currentStatus.HasError = false;
+            currentStatus.ErrorMessage = "";
+            return currentStatus; // Result = RecordNone
+        }
+
+        // ---- 他人ロック中（編集不可） ----
+        if (currentStatus.IsLockedForEdit)
+        {
+            currentStatus.HasError = true;
+            currentStatus.ErrorMessage = "他のユーザーがロック中です。";
+            return currentStatus; // Result = LockedByOther
+        }
+
+        // ---- ここまで来たらロックできない理由は DBエラー扱い ----
+        currentStatus.HasError = true;
+        currentStatus.ErrorMessage = "ロック更新に失敗しました。";
+        return currentStatus; // Result = DbError
+    }
+    catch (Exception ex)
+    {
+        // ---- catch 時は必ず HasError をセット ----
+        lockStatus.HasError = true;
+        lockStatus.ErrorMessage = ex.Message;
+
+        // Exists が false の場合は RecordNone として扱われる
+        return lockStatus; // Result = DbError
+    }
+}
 
 
         //テーブルからロック情報を読み取って返す。ユーザー名はクライアントで取得して
-        protected virtual async Task<LockStatus> LockedChkfromTbl(IDbTransaction transaction) {
-            // SQLでlocked_atとlocked_byの両方を取得
-            var sql = $@"
-                        SELECT
-                            ""locked_at"",
-                            ""locked_by"" AS ""UserId"",
-                            ""Update_at""
-                        FROM ""{TblName}""
-                        WHERE ""tenant_code"" = @tenantCode
-                          AND ""{IdColName}"" = @dataID;
-                    ";
+protected virtual async Task<LockStatus> LockedChkfromTbl(IDbTransaction transaction)
+{
+    var sql = $@"
+        SELECT
+            ""locked_at"",
+            ""locked_by"" AS ""UserId"",
+            ""Update_at""
+        FROM ""{TblName}""
+        WHERE ""tenant_code"" = @tenantCode
+          AND ""{IdColName}"" = @dataID;
+    ";
 
+    try
+    {
+        var result = await DBcon.QueryFirstOrDefaultAsync<dynamic>(
+            sql,
+            new { tenantCode = TenantCode, dataID = DataID },
+            transaction
+        );
 
-            var result = await DBcon.QueryFirstOrDefaultAsync<dynamic>(sql, new { TenantCode, DataID },transaction);
-
-            // デフォルト値を設定
-            bool isLocked = false;
-            DateTime updateAt = result?.Update_at ?? DateTime.MinValue;
-
-            // レコードが取れなかった場合
-            if (result == null) {
-                return new LockStatus { Exists = false };
-            }
-
-            // レコードがある場合
-            // 10分以内ならロック有効
-            DateTime? lockedAt = result.locked_at as DateTime?;
-
-            // 時間内ならロック有効
-            bool timeValid = lockedAt != null &&
-                             (DateTime.UtcNow - lockedAt.Value).TotalMinutes < 10;
-
-            // locked_by が自分ならロック扱いにしない
-            Guid lockedByRaw = Guid.Empty;
-            if (result.UserId != null) {
-                Guid.TryParse(result.UserId.ToString(), out lockedByRaw);
-            }
-
-            bool isMine = lockedByRaw == this.CurrUsrID;
-
-            // 最終ロック判定
-            bool locked = timeValid && isMine;
-
-
-            LockStatus lockSt = new LockStatus {
-                Exists = true, // レコードあり！
-                IsLocked = locked,
-                LockedByUserId = lockedByRaw,
-                Locked_at = (DateTime?)result.locked_at
+        // ---- レコード無し（RecordNone） ----
+        if (result == null)
+        {
+            return new LockStatus {
+                Exists = false,
+                HasError = false,
+                ErrorMessage = ""
             };
-            //自分のプロパティも更新
-            _rawData["locked_at"] = lockSt.Locked_at ?? DateTime.MinValue;
-
-            // Guid? の場合はそのまま使う
-            if (lockSt.LockedByUserId is Guid guidValue) {
-                _rawData["locked_by"] = guidValue;
-                return lockSt;
-            }
-
-            // string の場合は安全にパース
-            var raw = lockSt.LockedByUserId?.ToString();
-
-            Guid parsedGuid;
-            if (!string.IsNullOrWhiteSpace(raw) && Guid.TryParse(raw, out parsedGuid)) {
-                _rawData["locked_by"] = parsedGuid;
-            } else {
-                // uuid カラムには null を入れるのが正しい
-                _rawData["locked_by"] = null;
-            }
-
-            return lockSt;
-
-
         }
+
+        // ---- locked_by の GUID パース ----
+        Guid lockedByRaw = Guid.Empty;
+        if (result.UserId != null)
+            Guid.TryParse(result.UserId.ToString(), out lockedByRaw);
+
+        // ---- LockStatus（生データ）を構築 ----
+        var lockSt = new LockStatus {
+            Exists = true,
+            LockedByUserId = lockedByRaw,
+            Locked_at = (DateTime?)result.locked_at,
+            Update_at = (DateTime?)result.Update_at,
+            HasError = false,
+            ErrorMessage = ""
+        };
+
+        // ---- UI世界線へ反映（rawData） ----
+        _rawData["locked_at"] = lockSt.Locked_at ?? DateTime.MinValue;
+        _rawData["locked_by"] = lockSt.LockedByUserId;
+
+        return lockSt;
+    }
+    catch (Exception ex)
+    {
+        // ---- catch 時は必ず HasError をセット ----
+        return new LockStatus {
+            Exists = false,
+            HasError = true,
+            ErrorMessage = ex.Message
+        };
+    }
+}
     }
 }
