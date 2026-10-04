@@ -42,6 +42,8 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                                             set => _dataObj.ParentDataObj = value; }
 
 
+        public void Validate(OperationType operationType) => _dataObj.Validate(operationType);
+
         public SyncBaseDataObj() {
         }
 
@@ -189,6 +191,9 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         }
 
         public async Task<LockStatus> DataOpen() {
+
+            _dataObj.Validate(OperationType.LocalEdit);
+
             // ① まずロック要求を送る（サーバーが最新の LockStatus を返す）
             var lockStatus = await SetLockAsync();
 

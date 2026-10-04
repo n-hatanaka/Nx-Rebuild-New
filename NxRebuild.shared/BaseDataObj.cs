@@ -18,6 +18,15 @@ using System.Xml.Linq;
 
 namespace NxRebuild.shared {
     //　サーバー同期用のJSON構造体
+    public enum OperationType {
+        Save,
+        Delete,
+        Rename,
+        Sync,
+        Import,
+        LocalEdit
+    }
+
     public class TableJson {
         public string Table { get; set; }
         public List<Dictionary<string, object>> Rows { get; set; }
@@ -75,7 +84,7 @@ namespace NxRebuild.shared {
                         Dictionary<string, object?> workingRaw,
                         List<List<Dictionary<string, object?>>>? subTables = null);
 
-
+        void Validate(OperationType op);
         Task<LockStatus> SetLockAsync(); 
         Task<LockStatus> SetLockAsync(LockStatus lockStatus,
                                         IDbTransaction dbTransaction = null);
@@ -114,7 +123,6 @@ namespace NxRebuild.shared {
         protected DateTime _update_at;
         protected Guid _locker_ID;
         protected DateTime _locked_at;
-
 
         public object SelfObjMgr { get; set; }
         public IDbConnection DBcon { get; set; }
@@ -224,6 +232,59 @@ namespace NxRebuild.shared {
 
         }
 
+        /// <summary>
+        /// 【役割】
+        ///   - このエンティティに関するロジック（削除禁止・名前重複禁止など）を
+        ///     “エンティティ自身” に閉じ込めるための入口。
+        ///   - Nx 基盤側は、Save / Delete / Rename / Sync / Import / LocalEdit など
+        ///     すべての操作の直前で必ずこのメソッドを呼び出す。
+        ///   - 具象クラスはここを override し、
+        ///       「この操作（OperationType）をしてよいか？」
+        ///     を判定する規則を記述する。
+        ///
+        /// 【設計思想】
+        ///   - 規則違反時は例外を投げることで処理を即停止させる。
+        ///   - 例外にすることで、規則が「漏れない」「二重発火しない」。
+        ///   - 戻り値は不要（void）。例外が“禁止”の唯一の表現となる。
+        ///
+        /// 【具象側の書き方例】
+        ///     if (op == OperationType.Delete && IsUsedByMenu())
+        ///         throw new InvalidOperationException("使用中の材料は削除できません");
+        ///
+        /// 【重要】
+        ///   - Validate は「規則の中身」を書く場所であり、
+        ///     「いつ呼ばれるか」は Nx 基盤側が保証する。
+        ///   - 規則は DataObj に閉じ込められ、
+        ///     全ての経路（UI / API / Sync / Import / LocalEdit）で
+        ///     必ず同じ規則が発火する。
+        ///
+        /// 【発火ポイント】
+        ///   - 正本の整合性を守るため、Validate は **サーバー側の CRUD(API)**
+        ///     の直前で必ず発火する（Delete / Save / Rename / Import / Sync）。
+        ///   - WASMローカル側の CRUD（working テーブル操作）は「作業用世界線」
+        ///     であり、正本ではないため Validate は発火しない。
+        ///   - クライアント側で唯一 Validate が発火するのは、
+        ///     **DataOpen（編集開始）時に Sync ラッパーが呼び出す場合のみ**で、
+        ///     これは「サーバー側のロック状態と整合性を取るための軽量チェック」
+        ///     に限定される。
+        ///
+        ///   → 結果として、正本の整合性はサーバー側 API が一元的に保証し、
+        ///     クライアント側は高速なローカル編集に専念できる。
+        ///     
+        /// </summary>
+        public virtual void Validate(OperationType op) {
+            // デフォルトは何もしない
+            // 具象側で override して以下のように規則を書く
+            //if (op == OperationType.Delete && IsUsedByMenu())
+            //    throw new InvalidOperationException("使用中の材料は削除できません");
+        }
+
+        //public async Task<bool> ApplySync() {
+        //    
+        //    // SyncQueryExec は具象側
+        //    return await SyncQueryExec();
+        //}
+
         public virtual void SetAsRoot(string RootName, NxDataType DataType = NxDataType.root) {
             _rawData[_nameColName] = RootName;
             _datatype = DataType;
@@ -305,6 +366,9 @@ namespace NxRebuild.shared {
         //}
 
         public async Task<bool> JsonToTbl(string json, IDbTransaction tran) {
+
+            this.Validate(OperationType.Import);
+
             var tables = JsonSerializer.Deserialize<List<TableJson>>(json);
 
             var result = await DeleteQueryExec(tran);
@@ -337,9 +401,33 @@ namespace NxRebuild.shared {
         }
 
 
-        public abstract Task<LockStatus> DataOpen();
+        // ---------------------------------------------------------
+        // DataOpen（編集開始前処理）
+        // ---------------------------------------------------------
+        public virtual Task<LockStatus> DataOpen() {
 
-        public abstract Task<LockStatus> DataClose();
+
+            Opened = true;//編集中フラグをON
+
+            // --- ローカル編集開始なのでロックは常に false ---
+            return Task.FromResult(new LockStatus {
+                Exists = true,
+                IsLocked = true
+            });
+        }
+
+        // ---------------------------------------------------------
+        // DataClose(編集終了）
+        // フラグのセットのみ。UI側でSaveまたはRestoreを呼んだうえで
+        // DataCloseを呼ぶこと
+        // ---------------------------------------------------------
+        public virtual Task<LockStatus> DataClose() {
+            Opened = false; //編集中フラグをOFF
+            return Task.FromResult(new LockStatus {
+                Exists = true,
+                IsLocked = false
+            });
+        }
 
 
 
@@ -347,20 +435,23 @@ namespace NxRebuild.shared {
         // データベースからエンティティを物理削除する。
         // 派生先では TblName テーブルおよび関連するサブテーブル（s_tblName など）を完全削除すること。
 
-        public abstract Task<bool> SoftDeleteQueryExec(IDbTransaction transaction);
-        // ※ API 層からのみ呼び出す。
-        // 論理削除を実装する：
-        //   - TblName テーブルのレコードを「削除済み」と扱える状態にする
-        //     （例：Name をクリア、Parent カラムを NULL にする、Updated_at を更新する）。
-        //   - サブテーブル以下の関連レコードは物理削除する。
-        // UI では、この論理削除状態を参照して「削除済みデータ」を判定する。
-        // 実装時は挙動に注意すること。
+        public async Task<bool> SoftDeleteQueryExec(IDbTransaction transaction){
+            // ※ API 層からのみ呼び出す。
+            // 論理削除を実装する：
+            //   - TblName テーブルのレコードを「削除済み」と扱える状態にする
+            //     （例：Name をクリア、Parent カラムを NULL にする、Updated_at を更新する）。
+            //   - サブテーブル以下の関連レコードは物理削除する。
+            // UI では、この論理削除状態を参照して「削除済みデータ」を判定する。
+            // 実装時は挙動に注意すること。
+            return await Task.FromResult(true);
+        }
 
 
 
         // 名前変更の検証メソッド
         // 必要に応じて派生クラスでオーバーライドできるように virtual にしておく
         public virtual async Task<bool> ReName(string newName) {
+
             // 1. バリデーション
             if (string.IsNullOrWhiteSpace(newName) || newName.Length > 20) {
                 return false;
@@ -378,8 +469,11 @@ namespace NxRebuild.shared {
 
         //DBへのデータ名変更を試みる。成功した場合プロパティの値も書き換える
         public virtual async Task<bool> ReNameQueryExec(string newName, IDbTransaction dbTransaction) {
-            // ここでSQLを構築して実行
-            string sql = $@"
+            try {
+                // サーバー側でマイクロ秒精度の UTC を生成
+                var updateAt = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.ffffffZ");
+
+                string sql = $@"
                                 UPDATE ""{_tblName}""
                                 SET ""{_nameColName}"" = @name,
                                     ""update_at"" = @update_at
@@ -387,10 +481,21 @@ namespace NxRebuild.shared {
                                   AND ""tenant_code"" = @tenantCode;
                             ";
 
-            // 成功したら true が返る
-            return await DBcon.ExecuteAsync(sql, new { name = newName, id = DataID, update_at = DateTime.UtcNow ,tenantCode = TenantCode }, dbTransaction) > 0;
+                return await DBcon.ExecuteAsync(sql,
+                    new {
+                        name = newName,
+                        id = DataID,
+                        update_at = updateAt,
+                        tenantCode = TenantCode
+                    },
+                    dbTransaction) > 0;
 
+            } catch (Exception ex) {
+                Console.WriteLine($"RenameQueryExec Error: {ex.Message}");
+                return false;
+            }
         }
+
 
         public virtual async Task Updateproperties() {
             try {
@@ -438,6 +543,7 @@ namespace NxRebuild.shared {
             Dictionary<string, object?> workingRaw,
             List<List<Dictionary<string, object?>>>? subTables = null)
         {
+
             using var tran = DBcon.BeginTransaction();
 
             try

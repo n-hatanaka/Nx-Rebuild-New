@@ -166,18 +166,31 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
             try {
                 response = await _http.PostAsJsonAsync(url, dataIDs);
+            } catch (Exception ex) {
+                Console.WriteLine("DeleteData ERROR: HTTP通信失敗");
+                Console.WriteLine(ex.Message);
+                return dataIDs.ToList(); // 全件失敗扱い
             }
-            catch {
+
+            if (!response.IsSuccessStatusCode) {
+                Console.WriteLine($"DeleteData ERROR: APIステータス異常 ({response.StatusCode})");
                 return dataIDs.ToList();
             }
 
-            if (!response.IsSuccessStatusCode)
-                return dataIDs.ToList();
+            List<string>? failedStrLst = null;
 
-            var failedStrLst = await response.Content.ReadFromJsonAsync<List<string>>();
-
-            if (failedStrLst == null)
+            try {
+                failedStrLst = await response.Content.ReadFromJsonAsync<List<string>>();
+            } catch (Exception ex) {
+                Console.WriteLine("DeleteData ERROR: JSONパース失敗");
+                Console.WriteLine(ex.Message);
                 return dataIDs.ToList();
+            }
+
+            if (failedStrLst == null) {
+                Console.WriteLine("DeleteData ERROR: APIレスポンスが null");
+                return dataIDs.ToList();
+            }
 
             var failedLst = failedStrLst
                 .Select(x => (TKey)Convert.ChangeType(x, typeof(TKey)))
@@ -185,15 +198,22 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
             foreach (var id in dataIDs) {
                 if (!failedLst.Contains(id)) {
-                    await DeleteDataObj(id);
+                    try {
+                        await DeleteDataObj(id);
+                    } catch (Exception ex) {
+                        Console.WriteLine($"DeleteDataObj ERROR: ID={id}");
+                        Console.WriteLine(ex.Message);
+                        failedLst.Add(id);
+                    }
                 }
             }
 
             return failedLst;
         }
 
-        public virtual async Task<bool> DeleteDataObj(TKey dataID, bool softDelete = false) {
-            return await _baseDataObjMgr.DeleteDataObj(dataID, softDelete);
+
+        protected virtual async Task<bool> _DeleteDataObj(TKey dataID, bool softDelete = false) {
+            return await _baseDataObjMgr._DeleteDataObj(dataID, softDelete);
         }
 
         protected class SyncAllResult {

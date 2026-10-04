@@ -160,7 +160,10 @@ namespace NxRebuild.Api.Controllers {
 
 
         [HttpPost("Delete")]
-        public virtual async Task<IActionResult> Delete([FromBody] List<TKey> dataLst) {
+        public virtual async Task<IActionResult> Delete(
+            [FromBody] List<TKey> dataLst,
+            [FromQuery] bool softDelete = false   // ★ デフォルト false
+        ) {
             // ★ユーザー所属テナントで ObjMgr を生成
             await CreateObjMgr();
 
@@ -168,13 +171,15 @@ namespace NxRebuild.Api.Controllers {
 
             foreach (var dataId in dataLst) {
                 // ① DataObj を取得
-                var dataObj = _dataObjMgr.DataList
-                    .FirstOrDefault(d => d.DataID.Equals(dataId)) as BaseDataObj<TKey>;
+                var dataObj = _dataObjMgr.Get(dataId);
 
                 if (dataObj == null) {
                     failedIds.Add(dataId);
                     continue;
                 }
+
+                // ★ Validate を最初に必ず通す
+                dataObj.Validate(OperationType.Delete);
 
                 // ② ロック要求
                 // 【冪等性保証】SetLockAsync は以下の3段階で冪等性を確保している:
@@ -194,8 +199,12 @@ namespace NxRebuild.Api.Controllers {
 
                 // ④ 削除処理
                 var transaction = _db.BeginTransaction();
-
-                if (!(await dataObj.SoftDeleteQueryExec(transaction))) {
+                bool result =
+                        softDelete
+                            ? await ((BaseDataObj<TKey>)dataObj).SoftDeleteQueryExec(transaction)   // ★ ソフトデリート
+                            : await ((BaseDataObj<TKey>)dataObj).DeleteQueryExec(transaction);      // ★ 物理削除
+               
+                if (!result) {
                     transaction.Rollback();
 
                     // ロック解除（失敗時も必ず）
@@ -216,7 +225,7 @@ namespace NxRebuild.Api.Controllers {
                 transaction.Commit();
 
                 // DataList から削除
-                _dataObjMgr.RemoveFromList(dataObj);
+                _dataObjMgr.RemoveFromList(((BaseDataObj<TKey>)dataObj));
 
                 // ⑥ ロック解除
                 // 【冗長性の理由】正常系でもロック解除時に SetLockAsync で冪等性チェックを再実行。
@@ -245,6 +254,8 @@ namespace NxRebuild.Api.Controllers {
             var obj = _dataObjMgr.Get(realID)
                       ?? _dataObjMgr.CreateNewDataObj(default);
 
+            // ★ Validate を最初に必ず通す
+            obj.Validate(OperationType.Save);
 
             // ロック確認
             var lockst = new LockStatus { IsLocked = true, LockedByUserId = _userID };
@@ -355,6 +366,9 @@ namespace NxRebuild.Api.Controllers {
 
             if (dataObj == null)
                 return BadRequest("Data not found");
+
+
+            dataObj.Validate(OperationType.Rename);
 
             // ② ロック要求
             // 【冪等性保証】Delete メソッドと同じく、SetLockAsync は 3段階で冪等性を保証。

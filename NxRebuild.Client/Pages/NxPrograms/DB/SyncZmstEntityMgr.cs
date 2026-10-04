@@ -35,11 +35,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             return (IZmstEntity)_baseDataObjMgr.Get(id);
         }
 
-        // ---------------------------------------------------------
-        // Delete（SyncDataObj → BaseDataObj → APIDataObj）
-        // ---------------------------------------------------------
-        public async Task<bool> DeleteAsync(int dataID) {
-            return await DeleteDataObj(dataID);
-        }
+
+
     }
 }

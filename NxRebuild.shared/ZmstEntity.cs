@@ -214,37 +214,7 @@ namespace NxRebuild.shared {
         }
 
 
-
-        // ---------------------------------------------------------
-        // DataOpen（編集開始前処理）
-        // ---------------------------------------------------------
-        public override Task<LockStatus> DataOpen() {
-
-            Opened = true;//編集中フラグをON
-
-            // --- ローカル編集開始なのでロックは常に false ---
-            return Task.FromResult(new LockStatus {
-                Exists = true,
-                IsLocked = false
-            });
-        }
-
-        // ---------------------------------------------------------
-        // DataClose(編集終了）
-        // フラグのセットのみ。UI側でSaveまたはRestoreを呼んだうえで
-        // DataCloseを呼ぶこと
-        // ---------------------------------------------------------
-        public override Task<LockStatus> DataClose() {
-            Opened = false; //編集中フラグをOFF
-            return Task.FromResult(new LockStatus {
-                Exists = true,
-                IsLocked = false
-            });
-        }
-
-
-
-
+         
         // ---------------------------------------------------------
         // 物理削除（保存前に既存レコードの削除の為のみに使う）
         // Zmstもtam_mも削除してはいけない
@@ -296,6 +266,9 @@ namespace NxRebuild.shared {
         // ---------------------------------------------------------
         public override async Task<bool> SoftDeleteQueryExec(IDbTransaction transaction) {
             try {
+
+                var updateAt = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.ffffffZ");
+
                 string sql = $@"
                     UPDATE ""{_tblName}""
                     SET ""deleted"" = 1,
@@ -307,7 +280,7 @@ namespace NxRebuild.shared {
                 await DBcon.ExecuteAsync(sql, new {
                     DataID = this.DataID,
                     TenantCode = this.TenantCode,
-                    UpdateAt = DateTime.UtcNow
+                    UpdateAt = updateAt
                 }, transaction);
 
                 return true;
@@ -360,45 +333,6 @@ namespace NxRebuild.shared {
             }
         }
 
-
-        public override async Task<bool> ReNameQueryExec(string newName, IDbTransaction dbTransaction) {
-            try {
-                // LocalCode と tenant_code を正本から取得
-                var localCode = this.DataID;
-                var tenantCode = this.TenantCode;
-
-                // SQL：Z_name と Update_at を更新
-                // SQLite と PostgreSQL で現在時刻の取得方法が異なるため、
-                // DB種別（SQLiteかどうかだけ）に応じて式を切り替える
-                // (LocalCrudのみ行う非同期オブジェクトのためのため）
-                var updateAtExpr = 
-                        DBcon.ConnectionString.Contains("mode=memory", StringComparison.OrdinalIgnoreCase)
-                                                        ? "strftime('%Y-%m-%d %H:%M:%f', 'now')"   // SQLite（ミリ秒）
-                                                        : "NOW()";                                 // PostgreSQL（マイクロ秒）
-
-
-                var sql = $@"
-                                UPDATE Zmst
-                                SET 
-                                    Z_name = @NewName,
-                                    Update_at = {updateAtExpr}
-                                WHERE tenant_code = @TenantCode
-                                  AND LocalCode = @LocalCode;
-                            ";
-
-                var rows = await DBcon.ExecuteAsync(sql, new {
-                    NewName = newName,
-                    TenantCode = tenantCode,
-                    LocalCode = DataID
-                }, dbTransaction);
-
-                // 成功判定（1行更新されればOK）
-                return rows == 1;
-            } catch (Exception ex) {
-                Console.WriteLine($"RenameQueryExec Error: {ex.Message}");
-                return false;
-            }
-        }
 
         public override async Task<bool> SaveWorkingSubAsync(
             List<List<Dictionary<string, object?>>>? w_SubTblList,

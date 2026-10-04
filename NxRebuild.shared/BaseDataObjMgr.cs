@@ -309,7 +309,7 @@ namespace NxRebuild.shared {
 
             foreach (var id in dataIDs) {
                 try {
-                    if (!await DeleteDataObj(id, softDelete))
+                    if (!await _DeleteDataObj(id, softDelete))
                         failedLst.Add(id);   // 正常系の失敗
                 } catch {
                     failedLst.Add(id);       // 異常系の破綻も「失敗」として扱う
@@ -322,12 +322,13 @@ namespace NxRebuild.shared {
 
 
         //指定したデータを削除し、_dataListからオブジェクトを削除
-        public virtual async Task<bool> DeleteDataObj(TKey dataID, bool softDelete = false) {
+        public virtual async Task<bool> _DeleteDataObj(TKey dataID, bool softDelete = false) {
             var target = (BaseDataObj<TKey>)_dataList
                 .FirstOrDefault(x => ((BaseDataObj<TKey>)x).DataID.Equals(dataID));
 
             if (target == null)
                 return false;
+            
 
             var transaction = DBcon.BeginTransaction();
 
