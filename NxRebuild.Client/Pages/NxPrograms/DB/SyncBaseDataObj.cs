@@ -1,4 +1,4 @@
-﻿using Dapper;
+using Dapper;
 using Microsoft.AspNetCore.Components.Authorization;
 using NxRebuild.Client.Pages.Auth;
 using NxRebuild.shared;
@@ -124,230 +124,257 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             return await _dataObj.SetLockAsync(lockStatus, dbTransaction);
         }
 
-        public async Task<LockStatus> SetLockAsync() {
-            // ① Auth から UserID と UserName を取得
-            var authState = await Auth.GetAuthenticationStateAsync();
-            var userName = authState.User.Identity?.Name;
+public async Task<LockStatus> SetLockAsync()
+{
+    // ① Auth から UserID と UserName を取得
+    var authState = await Auth.GetAuthenticationStateAsync();
+    var userName = authState.User.Identity?.Name;
 
-            // ② ロック要求（DB側で正しいロック情報が生成される）
-            var req = new {
-                DataId = this.DataID,
-                LockStatus = new LockStatus {
-                    Exists = true,
-                    IsLocked = true,            // ★ ロック要求
-                    LockedByUserId = CurrUsrID,
-                    LockedByUserName = userName
-                }
-            };
-
-            var url = $"{ApiRoute}/SetLockStatus";
-
-            HttpResponseMessage response;
-
-            try {
-                response = await Http.PostAsJsonAsync(url, req);
-            } catch (Exception ex) {
-                return new LockStatus {
-                    HasError = true,
-                    ErrorMessage = $"通信エラー: {ex.Message}",
-                    IsLocked = false
-                };
-            }
-
-            if (!response.IsSuccessStatusCode) {
-                return new LockStatus {
-                    HasError = true,
-                    ErrorMessage = $"HTTPエラー: {response.StatusCode}",
-                    IsLocked = false
-                };
-            }
-
-            LockStatus? serverStatus;
-
-            try {
-                serverStatus = await response.Content.ReadFromJsonAsync<LockStatus>();
-            } catch (Exception ex) {
-                return new LockStatus {
-                    HasError = true,
-                    ErrorMessage = $"レスポンス解析エラー: {ex.Message}",
-                    IsLocked = false
-                };
-            }
-
-            if (serverStatus == null) {
-                return new LockStatus {
-                    HasError = true,
-                    ErrorMessage = "ロック情報が返されませんでした",
-                    IsLocked = false
-                };
-            }
-
-            // ③ UI 側のローカル状態を更新（世界線整合）
-            _rawData["locked_at"] = serverStatus.Locked_at ?? DateTime.MinValue;
-            _rawData["locked_by"] = serverStatus.LockedByUserId;
-
-            // ④ サーバーが返した LockStatus をそのまま返す
-            return serverStatus;
+    // ② ロック要求（Exists は UI が決めない）
+    var req = new {
+        DataId = this.DataID,
+        LockStatus = new LockStatus {
+            IsLocked = true,
+            LockedByUserId = CurrUsrID,
+            LockedByUserName = userName
         }
+    };
 
-        public async Task<LockStatus> DataOpen() {
+    var url = $"{ApiRoute}/SetLockStatus";
 
-            _dataObj.Validate(OperationType.LocalEdit);
+    HttpResponseMessage response;
 
-            // ① まずロック要求を送る（サーバーが最新の LockStatus を返す）
-            var lockStatus = await SetLockAsync();
+    try {
+        response = await Http.PostAsJsonAsync(url, req);
+    }
+    catch (Exception ex) {
+        return new LockStatus {
+            HasError = true,
+            ErrorMessage = $"通信エラー: {ex.Message}",
+            IsLocked = false
+        };
+    }
 
-            // ② ロック失敗（他人がロック中 or エラー）
-            if (!lockStatus.IsLocked || lockStatus.HasError) {
-                // UI 側のローカル状態も更新しておく
-                _rawData["locked_at"] = lockStatus.Locked_at ?? DateTime.MinValue;
-                _rawData["locked_by"] = lockStatus.LockedByUserId;
+    if (!response.IsSuccessStatusCode) {
+        return new LockStatus {
+            HasError = true,
+            ErrorMessage = $"HTTPエラー: {response.StatusCode}",
+            IsLocked = false
+        };
+    }
 
-                return lockStatus;
-            }
+    LockStatus? serverStatus;
 
-            // ③ ロック成功 → データを開く
-            await _dataObj.DataOpen();
+    try {
+        serverStatus = await response.Content.ReadFromJsonAsync<LockStatus>();
+    }
+    catch (Exception ex) {
+        return new LockStatus {
+            HasError = true,
+            ErrorMessage = $"レスポンス解析エラー: {ex.Message}",
+            IsLocked = false
+        };
+    }
 
-            // ④ UI 側のローカル状態を反映（世界線整合）
-            _rawData["locked_at"] = lockStatus.Locked_at ?? DateTime.MinValue;
-            _rawData["locked_by"] = lockStatus.LockedByUserId;
+    if (serverStatus == null) {
+        return new LockStatus {
+            HasError = true,
+            ErrorMessage = "ロック情報が返されませんでした",
+            IsLocked = false
+        };
+    }
 
-            // ⑤ ロック成功した LockStatus を返す
-            return lockStatus;
+    // ③ UI 側のローカル状態を更新（世界線整合）
+    if (serverStatus.Locked_at != null)
+        _rawData["locked_at"] = serverStatus.Locked_at;
+    else
+        _rawData["locked_at"] = null;   // ★ MinValue は使わない
+
+    _rawData["locked_by"] = serverStatus.LockedByUserId;
+
+    // ④ サーバーが返した LockStatus をそのまま返す
+    return serverStatus;
+}
+
+public async Task<LockStatus> DataOpen()
+{
+    // ① ローカルバリデーション（世界線の入口）
+    _dataObj.Validate(OperationType.LocalEdit);
+
+    // ② ロック要求（サーバーが最新の LockStatus を返す）
+    var lockStatus = await SetLockAsync();
+
+    // ③ ロック失敗（他人がロック中 or エラー）
+    if (!lockStatus.IsLocked || lockStatus.HasError)
+    {
+        // UI 側のローカル状態も更新（MinValue は使わない）
+        _rawData["locked_at"] = lockStatus.Locked_at;
+        _rawData["locked_by"] = lockStatus.LockedByUserId;
+
+        return lockStatus;
+    }
+
+    // ④ ロック成功 → データを開く
+    await _dataObj.DataOpen();
+
+    // ⑤ UI 側のローカル状態を反映（世界線整合）
+    _rawData["locked_at"] = lockStatus.Locked_at;
+    _rawData["locked_by"] = lockStatus.LockedByUserId;
+
+    // ⑥ ロック成功した LockStatus を返す
+    return lockStatus;
+}
+
+
+
+public async Task<LockStatus> DataClose()
+{
+    // ① Auth から UserID と UserName を取得
+    var authState = await Auth.GetAuthenticationStateAsync();
+    var userId = authState.User.FindFirst("sub")?.Value;
+    var userName = authState.User.Identity?.Name;
+
+    // ② ロック解除要求（Exists は UI が決めない）
+    var req = new {
+        DataId = this.DataID,
+        LockStatus = new LockStatus {
+            IsLocked = false,          // ★ロック解除
+            LockedByUserId = null,
+            LockedByUserName = null
         }
+    };
+
+    var url = $"{ApiRoute}/SetLockStatus";
+
+    HttpResponseMessage response;
+
+    try {
+        response = await Http.PostAsJsonAsync(url, req);
+    }
+    catch (Exception ex) {
+        return new LockStatus {
+            HasError = true,
+            ErrorMessage = $"通信エラー: {ex.Message}",
+            IsLocked = true   // ★解除できていないので true 扱い
+        };
+    }
+
+    if (!response.IsSuccessStatusCode) {
+        return new LockStatus {
+            HasError = true,
+            ErrorMessage = $"HTTPエラー: {response.StatusCode}",
+            IsLocked = true
+        };
+    }
+
+    LockStatus? lockStatus;
+
+    try {
+        lockStatus = await response.Content.ReadFromJsonAsync<LockStatus>();
+    }
+    catch (Exception ex) {
+        return new LockStatus {
+            HasError = true,
+            ErrorMessage = $"レスポンス解析エラー: {ex.Message}",
+            IsLocked = true
+        };
+    }
+
+    if (lockStatus == null) {
+        return new LockStatus {
+            HasError = true,
+            ErrorMessage = "ロック解除情報が返されませんでした",
+            IsLocked = true
+        };
+    }
+
+    // ③ ロック解除失敗なら DataClose しない
+    if (lockStatus.IsLocked || lockStatus.HasError)
+        return lockStatus;
+
+    // ④ ロック解除成功後に DataClose 実行
+    var closeResult = await _dataObj.DataClose();
+
+    // ⑤ UI 側のローカル状態を反映（MinValue は使わない）
+    _rawData["locked_at"] = null;
+    _rawData["locked_by"] = null;
+
+    return closeResult;
+}
 
 
+public virtual async Task<bool> ReName(string newName)
+{
+    // 1. バリデーション
+    if (string.IsNullOrWhiteSpace(newName) || newName.Length > 20)
+        return false;
 
-        public async Task<LockStatus> DataClose() {
-            // ① Auth から UserID と UserName を取得
-            var authState = await Auth.GetAuthenticationStateAsync();
-            var userId = authState.User.FindFirst("sub")?.Value;
-            var userName = authState.User.Identity?.Name;
+    // 2. トランザクション開始（Base世界線）
+    using IDbTransaction transaction = DBcon.BeginTransaction();
 
-            // ② ロック解除要求（IsLocked = false）
-            var req = new {
-                DataId = this.DataID,
-                LockStatus = new LockStatus {
-                    Exists = true,
-                    IsLocked = false,           // ★ロック解除
-                    LockedByUserId = null,      // ★解除なので null
-                    LockedByUserName = null
-                }
-            };
+    // 3. Base世界線で仮更新
+    var localUpdated = await _dataObj.ReNameQueryExec(newName, transaction);
+    if (!localUpdated)
+    {
+        transaction.Rollback();
+        return false;
+    }
 
-            var url = $"{ApiRoute}/SetLockStatus";
+    // 4. Sync世界線 → API呼び出し
+    var url = $"{ApiRoute}/ReName/{DataID}/{newName}";
+    HttpResponseMessage response;
 
-            HttpResponseMessage response;
+    try
+    {
+        response = await Http.PostAsync(url, null);
+    }
+    catch
+    {
+        transaction.Rollback();
+        return false;
+    }
 
-            try {
-                response = await Http.PostAsJsonAsync(url, req);
-            } catch (Exception ex) {
-                // ★ ネットワークレベルの失敗
-                return new LockStatus {
-                    HasError = true,
-                    ErrorMessage = $"通信エラー: {ex.Message}",
-                    IsLocked = true   // ★解除できていないので true 扱い
-                };
-            }
+    if (!response.IsSuccessStatusCode)
+    {
+        transaction.Rollback();
+        return false;
+    }
 
-            if (!response.IsSuccessStatusCode) {
-                // ★ HTTP レベルの失敗
-                return new LockStatus {
-                    HasError = true,
-                    ErrorMessage = $"HTTPエラー: {response.StatusCode}",
-                    IsLocked = true
-                };
-            }
+    // 5. API世界線（正本）を取得
+    var json = await response.Content.ReadAsStringAsync();
 
-            LockStatus? lockStatus = null;
+    Dictionary<string, object>? updatedRaw;
 
-            try {
-                lockStatus = await response.Content.ReadFromJsonAsync<LockStatus>();
-            } catch (Exception ex) {
-                // ★ JSON パース失敗
-                return new LockStatus {
-                    HasError = true,
-                    ErrorMessage = $"レスポンス解析エラー: {ex.Message}",
-                    IsLocked = true
-                };
-            }
-
-            if (lockStatus == null) {
-                // ★ JSON は読めたが中身が null
-                return new LockStatus {
-                    HasError = true,
-                    ErrorMessage = "ロック解除情報が返されませんでした",
-                    IsLocked = true
-                };
-            }
-
-            // ③ ロック解除失敗なら DataClose しない
-            if (lockStatus.IsLocked || lockStatus.HasError)
-                return lockStatus;
-
-            // ④ ロック解除成功後に DataClose 実行
-            return await _dataObj.DataClose();
+    try
+    {
+        updatedRaw = JsonSerializer.Deserialize<Dictionary<string, object>>(json);
+        if (updatedRaw == null)
+        {
+            transaction.Rollback();
+            return false;
         }
+    }
+    catch
+    {
+        transaction.Rollback();
+        return false;
+    }
 
+    // 6. 正本世界線を Base世界線に反映
+    if (!UpdateRawData(updatedRaw, transaction))
+    {
+        transaction.Rollback();
+        return false;
+    }
 
-        public virtual async Task<bool> ReName(string newName) {
-            // 1. バリデーション
-            if (string.IsNullOrWhiteSpace(newName) || newName.Length > 20) {
-                return false;
-            }
+    // 7. プロパティ更新（正本世界線の反映）
+    Setproperties(updatedRaw);
 
-            // 2. トランザクション開始（Base世界線）
-            using IDbTransaction transaction = DBcon.BeginTransaction();
+    // 8. 世界線を閉じる
+    transaction.Commit();
 
-            // 3. ローカル（Base世界線）で名前変更を試みる
-            var localUpdated = await _dataObj.ReNameQueryExec(newName, transaction);
-            if (!localUpdated) {
-                transaction.Rollback();
-                return false;
-            }
-
-            // 4. Sync世界線 → API呼び出し
-            var url = $"{ApiRoute}/ReName/{DataID}/{newName}";
-            HttpResponseMessage response;
-
-            try {
-                response = await Http.PostAsync(url, null);
-            } catch {
-                // API通信失敗 → Base世界線をロールバック
-                transaction.Rollback();
-                return false;
-            }
-
-            if (!response.IsSuccessStatusCode) {
-                // API側で失敗 → Base世界線をロールバック
-                transaction.Rollback();
-                return false;
-            }
-
-            // 5. APIが返す JSON（正本世界線）を取得
-            var json = await response.Content.ReadAsStringAsync();
-
-            // 6. JSONをローカルDBに反映（Base世界線の更新）
-            //    ※ _rawData は BaseDataObj の生データ
-            try {
-                var updatedRaw = JsonSerializer.Deserialize<Dictionary<string, object>>(json);
-
-                // サーバーからメタデータを受け取りクライアントのテーブルをを更新
-                if (UpdateRawData(updatedRaw, transaction)) {
-                    //保持しているプロパティも更新
-                    Setproperties(updatedRaw);
-                }
-            } catch {
-                transaction.Rollback();
-                return false;
-            }
-
-            // 7. コミットしてを更新を完了する
-            transaction.Commit();
-
-            return true;
-        }
+    return true;
+}
 
         //何かしらの更新をした時にサーバーから返ってきたメタデータ（TblName）を更新する際に使用する。
         //例えばRenameとか
