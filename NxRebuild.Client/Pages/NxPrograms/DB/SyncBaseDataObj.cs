@@ -123,7 +123,21 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         public async Task<LockStatus> SetLockAsync(LockStatus lockStatus, IDbTransaction dbTransaction = null) {
             return await _dataObj.SetLockAsync(lockStatus, dbTransaction);
         }
+      
+//ロック延命
+public async Task<LockStatus> PingLockAsync()
+{
+    // ① サーバーにロック延命要求（locked_at を更新）
+    var lockStatus = await SetLockAsync();
 
+    // ② UI ローカル世界線に反映
+    _rawData["locked_at"] = lockStatus.Locked_at;
+    _rawData["locked_by"] = lockStatus.LockedByUserId;
+
+    // ③ サーバーから返ってきた LockStatus をそのまま返す
+    return lockStatus;
+}
+      
 public async Task<LockStatus> SetLockAsync()
 {
     // ① Auth から UserID と UserName を取得
