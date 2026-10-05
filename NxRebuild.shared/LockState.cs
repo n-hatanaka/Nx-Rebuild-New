@@ -72,4 +72,11 @@ public class LockStatus
     public bool HasError { get; set; } = false;
     public string? ErrorMessage { get; set; } = "";
 }
+
+  public class DataOpenResult {
+    public bool HasError { get; set; }
+    public string ErrorMessage { get; set; }
+    public LockStatus LockStatus { get; set; }
+    public string Json { get; set; }   // TblToJson の結果
+  }
 }

@@ -204,24 +204,43 @@ public async Task<LockStatus> DataOpen()
     // ② ロック要求（サーバーが最新の LockStatus を返す）
     var lockStatus = await SetLockAsync();
 
-    // ③ ロック失敗（他人がロック中 or エラー）
-    if (!lockStatus.IsLocked || lockStatus.HasError)
+    // ③ ロック失敗（他人ロック or エラー）
+    if (!lockStatus.CanEdit || lockStatus.HasError)
     {
-        // UI 側のローカル状態も更新（MinValue は使わない）
         _rawData["locked_at"] = lockStatus.Locked_at;
         _rawData["locked_by"] = lockStatus.LockedByUserId;
-
         return lockStatus;
     }
 
-    // ④ ロック成功 → データを開く
+    // ④ ロック成功 → ローカル編集世界線を開く
     await _dataObj.DataOpen();
 
-    // ⑤ UI 側のローカル状態を反映（世界線整合）
+    // ⑤ 最新データ取得（正本世界線 → ローカル世界線）
+    // ★ API: DataOpenLatest を呼び出して正本の JSON を取得
+    var apiUrl = $"{ApiRoute}/DataOpenLatest";
+    var result = await Http.PostAsJsonAsync(apiUrl, DataID);
+    var openResult = await result.Content.ReadFromJsonAsync<DataOpenResult>();
+
+    if (openResult == null || openResult.HasError)
+    {
+        // API 側でエラーが起きた場合はロックだけ返す
+        return lockStatus;
+    }
+
+    if (!string.IsNullOrEmpty(openResult.Json))
+    {
+        // ★ 正本 JSON → DB に反映（世界線整合）
+        await _dataObj.JsonToTbl(openResult.Json, null);
+
+        // ★ RawData を正本で上書き（世界線整合）
+        await _dataObj.Updateproperties();
+    }
+
+    // ⑥ UI 側のローカル状態を反映
     _rawData["locked_at"] = lockStatus.Locked_at;
     _rawData["locked_by"] = lockStatus.LockedByUserId;
 
-    // ⑥ ロック成功した LockStatus を返す
+    // ⑦ ロック成功した LockStatus を返す
     return lockStatus;
 }
 

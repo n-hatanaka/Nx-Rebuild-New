@@ -227,7 +227,45 @@ public virtual async Task<IActionResult> Delete(
     return Ok(failedIds);
 }
 
+[HttpPost("DataOpenLatest")]
+public async Task<DataOpenResult> DataOpenLatest([FromBody] Guid dataId)
+{
+    // ① 正本世界線のロック状態を取得
+    var lockSt = await _lockMgr.GetLockStatusAsync(dataId);
 
+    // ② レコード無し（RecordNone）なら新規扱い
+    if (!lockSt.Exists)
+    {
+        return new DataOpenResult {
+            HasError = false,
+            LockStatus = lockSt,
+            Json = null
+        };
+    }
+
+    // ③ 編集不可（他人ロック）なら JSON は返さない
+    if (!lockSt.CanEdit || lockSt.HasError)
+    {
+        return new DataOpenResult {
+            HasError = lockSt.HasError,
+            ErrorMessage = lockSt.ErrorMessage,
+            LockStatus = lockSt,
+            Json = null
+        };
+    }
+
+    // ④ 編集可能 → 最新状態の JSON を返す
+    // Base世界線の正本を TblToJson で取得
+    var dataObj = _mgr.GetDataObj(dataId);   // あなたの DataObj 管理構造に合わせて
+    var json = dataObj.TblToJson(dataId, null);
+
+    return new DataOpenResult {
+        HasError = false,
+        LockStatus = lockSt,
+        Json = json
+    };
+}
+      
         [HttpPost("Save/{dataId}")]
 public virtual async Task<IActionResult> Save(TKey? dataId, [FromBody] string ReceiveJson)
 {
