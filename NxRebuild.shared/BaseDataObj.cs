@@ -232,53 +232,89 @@ namespace NxRebuild.shared {
 
         }
 
-        /// <summary>
-        /// 【役割】
-        ///   - このエンティティに関するロジック（削除禁止・名前重複禁止など）を
-        ///     “エンティティ自身” に閉じ込めるための入口。
-        ///   - Nx 基盤側は、Save / Delete / Rename / Sync / Import / LocalEdit など
-        ///     すべての操作の直前で必ずこのメソッドを呼び出す。
-        ///   - 具象クラスはここを override し、
-        ///       「この操作（OperationType）をしてよいか？」
-        ///     を判定する規則を記述する。
-        ///
-        /// 【設計思想】
-        ///   - 規則違反時は例外を投げることで処理を即停止させる。
-        ///   - 例外にすることで、規則が「漏れない」「二重発火しない」。
-        ///   - 戻り値は不要（void）。例外が“禁止”の唯一の表現となる。
-        ///
-        /// 【具象側の書き方例】
-        ///     if (op == OperationType.Delete && IsUsedByMenu())
-        ///         throw new InvalidOperationException("使用中の材料は削除できません");
-        ///
-        /// 【重要】
-        ///   - Validate は「規則の中身」を書く場所であり、
-        ///     「いつ呼ばれるか」は Nx 基盤側が保証する。
-        ///   - 規則は DataObj に閉じ込められ、
-        ///     全ての経路（UI / API / Sync / Import / LocalEdit）で
-        ///     必ず同じ規則が発火する。
-        ///
-        /// 【発火ポイント】
-        ///   - 正本の整合性を守るため、Validate は **サーバー側の CRUD(API)**
-        ///     の直前で必ず発火する（Delete / Save / Rename / Import / Sync）。
-        ///   - WASMローカル側の CRUD（working テーブル操作）は「作業用世界線」
-        ///     であり、正本ではないため Validate は発火しない。
-        ///   - クライアント側で唯一 Validate が発火するのは、
-        ///     **DataOpen（編集開始）時に Sync ラッパーが呼び出す場合のみ**で、
-        ///     これは「サーバー側のロック状態と整合性を取るための軽量チェック」
-        ///     に限定される。
-        ///
-        ///   → 結果として、正本の整合性はサーバー側 API が一元的に保証し、
-        ///     クライアント側は高速なローカル編集に専念できる。
-        ///     
-        /// </summary>
-        public virtual void Validate(OperationType op) {
-            // デフォルトは何もしない
-            // 具象側で override して以下のように規則を書く
-            //if (op == OperationType.Delete && IsUsedByMenu())
-            //    throw new InvalidOperationException("使用中の材料は削除できません");
-        }
+/// <summary>
+/// 【役割】
+///   - このエンティティに関する業務ロジック（削除禁止・名前重複禁止など）を
+///     “エンティティ自身” に閉じ込めるための唯一の入口。
+///   - Nx 基盤側は、Save / Delete / Rename / Sync / Import / LocalEdit など
+///     すべての操作の直前で必ずこのメソッドを呼び出し、
+///     「この操作（OperationType）を実行してよいか？」を判定する。
+///   - 具象クラスは必要に応じて override し、
+///     自身固有の規則を NxValidator に追加することで、
+///     正本・ローカル・同期の各世界線で同じ規則が発火する。
+///
+/// 【設計思想】
+///   - 規則違反時は例外を投げず、NxValidationResult を返すことで
+///     世界線の外へ例外を漏らさずに因果を閉じる。
+///   - NxValidationResult は ErrorCode と ErrorMessage を持ち、
+///     UI・API・Sync のどの世界線でも同じ形式で扱える。
+///   - BaseDataObj は抽象核であり、規則の中身は NxValidator に委譲する。
+///     これにより循環依存を避け、抽象構造を汚さない。
+///
+/// 【具象側の書き方例】
+///     var result = Validate(OperationType.Delete);
+///     if (!result.IsValid)
+///         return result;   // 規則違反を呼び出し元へ返す
+///
+/// 【発火ポイント】
+///   - Save / Delete / Rename / Import / Sync など、
+///     正本世界線に影響する操作の直前で必ず発火する。
+///   - WASM ローカル側の CRUD（working テーブル操作）は「作業用世界線」であり、
+///     正本ではないため Validate は発火しない。
+///   - クライアント側で唯一 Validate が発火するのは DataOpen（編集開始）時で、
+///     これはロック状態と整合性を取るための軽量チェックに限定される。
+///
+/// 【結果】
+///   - 正本の整合性は NxValidator によって一元的に保証され、
+///     クライアント側は高速なローカル編集に専念できる。
+///   - すべての世界線（Base / Sync / API / UI）が同じ NxValidationResult を共有し、
+///     規則が漏れず、二重発火せず、整合性が保たれる。
+/// </summary>
+public virtual NxValidationResult Validate(OperationType op, object? arg = null)
+{
+    // ★ BaseDataObj の値をコピーした Validator を生成（循環依存なし）
+    var validator = new NxValidator<TKey>(this);
 
+    try
+    {
+        return op switch
+        {
+            OperationType.Save =>
+                validator.ValidateSave(),
+
+            OperationType.Delete =>
+                validator.ValidateDelete(),
+
+            OperationType.Rename =>
+                arg is string newName
+                    ? validator.ValidateRename(newName)
+                    : NxValidationResult.Fail(
+                        NxValidationErrorCode.Unknown,
+                        "Rename の引数が不正です"),
+
+            OperationType.Sync =>
+                validator.ValidateSync(),
+
+            OperationType.Import =>
+                validator.ValidateImport(),
+
+            OperationType.LocalEdit =>
+                validator.ValidateLocalEdit(),
+
+            _ =>
+                NxValidationResult.Fail(
+                    NxValidationErrorCode.Unknown,
+                    $"未定義の OperationType: {op}")
+        };
+    }
+    catch (Exception ex)
+    {
+        // ★ BaseDataObj 側では例外を外に漏らさず NxValidationResult に変換
+        return NxValidationResult.Fail(
+            NxValidationErrorCode.Unknown,
+            $"Validate 内部例外: {ex.Message}");
+    }
+}
         //public async Task<bool> ApplySync() {
         //    
         //    // SyncQueryExec は具象側
