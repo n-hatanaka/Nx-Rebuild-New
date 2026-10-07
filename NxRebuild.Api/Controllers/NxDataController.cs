@@ -265,13 +265,30 @@ public async Task<DataOpenResult> DataOpenLatest([FromBody] Guid dataId)
         Json = json
     };
 }
-      
-        [HttpPost("Save/{dataId}")]
+
+      [HttpPost("Save/{dataId}")]
 public virtual async Task<IActionResult> Save(TKey? dataId, [FromBody] string ReceiveJson)
 {
     await CreateObjMgr();
 
     TKey realID = dataId ?? default;
+
+    // ================================
+    // RecordQuery を組み立てて ID検索
+    // ================================
+    var q = new RecordQuery();
+
+    // idcolname（T の ID列名）を使って検索条件を作る
+    q.And.Add(new Condition {
+        Column = _dataObjMgr.IdColName,   // 例: "DataID"
+        Operator = "=",
+        Value = realID
+    });
+
+    // ================================
+    // Initialize(query) で _dataList を構築
+    // ================================
+    await _dataObjMgr.Initialize(q);
 
     // 既存 or 新規オブジェクト取得
     var obj = _dataObjMgr.Get(realID)

@@ -66,6 +66,252 @@ namespace NxRebuild.shared {
         void RemoveFromList(BaseDataObj<TKey> obj);
         IBaseDataObj<TKey> CreateNewDataObj(TKey? parentID);
     }
+
+
+  public class Condition
+{
+    public string Column { get; set; }
+    public object Value { get; set; }
+    public string Operator { get; set; } = "="; // =, <, >, LIKE, etc.
+}
+/*
+    ================================
+    RecordQuery の使い方（簡易 AND / OR 版）
+    ================================
+
+    ■ RecordQuery 
+      Initialize() / LoadRecordsAsync() に渡す検索条件の。
+      AND / OR / Keyword / Paging / Order をひとまとめにする。
+
+    ■ 目的
+      ・検索条件を統一する
+      ・ページングと検索を混線させない
+      ・Base を汚さず派生先で SQL を自由に書き換えられる
+      ・UI / API / Sync が同じ世界線を共有できる
+
+    ================================
+    1. AND 条件の書き方
+    ================================
+
+    var q = new RecordQuery();
+    q.And.Add(new Condition {
+        Column = "Name",
+        Operator = "=",
+        Value = "Akino"
+    });
+
+    q.And.Add(new Condition {
+        Column = "Age",
+        Operator = ">=",
+        Value = 4x
+    });
+
+    → SQL 例：
+      AND Name = @Name
+      AND Age >= @Age
+
+    ================================
+    2. OR 条件の書き方
+    ================================
+
+    q.Or.Add(new Condition {
+        Column = "Status",
+        Operator = "=",
+        Value = "Active"
+    });
+
+    q.Or.Add(new Condition {
+        Column = "Status",
+       Operator = "=",
+        Value = "Pending"
+    });
+
+    → SQL 例：
+      AND (Status = @Status OR Status = @Status)
+
+    ================================
+    3. キーワード検索（任意）
+    ================================
+
+    q.Keyword = "apple";
+
+    ※ Keyword の実装は派生先で行う。
+       例：全列 LIKE、特定列 LIKE など。
+
+    ================================
+    4. ページング
+    ================================
+
+    q.PageIndex = 0;   // 0-based
+    q.PageSize  = 50;  // 0ならページングなし
+
+    → SQL 例：
+      LIMIT 50 OFFSET 0
+
+    ※ TotalCount は返却用（API側でセット）
+
+    ================================
+    5. ソート
+    ================================
+
+    q.OrderBy = "CreatedAt";
+    q.OrderDesc = true;
+
+    → SQL 例：
+      ORDER BY CreatedAt DESC
+
+    ================================
+    6. 実際の呼び出し
+    ================================
+
+    await mgr.Initialize(q);
+
+    または
+
+    var records = await mgr.LoadRecordsAsync(q);
+
+    ================================
+    7. BuildSql の動作（簡易 AND / OR 版）
+    ================================
+
+    ・AND 条件 → そのまま AND で連結
+    ・OR 条件 → AND (...) の中に OR で連結
+    ・Keyword → 派生先で実装
+    ・Order → ORDER BY
+    ・Paging → LIMIT / OFFSET
+
+    ================================
+    8. 注意点
+    ================================
+
+    ・RecordQuery の項目はすべて optional
+    ・世界線は RecordQuery ひとつに統一する
+    ・Base は汚さず、派生先で SQL を自由に書き換える
+    ・必要になったら条件ツリー（完全版）に進化可能
+
+*/
+  /*
+    ============================================
+    Keyword（キーワード検索）の派生先実装例
+    ============================================
+
+    ■ 前提
+      Nx のテーブルは「colname テーブル」で
+      ・カラム名（ColumnName）
+      ・データ名（DataName）
+      ・印刷名
+      ・単位名
+      ・フォーマット
+      ・Digit
+      などを持つ。
+
+      このうち「DataName（＝UI影のラベル）」を
+      キーワード検索の対象にする設計。
+
+      つまり Keyword は namecolname を LIKE する。
+
+    ■ なぜ Base に書かない？
+      ・検索対象列はテーブルごとに違う
+      ・Base が列名を知ると抽象核が汚れる
+      ・Nx の世界線モデルでは Keyword は「テーブル固有世界線」
+
+      よって Keyword は派生先で実装する。
+
+    ============================================
+    BuildSql の派生先実装（Keyword 対応版）
+    ============================================
+
+    protected override string BuildSql(RecordQuery q)
+    {
+        var sb = new StringBuilder();
+        sb.Append($"SELECT * FROM \"{_tblName}\" WHERE 1=1 ");
+
+        // AND 条件（Base の簡易版をそのまま使う）
+        foreach (var c in q.And)
+        {
+            sb.Append($" AND {c.Column} {c.Operator} @{c.Column} ");
+        }
+
+        // OR 条件（簡易版）
+        if (q.Or.Count > 0)
+        {
+            sb.Append(" AND (");
+            sb.Append(string.Join(" OR ",
+                q.Or.Select(c => $"{c.Column} {c.Operator} @{c.Column}")));
+            sb.Append(") ");
+        }
+
+        // ============================================
+        // Keyword 条件（namecolname を LIKE）
+        // ============================================
+        if (!string.IsNullOrEmpty(q.Keyword))
+        {
+            sb.Append(" AND (");
+
+            // ここで「検索対象列」を決める
+            // namecolname（UI影のラベル）を対象にする
+            // ※ 実際には colname テーブルから対象列を取得しても良い
+            var keywordCols = new[] {
+                "NameColName",   // UI影のラベル
+                "PrintName1",    // 印刷名1
+                "PrintName2",    // 印刷名2
+                "PrintName3"     // 印刷名3
+            };
+
+            sb.Append(string.Join(" OR ",
+                keywordCols.Select(col => $"{col} LIKE @Keyword")));
+
+            sb.Append(") ");
+        }
+
+        // ソート
+        if (!string.IsNullOrEmpty(q.OrderBy))
+        {
+            sb.Append($" ORDER BY {q.OrderBy} {(q.OrderDesc ? "DESC" : "ASC")} ");
+        }
+
+        // ページング
+        if (q.PageSize > 0)
+        {
+            sb.Append($" LIMIT {q.PageSize} OFFSET {q.PageIndex * q.PageSize} ");
+        }
+
+        return sb.ToString();
+    }
+
+    ============================================
+    使い方
+    ============================================
+
+    var q = new RecordQuery();
+    q.Keyword = "りんご";  // namecolname に LIKE '%りんご%' をかける
+
+    await mgr.Initialize(q);
+
+    → 具象の BuildSql が呼ばれ、Keyword 条件が適用される。
+
+*/
+public class RecordQuery
+{
+    // AND 条件
+    public List<Condition> And { get; set; } = new();
+
+    // OR 条件
+    public List<Condition> Or { get; set; } = new();
+
+    // キーワード検索（任意）
+    public string Keyword { get; set; } = "";
+
+    // ページング
+    public int PageIndex { get; set; } = 0;
+    public int PageSize { get; set; } = 0;
+    public int TotalCount { get; set; } = 0;
+
+    // ソート
+    public string OrderBy { get; set; } = "";
+    public bool OrderDesc { get; set; } = false;
+}
+  
         //DataObjを管理するクラス
         //派生先では次のように定義する事
         //public class HaseiObjMgr<T, Guid> : DataObjMgr<T, TKey> where T : HaseiObj<Guid>
@@ -223,41 +469,77 @@ namespace NxRebuild.shared {
         }
         //データベースからデータを取得する。(クライアント、サーバー共用）
         //コンストラクタで呼び出してはいけない。
-        public virtual async Task<IEnumerable<dynamic>> LoadRecordsAsync() {
-            // Base は “物理層” なので意味を持たない
-            // 派生先で SQL を完全に書き換える前提なら、ここは空実装でいい
-            string sql = $"SELECT * FROM \"{_tblName}\";";
+public virtual async Task<IEnumerable<dynamic>> LoadRecordsAsync(RecordQuery query)
+{
+    string sql = BuildSql(query);
+    return await DBcon.QueryAsync<dynamic>(sql);
+}
 
-            return await DBcon.QueryAsync<dynamic>(sql);
-        }
+protected virtual string BuildSql(RecordQuery q)
+{
+    var sb = new StringBuilder();
+    sb.Append($"SELECT * FROM \"{_tblName}\" WHERE 1=1 ");
 
+    // AND 条件
+    foreach (var c in q.And)
+    {
+        sb.Append($" AND {c.Column} {c.Operator} @{c.Column} ");
+    }
+
+    // OR 条件
+    if (q.Or.Count > 0)
+    {
+        sb.Append(" AND (");
+        sb.Append(string.Join(" OR ",
+            q.Or.Select(c => $"{c.Column} {c.Operator} @{c.Column}")));
+        sb.Append(") ");
+    }
+
+    // キーワード検索（全列 LIKE は派生先で実装）
+    if (!string.IsNullOrEmpty(q.Keyword))
+    {
+        sb.Append(" AND ( /* Keyword 条件は派生先で書く */ ) ");
+    }
+
+    // ソート
+    if (!string.IsNullOrEmpty(q.OrderBy))
+    {
+        sb.Append($" ORDER BY {q.OrderBy} {(q.OrderDesc ? "DESC" : "ASC")} ");
+    }
+
+    // ページング
+    if (q.PageSize > 0)
+    {
+        sb.Append($" LIMIT {q.PageSize} OFFSET {q.PageIndex * q.PageSize} ");
+    }
+
+    return sb.ToString();
+}
+      
         //データベースからデータを取得する。(クライアント、サーバー共用）
         //コンストラクタで呼び出してはいけない。
-        public virtual async Task Initialize()
-        {
-            //root名が設定されている場合のみrootnodeオブジェクトを生成
-            if (RootName != "") {
-                CreateRoot();
-            }
+public virtual async Task Initialize(RecordQuery query)
+{
+    if (!string.IsNullOrEmpty(RootName))
+        CreateRoot();
 
-            var records = await LoadRecordsAsync();
-        
-            foreach (var record in records)
-            {
-                T obj = new T();
-                obj.DBcon = DBcon;
-                obj.SelfObjMgr = this;
-                obj.Setproperties((IDictionary<string, object>)record);
-                obj.TenantCode = TenantCode;
-                obj.CurrUsrID = CurrentUserID;
+    var records = await LoadRecordsAsync(query);
 
-                _dataList.Add(obj);
-            }
-            //  全オブジェクトに対して親子関係をセット
-            foreach (var obj in _dataList) {
-                SetParent((T)obj);
-            }
-        }
+    foreach (var record in records)
+    {
+        T obj = new T();
+        obj.DBcon = DBcon;
+        obj.SelfObjMgr = this;
+        obj.Setproperties((IDictionary<string, object>)record);
+        obj.TenantCode = TenantCode;
+        obj.CurrUsrID = CurrentUserID;
+
+        _dataList.Add(obj);
+    }
+
+    foreach (var obj in _dataList)
+        SetParent((T)obj);
+}
 
         // 親子関係を設定する（新規作成の場合はUIがここに新しいDataObjを渡す。
         public virtual void SetParent(IBaseDataObj<TKey> obj) {
