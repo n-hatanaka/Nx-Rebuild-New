@@ -91,7 +91,7 @@ namespace NxRebuild.Api.Controllers {
         }
 
         //Httpエンドポイントで必ず呼び出す事。
-        protected abstract Task CreateObjMgr();
+        protected abstract Task CreateObjMgr(RecordQuery query);
         // { 派生先での実装例（_dataObjMgr の型は派生先に合わせて変更すること）
         //   ※ ほぼコピペで使えるが、各コントローラ固有の ObjMgr を new する点だけ注意
         //     // ★ユーザー情報を取得（JWT の tenant_code を含む）
@@ -156,13 +156,21 @@ public virtual async Task<IActionResult> SetLockStatus([FromBody] LockStatusRequ
     return Ok(lockStatus);
 }
 
-
 [HttpPost("Delete")]
 public virtual async Task<IActionResult> Delete(
     [FromBody] List<TKey> dataLst,
-    [FromQuery] bool softDelete = false   // ★ デフォルト false
+    [FromQuery] bool softDelete = false
 ) {
-    await CreateObjMgr();
+    // ================================
+    // RecordQuery を組み立てる（対象ID世界線）
+    // ================================
+    var q = new RecordQuery();
+    q.TargetIds = dataLst;   // ★ IDリストを世界線にセット
+
+    // ================================
+    // ObjMgr を RecordQuery 付きで生成
+    // ================================
+    await CreateObjMgr(q);
 
     var failedIds = new List<TKey>();
 
