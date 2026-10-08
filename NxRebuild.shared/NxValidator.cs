@@ -51,7 +51,7 @@ public class NxValidator<TKey>
     public Guid LockerID { get; }
     public DateTime Update_at { get; }
     public DateTime LockedAt { get; }
-
+public NxLocationKind LocationKind { get; }
     public Dictionary<string, object> RawData { get; }
     public IDbConnection DBcon { get; }
 
@@ -65,7 +65,7 @@ public class NxValidator<TKey>
         LockerID = obj.LockerID;
         Update_at = obj.Update_at;
         LockedAt = obj.LockedAt;
-
+LocationKind = obj.LocationKind;
         RawData = obj._rawData;
         DBcon = obj.DBcon;
     }

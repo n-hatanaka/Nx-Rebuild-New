@@ -17,6 +17,12 @@ using System.Transactions;
 using System.Xml.Linq;
 
 namespace NxRebuild.shared {
+  enum NxLocationKind
+{
+    Server,
+    Client,
+    Both
+    }
     //　サーバー同期用のJSON構造体
     public enum OperationType {
         Save,
@@ -127,6 +133,25 @@ namespace NxRebuild.shared {
         public object SelfObjMgr { get; set; }
         public IDbConnection DBcon { get; set; }
 
+      //
+public NxLocationKind LocationKind
+{
+    get
+    {
+        // DB 接続文字列を取得（Nx の基盤ならここで取れる）
+        var conn = NxDbConnectionProvider.CurrentConnectionString;
+
+        if (string.IsNullOrEmpty(conn))
+            return NxLocationKind.Client; // WASM / MAUI の in-memory はここに来る
+
+        // memory が含まれていればクライアント世界線
+        if (conn.Contains("memory", StringComparison.OrdinalIgnoreCase))
+            return NxLocationKind.Client;
+
+        // それ以外はサーバー世界線
+        return NxLocationKind.Server;
+    }
+}
 
         public Guid TenantCode {
             get => _rawData.TryGetValue("tenant_code", out var v)
