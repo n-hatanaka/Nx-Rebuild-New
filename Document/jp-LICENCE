@@ -54,9 +54,21 @@ Copyright (c) 2026 Akino (n-hatanaka)
 - 商用利用を継続する場合は、スポンサー再加入または新規個別契約が必要です。
 
 [GitHub Sponsors（法人向け）]
-- Tier A：月額 50,000 円
-- Tier B：月額 20,000 円
-- Tier C：月額 5,000 円
+Tier A（Gold Sponsor）— 月額 50,000 円
+- 商用ライセンス 完全免除
+- README 最上部にロゴ掲載（大）
+- 技術相談（メール）優先対応
+- Nx Official Partner として記載
+
+Tier B（Silver Sponsor）— 月額 20,000 円
+- 商用ライセンス 免除
+- README にロゴ掲載（中）
+- 技術相談（メール）通常対応
+
+Tier C（Bronze Sponsor）— 月額 5,000 円
+- 商用ライセンス 免除
+- README にロゴ掲載（小）
+
 
 [個別商用ライセンス契約]
 法人規模・利用形態に応じて別途契約を締結します。
