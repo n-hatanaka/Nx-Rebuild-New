@@ -1,35 +1,77 @@
-MIT License
+Non-Commercial MIT License
 
 Copyright (c) 2026 Akino (n-hatanaka)
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+This software (Nexus UI–DB Transformation Architecture and all accompanying
+implementation examples and source code, hereafter referred to as “Nx”) and
+its associated documentation files may be used, copied, modified, merged,
+published, and distributed free of charge for non-commercial purposes only,
+subject to the following conditions. Evaluation, verification, and testing
+use cases are considered non-commercial and are permitted.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+Commercial use of Nx—including but not limited to the following—requires a
+separate commercial license agreement with the author:
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+- Use within corporate systems or business applications
+- Integration into SaaS or web-based services
+- Inclusion in closed-source products
+- Development of commercial products utilizing Nx’s architectural concepts
+  (such as worldline consistency, abstract UI state management, or
+  isomorphic sync/async CRUD operations)
+- Any revenue-generating activities involving Nx
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of Nx.
+
+Nx is provided “as is”, without warranty of any kind, express or implied,
+including but not limited to the warranties of merchantability, fitness for
+a particular purpose, and noninfringement. In no event shall the author or
+copyright holder be liable for any claim, damages, or other liability,
+whether in an action of contract, tort, or otherwise, arising from, out of,
+or in connection with Nx or the use or other dealings in Nx.
+
+---
+
+Commercial License Exemption for Sponsor Companies
+
+Companies that provide ongoing support through GitHub Sponsors are exempt
+from commercial license fees for Nx.
+
+Sponsor Tiers (for companies):
+
+- Gold Sponsor — ¥50,000 per month  
+  Full commercial license exemption  
+  Logo displayed at the top of the README  
+  Priority technical consultation (email)  
+  Listed as an Nx Official Partner
+
+- Silver Sponsor — ¥20,000 per month  
+  Commercial license exemption  
+  Logo displayed in the README
+
+- Bronze Sponsor — ¥5,000 per month  
+  Commercial license exemption  
+  Small logo displayed in the README
+
+If sponsorship is discontinued, standard commercial license requirements
+apply beginning the following month.
+
+---
 
 Additional Notice (Non-binding Request)
 
-This architecture includes several structural concepts such as synchronized 
-client-side in-memory databases, isomorphic interfaces for mixed sync/async 
-CRUD operations, and unified abstract UI state management.
+Nx includes several structural and architectural concepts, such as:
 
-If you reference, adapt, or implement any of these architectural ideas or 
-design patterns in your own projects, I would appreciate it if you could 
-consider acknowledging this repository as a source of inspiration. I would 
-also be very happy to hear about your use case if you are willing to share it.
+- Synchronized client-side in-memory database structures
+- Isomorphic interfaces for mixed synchronous/asynchronous CRUD operations
+- Abstracted UI state management
+- Data models designed around worldline consistency
 
-This notice is a non-binding request and does not modify the permissions 
-granted by the MIT License.
+If you reference, adapt, or implement these architectural ideas or design
+patterns, acknowledging this repository as a source of inspiration would be
+greatly appreciated. Sharing your use case is also welcome and encouraging
+for the author.
+
+This notice is non-binding and does not alter the permissions granted by
+this license.
+
