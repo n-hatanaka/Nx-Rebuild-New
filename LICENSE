@@ -1,77 +1,139 @@
-Non-Commercial MIT License
-
+Nexus Transformation License 1.0 (Non-Commercial & Commercial Dual License)
 Copyright (c) 2026 Akino (n-hatanaka)
 
-This software (Nexus UI–DB Transformation Architecture and all accompanying
-implementation examples and source code, hereafter referred to as “Nx”) and
-its associated documentation files may be used, copied, modified, merged,
-published, and distributed free of charge for non-commercial purposes only,
-subject to the following conditions. Evaluation, verification, and testing
-use cases are considered non-commercial and are permitted.
+This software (“Nexus UI–DB Transformation Architecture”, hereafter “Nx Architecture”) is
+licensed for free use, reproduction, modification, and redistribution solely for individual
+developers and non-commercial purposes.
 
-Commercial use of Nx—including but not limited to the following—requires a
-separate commercial license agreement with the author:
+----------------------------------------------------------------------
+1. Non-Commercial Use (Individuals / Organizations)
+----------------------------------------------------------------------
+Nx Architecture may be used free of charge under the following conditions:
 
-- Use within corporate systems or business applications
-- Integration into SaaS or web-based services
-- Inclusion in closed-source products
-- Development of commercial products utilizing Nx’s architectural concepts
-  (such as worldline consistency, abstract UI state management, or
-  isomorphic sync/async CRUD operations)
-- Any revenue-generating activities involving Nx
+- Use by individual developers
+- Use for non-commercial purposes
+- Use for academic research or educational purposes
+- Use in non-commercial OSS projects
 
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of Nx.
+※ Even individual developers are considered “commercial users” when applying this
+   architecture in commissioned work, contract development, or any paid service
+   provided to corporations or organizations.
 
-Nx is provided “as is”, without warranty of any kind, express or implied,
-including but not limited to the warranties of merchantability, fitness for
-a particular purpose, and noninfringement. In no event shall the author or
-copyright holder be liable for any claim, damages, or other liability,
-whether in an action of contract, tort, or otherwise, arising from, out of,
-or in connection with Nx or the use or other dealings in Nx.
+----------------------------------------------------------------------
+2. Evaluation and Proof-of-Concept (PoC)
+----------------------------------------------------------------------
+Evaluation or PoC use of Nx Architecture by corporations or organizations is permitted
+as non-commercial under the following conditions:
 
----
+- Evaluation period is limited to 30 days
+- Use in production environments is prohibited
+- Use as part of any commercial activity is prohibited
+- Continued use beyond the evaluation period requires a commercial license
 
-Commercial License Exemption for Sponsor Companies
+※ Individual developers may evaluate without time restrictions.
 
-Companies that provide ongoing support through GitHub Sponsors are exempt
-from commercial license fees for Nx.
+----------------------------------------------------------------------
+3. Commercial Use (Corporations / Organizations)
+----------------------------------------------------------------------
+The following activities constitute commercial use and require either a separate
+commercial license or enrollment in the designated GitHub Sponsors program:
 
-Sponsor Tiers (for companies):
+- Use in production environments
+- Integration into SaaS / ASP / cloud services
+- Use of Nx Architecture in paid services or products
+- Building commercial systems using the Divergence Oscillation Model
+- Commercial implementations using Nx Architecture
+- PoC or evaluation exceeding 30 days
+- Commercial implementations using Nx Architecture specifications or abstract models
+- Use by corporations or for-profit entities for business operations
+  (including internal tools and internal workflow systems)
 
-- Gold Sponsor — ¥50,000 per month  
-  Full commercial license exemption  
-  Logo displayed at the top of the README  
-  Priority technical consultation (email)  
-  Listed as an Nx Official Partner
+[Commercial Usage Rights (Sponsors / Individual Contracts)]
+- Commercial usage rights are granted only during active sponsorship or during the
+  effective period of an individual commercial license agreement.
+- Upon cancellation of sponsorship or expiration of the contract, all commercial usage
+  rights immediately terminate.
+- Derivative works created during the sponsorship or contract period may not continue
+  to be used commercially after termination.
+- Continued commercial use requires renewed sponsorship or a new commercial license.
 
-- Silver Sponsor — ¥20,000 per month  
-  Commercial license exemption  
-  Logo displayed in the README
+[GitHub Sponsors (Corporate Plans)]
+- Tier A: 50,000 JPY / month
+- Tier B: 20,000 JPY / month
+- Tier C: 5,000 JPY / month
 
-- Bronze Sponsor — ¥5,000 per month  
-  Commercial license exemption  
-  Small logo displayed in the README
+[Individual Commercial License Agreements]
+Separate contracts will be established depending on corporate scale and usage type.
 
-If sponsorship is discontinued, standard commercial license requirements
-apply beginning the following month.
+----------------------------------------------------------------------
+4. Specifications and Abstract Models
+----------------------------------------------------------------------
+The specifications of Nx Architecture, its abstract model known as the Divergence
+Oscillation Model, and the architecture used to operate it (Nexsus UI–DB Transformation
+Architecture) are treated as copyrighted works under this license.
 
----
+- Specification review, analysis, and academic research are permitted as non-commercial use.
+- Standardization by organizations (ISO / W3C / IETF, etc.) is permitted as non-commercial use.
 
-Additional Notice (Non-binding Request)
+However, commercial implementations using the specifications or abstract models,
+or commercial use of Nx Architecture’s implementation (code or internal structure),
+are subject to the commercial-use provisions of this license.
 
-Nx includes several structural and architectural concepts, such as:
+[Prohibition of Clean-Room Reimplementation]
+Any person who agrees to this license and views or uses this software or its specifications /
+internal structures is prohibited from independently developing, clean-room reimplementing,
+or providing software for commercial purposes that possesses functionality substantially
+identical or equivalent to the design philosophy or abstract models of this software
+(including the Divergence Oscillation Model and UI–DB node structures).
 
-- Synchronized client-side in-memory database structures
-- Isomorphic interfaces for mixed synchronous/asynchronous CRUD operations
-- Abstracted UI state management
-- Data models designed around worldline consistency
+----------------------------------------------------------------------
+5. Prohibited Actions
+----------------------------------------------------------------------
+The following actions are prohibited:
 
-If you reference, adapt, or implement these architectural ideas or design
-patterns, acknowledging this repository as a source of inspiration would be
-greatly appreciated. Sharing your use case is also welcome and encouraging
-for the author.
+- Misrepresenting commercial use as non-commercial or evaluation use
+- Commercial imitation or reproduction of the Divergence Oscillation Model or Nx Architecture
+- Using the name, philosophy, or abstract structure of Nx Architecture as a commercial brand
+- Creating redistributions or derivatives intended to circumvent license conditions
 
-This notice is non-binding and does not alter the permissions granted by
-this license.
+----------------------------------------------------------------------
+6. Disclaimer
+----------------------------------------------------------------------
+Nx Architecture is provided “as is”.
+The author assumes no responsibility for any damages arising from its use.
 
+----------------------------------------------------------------------
+7. Additional Notice (Non-binding Request)
+----------------------------------------------------------------------
+Nx Architecture, its abstract model (Divergence Oscillation Model), and the structures
+that enable UI abstraction—BaseDataObj, BaseDataObjMgr, Sync wrapper classes, and the
+interface structures that homomorphically unify them—are the result of long-term
+technical exploration and research by the author.
+
+These concepts may not be fully protected under copyright law; however, respect for the
+intent and philosophy behind Nx Architecture is sincerely appreciated.
+
+The following elements are particularly important for understanding the design philosophy
+of Nx Architecture:
+
+- Divergence Oscillation Model
+- UI abstraction structure via BaseDataObj / BaseDataObjMgr / Sync wrappers
+- Continuity of abstract layers achieved through homomorphic interface structures
+
+These features possess high technical uniqueness, and if similar structures appear in
+other systems, the influence of Nx Architecture may be naturally recognized within the
+developer community.
+
+This notice is not legally binding, but it expresses the hope that the philosophy of
+Nx Architecture will be shared and that a healthy technical culture will continue.
+
+----------------------------------------------------------------------
+8. Notice of Public Disclosure (Defensive Publication)
+----------------------------------------------------------------------
+This architecture and its abstract models (including the Divergence Oscillation Model and
+the structural groups based on BaseDataObj / BaseDataObjMgr) are publicly disclosed
+technologies as evidenced by the commit history and publication timestamps of this
+repository.
+
+Due to this public disclosure, it is legally impossible for any third party to obtain
+new patents covering these structures, concepts, or design philosophies.
