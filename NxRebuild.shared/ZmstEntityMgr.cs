@@ -81,7 +81,7 @@ namespace NxRebuild.shared {
         // ---------------------------------------------------------
         // Zmst をまとめてロードする
         // ---------------------------------------------------------
-        public override async Task<IEnumerable<dynamic>> LoadRecordsAsync() {
+        public override async Task<IEnumerable<dynamic>> _LoadRecordsAsync(RecordQuery? q) {
             string sqlMain = $@"
                                     SELECT *
                                     FROM ""{_tblName}""
@@ -107,7 +107,7 @@ namespace NxRebuild.shared {
         // ---------------------------------------------------------
         // Initialize（gun_m + Zmst + tan_m を DataList に突っ込む）
         // ---------------------------------------------------------
-        public override async Task Initialize() {
+        public override async Task Initialize(RecordQuery? q) {
             try {
                 this.DataType = NxDataType.Zairyou;
 
@@ -180,7 +180,7 @@ namespace NxRebuild.shared {
                 // ---------------------------------------------------------
                 // Zmst + tan_m
                 // ---------------------------------------------------------
-                var records = await LoadRecordsAsync();
+                var records = await _LoadRecordsAsync(null);
 
                 foreach (var record in records) {
                     var dict = (IDictionary<string, object>)record;

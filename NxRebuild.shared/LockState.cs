@@ -12,7 +12,8 @@ public enum LockResult {
 }
 
 public class LockStatus
-{
+{       
+
     // ---- DBの生データ（正本世界線） ----
     public bool Exists { get; set; } = false;
     public Guid? LockedByUserId { get; set; } = Guid.Empty;
@@ -20,8 +21,8 @@ public class LockStatus
     public DateTime? Locked_at { get; set; } = null;
     public DateTime? Update_at { get; set; } = null;
 
-    // ---- 判定に必要な外部情報 ----
-    public Guid CurrUserId { get; set; } = Guid.Empty;
+    // ---- 判定に必要な外部情報ロック情報更新を要求したユーザーID ----
+    public Guid lockReqUsr { get; set; } = Guid.Empty;
 
     // ---- 判定ロジック（計算プロパティ） ----
 
@@ -33,7 +34,7 @@ public class LockStatus
     // 自分がロックしたかどうか
     public bool IsMine =>
         LockedByUserId != null &&
-        LockedByUserId == CurrUserId;
+        LockedByUserId == lockReqUsr;
 
     // 編集可能判定（他人ロックなら不可）
     public bool CanEdit =>

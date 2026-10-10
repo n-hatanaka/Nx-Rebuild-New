@@ -17,11 +17,11 @@ using System.Transactions;
 using System.Xml.Linq;
 
 namespace NxRebuild.shared {
-  enum NxLocationKind
-{
-    Server,
-    Client,
-    Both
+    public enum NxLocationKind
+    {
+        Server,
+        Client,
+        Both
     }
     //　サーバー同期用のJSON構造体
     public enum OperationType {
@@ -32,6 +32,8 @@ namespace NxRebuild.shared {
         Import,
         LocalEdit
     }
+
+
 
     public class TableJson {
         public string Table { get; set; }
@@ -78,6 +80,7 @@ namespace NxRebuild.shared {
         DateTime Update_at { get;  }
         string W_TblName { get;  }
         string Ws_TblName { get;  }
+        NxLocationKind LocationKind { get; }
         void CreateWorkingMemory(Dictionary<string, object?> workingRaw);
         void CreateWorkingSubTables(List<List<Dictionary<string, object?>>> workingSubList);
         Task<LockStatus> DataOpen();
@@ -90,10 +93,9 @@ namespace NxRebuild.shared {
                         Dictionary<string, object?> workingRaw,
                         List<List<Dictionary<string, object?>>>? subTables = null);
 
-        void Validate(OperationType op);
+        NxValidationResult Validate(OperationType op, object? arg = null);
         Task<LockStatus> SetLockAsync(); 
-        Task<LockStatus> SetLockAsync(LockStatus lockStatus,
-                                        IDbTransaction dbTransaction = null);
+        Task<LockStatus> SetUnLockAsync();
     }
 
 
@@ -134,24 +136,24 @@ namespace NxRebuild.shared {
         public IDbConnection DBcon { get; set; }
 
       //
-public NxLocationKind LocationKind
-{
-    get
-    {
-        // DB 接続文字列を取得（Nx の基盤ならここで取れる）
-        var conn = NxDbConnectionProvider.CurrentConnectionString;
+        public NxLocationKind LocationKind
+        {
+            get
+            {
+                // DB 接続文字列を取得（Nx の基盤ならここで取れる）
+                var conn = DBcon.ConnectionString;
 
-        if (string.IsNullOrEmpty(conn))
-            return NxLocationKind.Client; // WASM / MAUI の in-memory はここに来る
+                if (string.IsNullOrEmpty(conn))
+                    return NxLocationKind.Client; // WASM / MAUI の in-memory はここに来る
 
-        // memory が含まれていればクライアント世界線
-        if (conn.Contains("memory", StringComparison.OrdinalIgnoreCase))
-            return NxLocationKind.Client;
+                // memory が含まれていればクライアント世界線
+                if (conn.Contains("memory", StringComparison.OrdinalIgnoreCase))
+                    return NxLocationKind.Client;
 
-        // それ以外はサーバー世界線
-        return NxLocationKind.Server;
-    }
-}
+                // それ以外はサーバー世界線
+                return NxLocationKind.Server;
+            }
+        }
 
         public Guid TenantCode {
             get => _rawData.TryGetValue("tenant_code", out var v)
@@ -257,89 +259,89 @@ public NxLocationKind LocationKind
 
         }
 
-/// <summary>
-/// 【役割】
-///   - このエンティティに関する業務ロジック（削除禁止・名前重複禁止など）を
-///     “エンティティ自身” に閉じ込めるための唯一の入口。
-///   - Nx 基盤側は、Save / Delete / Rename / Sync / Import / LocalEdit など
-///     すべての操作の直前で必ずこのメソッドを呼び出し、
-///     「この操作（OperationType）を実行してよいか？」を判定する。
-///   - 具象クラスは必要に応じて override し、
-///     自身固有の規則を NxValidator に追加することで、
-///     正本・ローカル・同期の各世界線で同じ規則が発火する。
-///
-/// 【設計思想】
-///   - 規則違反時は例外を投げず、NxValidationResult を返すことで
-///     世界線の外へ例外を漏らさずに因果を閉じる。
-///   - NxValidationResult は ErrorCode と ErrorMessage を持ち、
-///     UI・API・Sync のどの世界線でも同じ形式で扱える。
-///   - BaseDataObj は抽象核であり、規則の中身は NxValidator に委譲する。
-///     これにより循環依存を避け、抽象構造を汚さない。
-///
-/// 【具象側の書き方例】
-///     var result = Validate(OperationType.Delete);
-///     if (!result.IsValid)
-///         return result;   // 規則違反を呼び出し元へ返す
-///
-/// 【発火ポイント】
-///   - Save / Delete / Rename / Import / Sync など、
-///     正本世界線に影響する操作の直前で必ず発火する。
-///   - WASM ローカル側の CRUD（working テーブル操作）は「作業用世界線」であり、
-///     正本ではないため Validate は発火しない。
-///   - クライアント側で唯一 Validate が発火するのは DataOpen（編集開始）時で、
-///     これはロック状態と整合性を取るための軽量チェックに限定される。
-///
-/// 【結果】
-///   - 正本の整合性は NxValidator によって一元的に保証され、
-///     クライアント側は高速なローカル編集に専念できる。
-///   - すべての世界線（Base / Sync / API / UI）が同じ NxValidationResult を共有し、
-///     規則が漏れず、二重発火せず、整合性が保たれる。
-/// </summary>
-public virtual NxValidationResult Validate(OperationType op, object? arg = null)
-{
-    // ★ BaseDataObj の値をコピーした Validator を生成（循環依存なし）
-    var validator = new NxValidator<TKey>(this);
-
-    try
-    {
-        return op switch
+        /// <summary>
+        /// 【役割】
+        ///   - このエンティティに関する業務ロジック（削除禁止・名前重複禁止など）を
+        ///     “エンティティ自身” に閉じ込めるための唯一の入口。
+        ///   - Nx 基盤側は、Save / Delete / Rename / Sync / Import / LocalEdit など
+        ///     すべての操作の直前で必ずこのメソッドを呼び出し、
+        ///     「この操作（OperationType）を実行してよいか？」を判定する。
+        ///   - 具象クラスは必要に応じて override し、
+        ///     自身固有の規則を NxValidator に追加することで、
+        ///     正本・ローカル・同期の各世界線で同じ規則が発火する。
+        ///
+        /// 【設計思想】
+        ///   - 規則違反時は例外を投げず、NxValidationResult を返すことで
+        ///     世界線の外へ例外を漏らさずに因果を閉じる。
+        ///   - NxValidationResult は ErrorCode と ErrorMessage を持ち、
+        ///     UI・API・Sync のどの世界線でも同じ形式で扱える。
+        ///   - BaseDataObj は抽象核であり、規則の中身は NxValidator に委譲する。
+        ///     これにより循環依存を避け、抽象構造を汚さない。
+        ///
+        /// 【具象側の書き方例】
+        ///     var result = Validate(OperationType.Delete);
+        ///     if (!result.IsValid)
+        ///         return result;   // 規則違反を呼び出し元へ返す
+        ///
+        /// 【発火ポイント】
+        ///   - Save / Delete / Rename / Import / Sync など、
+        ///     正本世界線に影響する操作の直前で必ず発火する。
+        ///   - WASM ローカル側の CRUD（working テーブル操作）は「作業用世界線」であり、
+        ///     正本ではないため Validate は発火しない。
+        ///   - クライアント側で唯一 Validate が発火するのは DataOpen（編集開始）時で、
+        ///     これはロック状態と整合性を取るための軽量チェックに限定される。
+        ///
+        /// 【結果】
+        ///   - 正本の整合性は NxValidator によって一元的に保証され、
+        ///     クライアント側は高速なローカル編集に専念できる。
+        ///   - すべての世界線（Base / Sync / API / UI）が同じ NxValidationResult を共有し、
+        ///     規則が漏れず、二重発火せず、整合性が保たれる。
+        /// </summary>
+        public virtual NxValidationResult Validate(OperationType op, object? arg = null)
         {
-            OperationType.Save =>
-                validator.ValidateSave(),
+            // ★ BaseDataObj の値をコピーした Validator を生成（循環依存なし）
+            var validator = new NxValidator<TKey>(this, _rawData);
 
-            OperationType.Delete =>
-                validator.ValidateDelete(),
+            try
+            {
+                return op switch
+                {
+                    OperationType.Save =>
+                        validator.ValidateSave(),
 
-            OperationType.Rename =>
-                arg is string newName
-                    ? validator.ValidateRename(newName)
-                    : NxValidationResult.Fail(
-                        NxValidationErrorCode.Unknown,
-                        "Rename の引数が不正です"),
+                    OperationType.Delete =>
+                        validator.ValidateDelete(),
 
-            OperationType.Sync =>
-                validator.ValidateSync(),
+                    OperationType.Rename =>
+                        arg is string newName
+                            ? validator.ValidateRename(newName)
+                            : NxValidationResult.Fail(
+                                NxValidationErrorCode.Unknown,
+                                "Rename の引数が不正です"),
 
-            OperationType.Import =>
-                validator.ValidateImport(),
+                    OperationType.Sync =>
+                        validator.ValidateSync(),
 
-            OperationType.LocalEdit =>
-                validator.ValidateLocalEdit(),
+                    OperationType.Import =>
+                        validator.ValidateImport(),
 
-            _ =>
-                NxValidationResult.Fail(
+                    OperationType.LocalEdit =>
+                        validator.ValidateLocalEdit(),
+
+                    _ =>
+                        NxValidationResult.Fail(
+                            NxValidationErrorCode.Unknown,
+                            $"未定義の OperationType: {op}")
+                };
+            }
+            catch (Exception ex)
+            {
+                // ★ BaseDataObj 側では例外を外に漏らさず NxValidationResult に変換
+                return NxValidationResult.Fail(
                     NxValidationErrorCode.Unknown,
-                    $"未定義の OperationType: {op}")
-        };
-    }
-    catch (Exception ex)
-    {
-        // ★ BaseDataObj 側では例外を外に漏らさず NxValidationResult に変換
-        return NxValidationResult.Fail(
-            NxValidationErrorCode.Unknown,
-            $"Validate 内部例外: {ex.Message}");
-    }
-}
+                    $"Validate 内部例外: {ex.Message}");
+            }
+        }
         //public async Task<bool> ApplySync() {
         //    
         //    // SyncQueryExec は具象側
@@ -464,30 +466,29 @@ public virtual NxValidationResult Validate(OperationType op, object? arg = null)
 
         // ---------------------------------------------------------
         // DataOpen（編集開始前処理）
+        //ローカル専用の派生ではロック機能を使わない。
+        //だから DataOpen / DataClose は null を返せばいい。
+        //Sync や API の世界線では LockStatus をちゃんと返すようにしてある。
         // ---------------------------------------------------------
         public virtual Task<LockStatus> DataOpen() {
 
 
             Opened = true;//編集中フラグをON
 
-            // --- ローカル編集開始なのでロックは常に false ---
-            return Task.FromResult(new LockStatus {
-                Exists = true,
-                IsLocked = true
-            });
+            return Task.FromResult<LockStatus?>(null);
         }
 
         // ---------------------------------------------------------
         // DataClose(編集終了）
         // フラグのセットのみ。UI側でSaveまたはRestoreを呼んだうえで
         // DataCloseを呼ぶこと
+        // ローカル専用の派生ではロック機能を使わない。
+        // DataOpen / DataClose は null を返せばいい。
+        // Sync や API の世界線では LockStatus をちゃんと返す様にしてある。
         // ---------------------------------------------------------
         public virtual Task<LockStatus> DataClose() {
             Opened = false; //編集中フラグをOFF
-            return Task.FromResult(new LockStatus {
-                Exists = true,
-                IsLocked = false
-            });
+            return Task.FromResult<LockStatus?>(null);
         }
 
 
@@ -742,230 +743,188 @@ public virtual NxValidationResult Validate(OperationType op, object? arg = null)
         }
 
         public virtual async Task<LockStatus> SetLockAsync() {
-            var lockStatus = new LockStatus {
-                IsLocked = true,
-                LockedByUserId = CurrUsrID,
-                Locked_at = DateTime.UtcNow
-            };
-            return await SetLockAsync(lockStatus);
-        }
 
+            return await _SetLockStatusAsync(true);
+        }
+        public virtual async Task<LockStatus> SetUnLockAsync() {
+
+            return await _SetLockStatusAsync(false);
+        }
         // =======================================================
-        //データロックメソッド。
-        //ロックされてるか確認したくなってもロックが目的なので意味
-        //が無いのでこれを呼び出せ。
+        //データロック状態設定メソッド。
         // ======================================================
-        public virtual async Task<LockStatus> SetLockAsync(LockStatus request, IDbTransaction dbTransaction = null)
-{
-    if (dbTransaction == null)
-        dbTransaction = DBcon.BeginTransaction();
+        protected virtual async Task<LockStatus> SetLockStatusAsync(bool doLock) {
+            var result = await WriteLockInfoAsync(doLock);
 
-    // ---- 現在のロック状態を取得 ----
-    var current = await LockedChkfromTbl(dbTransaction);
-    current.CurrUserId = request.CurrUserId;
+            // UI 世界線への反映
+            _rawData["locked_at"] = result.Locked_at ?? DateTime.MinValue;
+            _rawData["locked_by"] = result.LockedByUserId;
 
-    // ---- 他人ロック中（編集不可） ----
-    if (current.IsLockedForEdit)
-    {
-        current.HasError = true;
-        current.ErrorMessage = "他のユーザーがロック中です。";
-
-        _rawData["locked_at"] = current.Locked_at ?? DateTime.MinValue;
-        _rawData["locked_by"] = current.LockedByUserId;
-
-        dbTransaction.Commit();
-        return current;
-    }
-
-    // ---- RecordNone（新規作成） → ロック不要、編集保存可 ----
-    if (!current.Exists)
-    {
-        // 新規作成なのでロック不要
-        current.HasError = false;
-        current.ErrorMessage = "";
-
-        _rawData["locked_at"] = null;
-        _rawData["locked_by"] = null;
-
-        dbTransaction.Commit();
-        return current;
-    }
-
-    // ---- ロック情報書き込み（自分ロックを確保） ----
-    var writeResult = await WriteLockInfoAsync(request, dbTransaction);
-
-    // WriteLockInfoAsync は LockStatus を返す
-    writeResult.CurrUserId = request.CurrUserId;
-
-    // ---- DBエラー ----
-    if (writeResult.HasError)
-    {
-        dbTransaction.Rollback();
-        return writeResult;
-    }
-
-    // ---- 他人ロック（書き込み不可） ----
-    if (writeResult.Result == LockResult.LockedByOther)
-    {
-        writeResult.HasError = true;
-        writeResult.ErrorMessage = "他のユーザーがロック中です。";
-
-        dbTransaction.Commit();
-        return writeResult;
-    }
-
-    // ---- RecordNone（新規作成） ----
-    if (writeResult.Result == LockResult.RecordNone)
-    {
-        // 新規作成なのでロック不要
-        dbTransaction.Rollback();
-        return writeResult;
-    }
-
-    // ---- Success（自分ロック成立） ----
-    var latest = await LockedChkfromTbl(dbTransaction);
-    latest.CurrUserId = request.CurrUserId;
-
-    _rawData["locked_at"] = latest.Locked_at ?? DateTime.MinValue;
-    _rawData["locked_by"] = latest.LockedByUserId;
-
-    dbTransaction.Commit();
-    return latest;
-        }
-      
-protected virtual async Task<LockStatus> WriteLockInfoAsync(LockStatus lockStatus, IDbTransaction transaction)
-{
-    var expiryTime = DateTime.UtcNow.AddMinutes(-10);
-
-    string sql = $@"
-        UPDATE ""{TblName}""
-        SET ""locked_by"" = @userId,
-            ""locked_at"" = @lockedAt
-        WHERE ""{IdColName}"" = @dataID
-          AND ""tenant_code"" = @tenantCode
-          AND (""locked_at"" IS NULL OR ""locked_at"" < @expiryTime);
-    ";
-
-    try
-    {
-        int affectedRows = await DBcon.ExecuteAsync(
-            sql,
-            new {
-                userId = lockStatus.LockedByUserId,
-                lockedAt = DateTime.UtcNow,
-                dataID = DataID,
-                tenantCode = TenantCode,
-                expiryTime = expiryTime
-            },
-            transaction
-        );
-
-        // ---- ロック成功（自分ロック成立） ----
-        if (affectedRows > 0)
-        {
-            lockStatus.HasError = false;
-            lockStatus.ErrorMessage = "";
-            return lockStatus;   // Result は Success になる
+            return result;
         }
 
-        // ---- ロックできなかったので、現在の状態を確認 ----
-        var currentStatus = await LockedChkfromTbl(transaction);
-        currentStatus.CurrUserId = lockStatus.CurrUserId;
 
-        // ---- レコード無し（RecordNone） ----
-        if (!currentStatus.Exists)
-        {
-            currentStatus.HasError = false;
-            currentStatus.ErrorMessage = "";
-            return currentStatus; // Result = RecordNone
+        protected virtual async Task<LockStatus> WriteLockInfoAsync(bool doLock) {
+            // 時刻は必ず1回だけ取得
+            var now = DateTime.UtcNow;
+            var expiryTime = now.AddMinutes(-10);
+
+            try {
+                // ============================================================
+                // ① doLock == true → ロック要求
+                // ============================================================
+                if (doLock) {
+                    string sqlLock = $@"
+                                        UPDATE ""{TblName}""
+                                        SET ""locked_by"" = @userId,
+                                            ""locked_at"" = @lockedAt
+                                        WHERE ""{IdColName}"" = @dataID
+                                          AND ""tenant_code"" = @tenantCode
+                                          AND (""locked_at"" IS NULL OR ""locked_at"" < @expiryTime);
+                                    ";
+
+                    int affected = await DBcon.ExecuteAsync(sqlLock, new {
+                                                                userId = CurrUsrID,
+                                                                lockedAt = now,
+                                                                dataID = DataID,
+                                                                tenantCode = TenantCode,
+                                                                expiryTime = expiryTime
+                                                            });
+
+                    // ---- ロック成功 ----
+                    if (affected > 0) {
+                        return new LockStatus {
+                            Exists = true,
+                            lockReqUsr = CurrUsrID,
+                            LockedByUserId = CurrUsrID,
+                            Locked_at = now,
+                            Update_at = Update_at,
+                            HasError = false,
+                            ErrorMessage = ""
+                        };
+                    }
+
+                    // ---- ロック失敗 → 現在の状態を返す ----
+                    var current = await LockedChkfromTbl();
+                    current.lockReqUsr = CurrUsrID;
+
+                    if (!current.Exists) {
+                        current.HasError = false;
+                        current.ErrorMessage = "";
+                        return current; // RecordNone
+                    }
+
+                    if (current.IsLockedForEdit) {
+                        current.HasError = true;
+                        current.ErrorMessage = "他のユーザーがロック中です。";
+                        return current; // 他人ロック
+                    }
+
+                    current.HasError = true;
+                    current.ErrorMessage = "ロック更新に失敗しました。";
+                    return current;
+                }
+
+                // ============================================================
+                // ② doLock == false → ロック解除要求
+                // ============================================================
+                string sqlUnlock = $@"
+                                        UPDATE ""{TblName}""
+                                        SET ""locked_by"" = NULL,
+                                            ""locked_at"" = NULL
+                                        WHERE ""{IdColName}"" = @dataID
+                                          AND ""tenant_code"" = @tenantCode;
+                                    ";
+
+                await DBcon.ExecuteAsync(sqlUnlock, new {
+                    dataID = DataID,
+                    tenantCode = TenantCode
+                });
+
+                return new LockStatus {
+                    Exists = true,
+                    LockedByUserId = null,
+                    Locked_at = null,
+                    Update_at = Update_at,
+                    lockReqUsr = CurrUsrID,
+                    HasError = false,
+                    ErrorMessage = ""
+                };
+            } catch (Exception ex) {
+                return new LockStatus {
+                    Exists = true,
+                    LockedByUserId = null,
+                    Locked_at = null,
+                    Update_at = Update_at,
+                    lockReqUsr = CurrUsrID,
+                    HasError = true,
+                    ErrorMessage = ex.Message
+                };
+            }
         }
-
-        // ---- 他人ロック中（編集不可） ----
-        if (currentStatus.IsLockedForEdit)
-        {
-            currentStatus.HasError = true;
-            currentStatus.ErrorMessage = "他のユーザーがロック中です。";
-            return currentStatus; // Result = LockedByOther
-        }
-
-        // ---- ここまで来たらロックできない理由は DBエラー扱い ----
-        currentStatus.HasError = true;
-        currentStatus.ErrorMessage = "ロック更新に失敗しました。";
-        return currentStatus; // Result = DbError
-    }
-    catch (Exception ex)
-    {
-        // ---- catch 時は必ず HasError をセット ----
-        lockStatus.HasError = true;
-        lockStatus.ErrorMessage = ex.Message;
-
-        // Exists が false の場合は RecordNone として扱われる
-        return lockStatus; // Result = DbError
-    }
-}
 
 
         //テーブルからロック情報を読み取って返す。ユーザー名はクライアントで取得して
-protected virtual async Task<LockStatus> LockedChkfromTbl(IDbTransaction transaction)
-{
-    var sql = $@"
-        SELECT
-            ""locked_at"",
-            ""locked_by"" AS ""UserId"",
-            ""Update_at""
-        FROM ""{TblName}""
-        WHERE ""tenant_code"" = @tenantCode
-          AND ""{IdColName}"" = @dataID;
-    ";
-
-    try
-    {
-        var result = await DBcon.QueryFirstOrDefaultAsync<dynamic>(
-            sql,
-            new { tenantCode = TenantCode, dataID = DataID },
-            transaction
-        );
-
-        // ---- レコード無し（RecordNone） ----
-        if (result == null)
+        protected virtual async Task<LockStatus> LockedChkfromTbl()
         {
-            return new LockStatus {
-                Exists = false,
-                HasError = false,
-                ErrorMessage = ""
-            };
+            var sql = $@"
+                SELECT
+                    ""locked_at"",
+                    ""locked_by"" AS ""UserId"",
+                    ""Update_at""
+                FROM ""{TblName}""
+                WHERE ""tenant_code"" = @tenantCode
+                  AND ""{IdColName}"" = @dataID;
+            ";
+
+            try
+            {
+                var result = await DBcon.QueryFirstOrDefaultAsync<dynamic>(
+                    sql,
+                    new { tenantCode = TenantCode, dataID = DataID });
+
+                // ---- レコード無し（RecordNone） ----
+                if (result == null)
+                {
+                    return new LockStatus {
+                        Exists = false,
+                        HasError = false,
+                        ErrorMessage = ""
+                    };
+                }
+
+                // ---- locked_by の GUID パース ----
+                Guid lockedByRaw = Guid.Empty;
+                if (result.UserId != null)
+                    Guid.TryParse(result.UserId.ToString(), out lockedByRaw);
+
+                // ---- LockStatus（生データ）を構築 ----
+                var lockSt = new LockStatus {
+                    Exists = true,
+                    LockedByUserId = lockedByRaw,
+                    Locked_at = (DateTime?)result.locked_at,
+                    Update_at = (DateTime?)result.Update_at,
+                    lockReqUsr = CurrUsrID,
+                    HasError = false,
+                    ErrorMessage = ""
+                };
+
+                // ---- UI世界線へ反映（rawData） ----
+                _rawData["locked_at"] = lockSt.Locked_at ?? DateTime.MinValue;
+                _rawData["locked_by"] = lockSt.LockedByUserId;
+
+                return lockSt;
+            }
+            catch (Exception ex)
+            {
+                // ---- catch 時は必ず HasError をセット ----
+                return new LockStatus {
+                    lockReqUsr = CurrUsrID,
+                    Exists = false,
+                    HasError = true,
+                    ErrorMessage = ex.Message
+                };
+            }
         }
-
-        // ---- locked_by の GUID パース ----
-        Guid lockedByRaw = Guid.Empty;
-        if (result.UserId != null)
-            Guid.TryParse(result.UserId.ToString(), out lockedByRaw);
-
-        // ---- LockStatus（生データ）を構築 ----
-        var lockSt = new LockStatus {
-            Exists = true,
-            LockedByUserId = lockedByRaw,
-            Locked_at = (DateTime?)result.locked_at,
-            Update_at = (DateTime?)result.Update_at,
-            HasError = false,
-            ErrorMessage = ""
-        };
-
-        // ---- UI世界線へ反映（rawData） ----
-        _rawData["locked_at"] = lockSt.Locked_at ?? DateTime.MinValue;
-        _rawData["locked_by"] = lockSt.LockedByUserId;
-
-        return lockSt;
-    }
-    catch (Exception ex)
-    {
-        // ---- catch 時は必ず HasError をセット ----
-        return new LockStatus {
-            Exists = false,
-            HasError = true,
-            ErrorMessage = ex.Message
-        };
-    }
-}
     }
 }

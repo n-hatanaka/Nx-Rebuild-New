@@ -21,10 +21,11 @@ using static Npgsql.EntityFrameworkCore.PostgreSQL.Query.Expressions.Internal.Pg
 namespace NxRebuild.Api.Controllers {
     //------------------------------------------------------------------------
     // ロック状態設定リクエスト用 DTO
-    public class LockStatusRequest<TKey> {
+    public class LockCommand<TKey> {
         public TKey DataId { get; set; }
-        public LockStatus LockStatus { get; set; }
+        public bool? ForceLock { get; set; }   // true=強制ロック, false=強制解除, null=通常ロック
     }
+
 
     //-------------------------------------------------------------------------
     [Authorize]//継承先のすべてのコントローラーを自動的に「ログイン必須」にする（継承先では書かなくていい）
@@ -140,8 +141,8 @@ namespace NxRebuild.Api.Controllers {
 
 
 [HttpPost("SetLockStatus")]
-public virtual async Task<IActionResult> SetLockStatus([FromBody] LockStatusRequest<TKey> req) {
-    await CreateObjMgr();
+public virtual async Task<IActionResult> SetLockStatus([FromBody] LockCommand<TKey> req) {
+    await CreateObjMgr(null);
 
     // ① 対象データ取得
     var dataObj = (IBaseDataObj<TKey>)_dataObjMgr.Get(req.DataId);
@@ -150,7 +151,7 @@ public virtual async Task<IActionResult> SetLockStatus([FromBody] LockStatusRequ
         return BadRequest($"Data not found: {req.DataId}");
 
     // ② ロック要求（セット／解除兼用）
-    var lockStatus = await dataObj.SetLockAsync(req.LockStatus);
+    var lockStatus = await dataObj.SetLockAsync();
 
     // ③ 結果返却（SetLockAsync の戻り値そのまま）
     return Ok(lockStatus);
@@ -165,7 +166,7 @@ public virtual async Task<IActionResult> Delete(
     // RecordQuery を組み立てる（対象ID世界線）
     // ================================
     var q = new RecordQuery();
-    q.TargetIds = dataLst;   // ★ IDリストを世界線にセット
+    q.TargetIds = dataLst.Cast<object>().ToList(); ;   // ★ IDリストを世界線にセット
 
     // ================================
     // ObjMgr を RecordQuery 付きで生成
@@ -188,8 +189,7 @@ public virtual async Task<IActionResult> Delete(
         dataObj.Validate(OperationType.Delete);
 
         // ③ ロック要求（冪等性保証）
-        var lockst = new LockStatus { IsLocked = true, LockedByUserId = _userID };
-        await dataObj.SetLockAsync(lockst);
+        var lockst = await dataObj.SetLockAsync();
 
         // ④ ロック確認
         if (!lockst.IsLocked || lockst.LockedByUserId != _userID) {

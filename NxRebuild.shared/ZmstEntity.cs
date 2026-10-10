@@ -28,22 +28,6 @@ namespace NxRebuild.shared {
                 return 0;
             }
         }
-        // ---------------------------------------------------------
-        // ★ 編集禁止：常に「ロックなし」を返す
-        // ---------------------------------------------------------
-        public override Task<LockStatus> DataOpen() {
-            return Task.FromResult(new LockStatus {
-                Exists = true,
-                IsLocked = false
-            });
-        }
-
-        public override Task<LockStatus> DataClose() {
-            return Task.FromResult(new LockStatus {
-                Exists = true,
-                IsLocked = false
-            });
-        }
 
 
         // ---------------------------------------------------------

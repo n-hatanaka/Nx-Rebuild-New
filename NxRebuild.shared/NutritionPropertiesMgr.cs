@@ -13,7 +13,7 @@ namespace NxRebuild.shared {
         }
 
         // DBから栄養素プロパティを取得
-        public override async Task<IEnumerable<dynamic>> LoadRecordsAsync() {
+        public override async Task<IEnumerable<dynamic>> _LoadRecordsAsync(RecordQuery? q) {
             string sql = $@"
                                 SELECT *
                                 FROM ""{_tblName}""
