@@ -342,7 +342,7 @@ namespace NxRebuild.Api.Controllers {
                 }
 
                 tran.Commit();
-
+                await obj.UpdatePropertiesFromTbl();
                 return Ok(new { NewID = obj.DataID, UpdateAt = obj.Update_at });
             }
             catch (Exception ex) {
@@ -399,8 +399,14 @@ namespace NxRebuild.Api.Controllers {
             var lockst = await dataObj.SetLockAsync();
 
             // ④ ロック確認
-            if (!lockst.IsLocked || lockst.LockedByUserId != _userID)
-                return BadRequest("Lock failed");
+            if (lockst.HasError)
+                return BadRequest(lockst.ErrorMessage);
+
+            if (!lockst.IsTimeValid)
+                return BadRequest("Lock expired");
+
+            if (!lockst.IsMine)
+                return BadRequest("Locked by another user");
 
             // ⑤ 名前変更（内部で DB 更新まで完結）
             var renamed = await dataObj.ReName(newName);
@@ -409,8 +415,10 @@ namespace NxRebuild.Api.Controllers {
             lockst = await dataObj.SetUnLockAsync();
 
             // ⑦ 結果返却
-            if (renamed)
+            if (renamed) {
+                dataObj.UpdatePropertiesFromTbl(); // DB から最新状態を反映
                 return Ok(dataObj._rawData);
+            }
 
             return BadRequest("Rename failed");
         }

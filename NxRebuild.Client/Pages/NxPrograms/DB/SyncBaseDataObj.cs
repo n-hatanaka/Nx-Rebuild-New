@@ -117,7 +117,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
         public void ApplyWorkingToRaw(Dictionary<string, object?> workingRaw) => _dataObj.ApplyWorkingToRaw(workingRaw);
 
-        public virtual async Task Updateproperties() => await _dataObj.Updateproperties();
+        public virtual async Task Updateproperties() => await _dataObj.UpdatePropertiesFromTbl();
 
         //public virtual void SetBaseDataObj(BaseDataObj<TKey> baseObj) {
         //    _dataObj = baseObj ?? throw new ArgumentNullException(nameof(baseObj));
@@ -131,8 +131,10 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             var lockStatus = await SetLockAsync();
 
             // ② UI ローカル世界線に反映
-            _rawData["locked_at"] = lockStatus.Locked_at;
-            _rawData["locked_by"] = lockStatus.LockedByUserId;
+            SetProperties(new Dictionary<string, object> {
+                { "locked_at", lockStatus.Locked_at },
+                { "locked_by", lockStatus.LockedByUserId }
+            });
 
             // ③ サーバーから返ってきた LockStatus をそのまま返す
             return lockStatus;
@@ -192,11 +194,16 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
             // ③ UI 側のローカル状態を更新（世界線整合）
             if (serverStatus.Locked_at != null)
-                _rawData["locked_at"] = serverStatus.Locked_at;
+                SetProperties(new Dictionary<string, object> {
+                                    { "locked_at", serverStatus.Locked_at }
+                                });
             else
-                _rawData["locked_at"] = null;   // ★ MinValue は使わない
-
-            _rawData["locked_by"] = serverStatus.LockedByUserId;
+                SetProperties(new Dictionary<string, object> {
+                                    { "locked_at", null }
+                                });
+            SetProperties(new Dictionary<string, object> {
+                                    { "locked_by", serverStatus.LockedByUserId }
+                                });
 
             // ④ サーバーが返した LockStatus をそのまま返す
             return serverStatus;
@@ -259,11 +266,16 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
             // ③ UI 側のローカル状態を更新（世界線整合）
             if (serverStatus.Locked_at != null)
-                _rawData["locked_at"] = serverStatus.Locked_at;
-            else
-                _rawData["locked_at"] = null;   // ★ MinValue は使わない
-
-            _rawData["locked_by"] = serverStatus.LockedByUserId;
+                SetProperties(new Dictionary<string, object> {
+                                    { "locked_at", serverStatus.Locked_at }
+                                });
+            else 
+                SetProperties(new Dictionary<string, object> {
+                                    { "locked_at", null }
+                                });
+            SetProperties(new Dictionary<string, object> {
+                                    { "locked_by", serverStatus.LockedByUserId }
+                                });
 
             // ④ サーバーが返した LockStatus をそのまま返す
             return serverStatus;
@@ -302,16 +314,16 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
             if (!string.IsNullOrEmpty(openResult.Json))
             {
-                // ★ 正本 JSON → DB に反映（世界線整合）
+                // ★ 正本 JSON → DB に反映
                 await _dataObj.JsonToTbl(openResult.Json, null);
 
-                // ★ RawData を正本で上書き（世界線整合）
-                await _dataObj.Updateproperties();
+
             }
 
             // ⑥ UI 側のローカル状態を反映
-            _rawData["locked_at"] = lockStatus.Locked_at;
-            _rawData["locked_by"] = lockStatus.LockedByUserId;
+            ReWriteLockInfoAsync(null, lockStatus.LockedByUserId, lockStatus.Locked_at);
+            // ★ RawData を正本で上書き
+            await _dataObj.UpdatePropertiesFromTbl();
 
             // ⑦ ロック成功した LockStatus を返す
             return lockStatus;
@@ -379,10 +391,12 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             // ④ ロック解除成功後に DataClose 実行
             await _dataObj.DataClose();
 
-            // ⑤ UI 側のローカル状態を反映（MinValue は使わない）
-            _rawData["locked_at"] = null;
-            _rawData["locked_by"] = null;
-
+            // ⑤ UIとDBのローカル状態を反映（MinValue は使わない）
+            _dataObj.SetProperties(new Dictionary<string, object> {
+                { "locked_at", null },
+                { "locked_by", null }
+            });
+            _dataObj.ReWriteLockInfoAsync(null, null, null);
             return lockStatus;
         }
 
@@ -452,7 +466,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             }
 
             // 7. プロパティ更新（正本世界線の反映）
-            Setproperties(updatedRaw);
+            SetProperties(updatedRaw);
 
             // 8. 世界線を閉じる
             transaction.Commit();
@@ -482,7 +496,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                 DBcon.Execute(sql, raw, transaction);
 
                 //4.　このオブジェクトのプロパティも更新する。これをやらないと、UI側の表示が変わらない。
-                Setproperties(raw);
+                SetProperties(raw);
 
                 return true;
             } catch {
@@ -490,10 +504,12 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             }
         }
 
+        public virtual async Task UpdatePropertiesFromTbl()
+                                    => await _dataObj.UpdatePropertiesFromTbl();
 
-        public void Setproperties(Dictionary<string, object> record) {
-            _dataObj.Setproperties(record);
-        }
+        public void SetProperties(IDictionary<string, object> record) 
+                                    => _dataObj.SetProperties(record);
+        
 
         public virtual NxValidationResult Validate(OperationType op, object? arg = null)
                                                 => _dataObj.Validate(op, arg);

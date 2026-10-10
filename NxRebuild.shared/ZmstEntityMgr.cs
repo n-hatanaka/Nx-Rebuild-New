@@ -144,7 +144,7 @@ namespace NxRebuild.shared {
                     cat.DBcon = DBcon;
                     cat.TenantCode = TenantCode;
                     cat.CurrUsrID = CurrentUserID;
-                    cat.Setproperties(row);
+                    cat.SetProperties(row);
 
                     _dataList.Add(cat);
                 }
@@ -172,7 +172,7 @@ namespace NxRebuild.shared {
                     cat.DBcon = DBcon;
                     cat.TenantCode = TenantCode;
                     cat.CurrUsrID = CurrentUserID;
-                    cat.Setproperties(row);
+                    cat.SetProperties(row);
 
                     _dataList.Add(cat);
                 }
@@ -193,7 +193,7 @@ namespace NxRebuild.shared {
                         DataType = this.DataType
                     };
 
-                    obj.Setproperties(dict);
+                    obj.SetProperties(dict);
 
                     await obj.LoadSubTablesFromRaw();
 

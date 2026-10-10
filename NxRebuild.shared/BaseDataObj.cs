@@ -81,6 +81,7 @@ namespace NxRebuild.shared {
         string W_TblName { get;  }
         string Ws_TblName { get;  }
         NxLocationKind LocationKind { get; }
+        void SetProperties(IDictionary<string, object> record);
         void CreateWorkingMemory(Dictionary<string, object?> workingRaw);
         void CreateWorkingSubTables(List<List<Dictionary<string, object?>>> workingSubList);
         Task<LockStatus> DataOpen();
@@ -99,12 +100,15 @@ namespace NxRebuild.shared {
         Task<LockStatus> ReWriteLockInfoAsync(IDbTransaction tran,
                                                 Guid? Locked_by,
                                                 DateTime? Locked_at);
-    }
+        Task UpdatePropertiesFromTbl();
+
+        }
 
 
-    public abstract class BaseDataObj<TKey> : IBaseDataObj<TKey> {
+        public abstract class BaseDataObj<TKey> : IBaseDataObj<TKey> {
 
-        // 【変更】レコード内容をJSON（辞書）として保持するメンバ
+        // レコード内容をJSON（辞書）として保持するメンバ
+        //　直接アクセスせずSetProperties()を通してセットすること
         public Dictionary<string, object> _rawData = new();
 
         protected string _nameColName; //テーブルのデータ名カラムのカラム名
@@ -163,14 +167,14 @@ namespace NxRebuild.shared {
                 ? (v is Guid g ? g : Guid.Parse(v.ToString()!))
                 : Guid.Empty;
 
-            set => _rawData["tenant_code"] = value;   
+            set => SetProperties(new Dictionary<string, object> { ["tenant_code"] = value });   
         }
 
         
 
         public TKey DataID {
             get => (TKey)_rawData[_idColName];
-            set => _rawData[_idColName] = value;
+            set => SetProperties(new Dictionary<string, object> { [_idColName] = value });
         }
 
         public string DataName {
@@ -196,7 +200,7 @@ namespace NxRebuild.shared {
                     return;
 
                 // 親ID列がある → 通常処理
-                _rawData[_parentIDColName] = value;
+                SetProperties(new Dictionary<string, object> { [_parentIDColName] = value });
             }
         }
 
@@ -352,11 +356,11 @@ namespace NxRebuild.shared {
         //}
 
         public virtual void SetAsRoot(string RootName, NxDataType DataType = NxDataType.root) {
-            _rawData[_nameColName] = RootName;
+            SetProperties(new Dictionary<string, object> { [_nameColName] = RootName });
             _datatype = DataType;
         }
 
-        public virtual void Setproperties(IDictionary<string, object> record)
+        public virtual void SetProperties(IDictionary<string, object> record)
         {
             // ---------------------------------------------------------
             // ★ NxTypeMapper による「型の正本化」
@@ -525,7 +529,7 @@ namespace NxRebuild.shared {
             IDbTransaction transaction = DBcon.BeginTransaction();
             if (await ReNameQueryExec(newName, transaction)) {
                 transaction.Commit();
-                await Updateproperties();
+                await UpdatePropertiesFromTbl();
                 return true;
             }
             transaction.Rollback();
@@ -561,8 +565,8 @@ namespace NxRebuild.shared {
             }
         }
 
-
-        public virtual async Task Updateproperties() {
+        // データベースから最新のプロパティを取得して _rawData に反映する
+        public virtual async Task UpdatePropertiesFromTbl() {
             try {
                 string sql = $@"
                                 SELECT *
@@ -583,7 +587,7 @@ namespace NxRebuild.shared {
 
                     var normalized = NxTypeMapper.ConvertRow(_tblName, dict);
 
-                    Setproperties(normalized);
+                    SetProperties(normalized);
                 } else {
                     Console.WriteLine($"[Nx] Updateproperties: レコードなし {_tblName} DataID={DataID}");
                 }
@@ -761,8 +765,10 @@ namespace NxRebuild.shared {
 
             var nowupdate_at = result.Locked_at ?? DateTime.MinValue;
             // UIへの反映
-            _rawData["locked_at"] = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.ffffffZ");
-            _rawData["locked_by"] = result.LockedByUserId;
+            SetProperties(new Dictionary<string, object> {
+                ["locked_at"] = DateTime.UtcNow,
+                ["locked_by"] = result.LockedByUserId
+            });
 
             return result;
         }
@@ -791,12 +797,17 @@ namespace NxRebuild.shared {
                 };
 
                 // DBのロック情報を反映するためにプロパティ更新
-                Updateproperties();
+                SetProperties(new Dictionary<string, object> {
+                    ["locked_at"] = result.Locked_at,
+                    ["locked_by"] = result.LockedByUserId
+                });
             }
 
-            // ---- UIへの反映（世界線整合） ----
-            _rawData["locked_at"] = result.Locked_at?.ToString("yyyy-MM-ddTHH:mm:ss.ffffffZ");
-            _rawData["locked_by"] = result.LockedByUserId;
+            // ---- UIへの反映（整合） ----
+            SetProperties(new Dictionary<string, object> {
+                ["locked_at"] = result.Locked_at,
+                ["locked_by"] = result.LockedByUserId
+            });
 
             return result;
         }
@@ -951,8 +962,10 @@ namespace NxRebuild.shared {
                 };
 
                 // ---- UI世界線へ反映（rawData） ----
-                _rawData["locked_at"] = lockSt.Locked_at ?? DateTime.MinValue;
-                _rawData["locked_by"] = lockSt.LockedByUserId;
+                SetProperties(new Dictionary<string, object> {
+                    ["locked_at"] = lockSt.Locked_at ?? DateTime.MinValue,
+                    ["locked_by"] = lockSt.LockedByUserId
+                });
 
                 return lockSt;
             }

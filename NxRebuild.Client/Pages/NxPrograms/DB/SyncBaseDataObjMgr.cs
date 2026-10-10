@@ -91,7 +91,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                 syncObj.CurrUsrID = CurrentUserID;
 
                 // BaseDataObjの rawData をコピー
-                syncObj.Setproperties(((TBase)baseObj)._rawData);
+                syncObj.SetProperties(((TBase)baseObj)._rawData);
 
                 syncList.Add(syncObj);
             }

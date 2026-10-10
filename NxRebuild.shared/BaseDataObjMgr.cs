@@ -422,7 +422,7 @@ namespace NxRebuild.shared {
             root.SelfObjMgr = this;
 
             // ルートは物理レコードを持たないので空スキーマでよい
-            root.Setproperties(GetEmptySchema());
+            root.SetProperties(GetEmptySchema());
 
             root.TenantCode = TenantCode;
             root.CurrUsrID = CurrentUserID;
@@ -451,7 +451,7 @@ namespace NxRebuild.shared {
             var dataObj = new T();
             dataObj.DBcon = DBcon;
             dataObj.SelfObjMgr = this;
-            dataObj.Setproperties(GetEmptySchema());
+            dataObj.SetProperties(GetEmptySchema());
 
             // UI から渡された親IDだけセット
             dataObj.ParentID = parentID;
@@ -579,7 +579,7 @@ namespace NxRebuild.shared {
                 T obj = new T();
                 obj.DBcon = DBcon;
                 obj.SelfObjMgr = this;
-                obj.Setproperties((IDictionary<string, object>)record);
+                obj.SetProperties((IDictionary<string, object>)record);
                 obj.TenantCode = TenantCode;
                 obj.CurrUsrID = CurrentUserID;
 
