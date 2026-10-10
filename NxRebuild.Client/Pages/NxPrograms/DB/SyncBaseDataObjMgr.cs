@@ -71,10 +71,10 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
 
         // データベースからデータを取得する（クライアント・サーバー共用）
-        public virtual async Task Initialize() {
+        public virtual async Task Initialize(RecordQuery q) {
 
             // BaseDataObjでプロパティをロード
-            await _baseDataObjMgr.Initialize();
+            await _baseDataObjMgr.Initialize(q);
 
             // ★ Sync 用の新しいリストを作る
             var syncList = new List<IBaseDataObj<TKey>>();

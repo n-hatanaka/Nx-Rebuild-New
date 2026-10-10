@@ -335,6 +335,7 @@ namespace NxRebuild.shared {
     public abstract class BaseDataObjMgr<T, TKey> : IBaseDataObjMgr<T, TKey> , IsrvBaseDataObjMgr<T, TKey> where T : BaseDataObj<TKey>, new() {
 
         protected string _tblName;　
+        protected string _idColName;
         protected string _s_tblName;
         protected string _infoTbl;
 
@@ -512,8 +513,6 @@ namespace NxRebuild.shared {
         }
 
 
-
-
         //RecordQueryをもとにSQLを組み立てる
         public virtual string _BuildSql(RecordQuery? q) {
             var sql = new List<string>();
@@ -527,6 +526,9 @@ namespace NxRebuild.shared {
             if (q == null)
                 return string.Join(" ", sql);
 
+            var where = new List<string>();
+
+
             if (q.TargetIds.Count > 0) {
                 var idParams = q.TargetIds
                     .Select((id, idx) => $"@id{idx}")
@@ -535,9 +537,6 @@ namespace NxRebuild.shared {
                 where.Add($"{_idColName} IN ({string.Join(", ", idParams)})");
             }
 
-
-
-            var where = new List<string>();
 
             // AND 条件
             foreach (var c in q.And)

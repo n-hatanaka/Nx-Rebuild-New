@@ -21,7 +21,8 @@ namespace NxRebuild.Api.Controllers {
     [ApiController]
     [Route("Zmst")]
     public class ZmstController : NxDataController<ZmstEntity, int> {
-        protected override async Task CreateObjMgr() {
+        protected override async Task CreateObjMgr(RecordQuery q) {
+
             await SetUserInfo();
 
             EnsureConnection(); // _db を初期化（NxDataController側で定義）
@@ -37,13 +38,12 @@ namespace NxRebuild.Api.Controllers {
             // API初期化（共通化済み）
             await InitializeNxApi();
 
-            await SetUserInfo(); // ユーザー情報を設定（_userID, _tenantCode, _userName）
 
             // DataObjMgr を生成
             _dataObjMgr = new ZmstEntityMgr(_db, _tenantCode, uid);
             
             // DataObjMgr の初期化
-            await _dataObjMgr.Initialize();
+            await _dataObjMgr.Initialize(q);
 
             await Task.CompletedTask;
         }

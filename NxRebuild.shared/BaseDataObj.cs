@@ -96,6 +96,9 @@ namespace NxRebuild.shared {
         NxValidationResult Validate(OperationType op, object? arg = null);
         Task<LockStatus> SetLockAsync(); 
         Task<LockStatus> SetUnLockAsync();
+        Task<LockStatus> ReWriteLockInfoAsync(IDbTransaction tran,
+                                                Guid? Locked_by,
+                                                DateTime? Locked_at);
     }
 
 
@@ -744,11 +747,11 @@ namespace NxRebuild.shared {
 
         public virtual async Task<LockStatus> SetLockAsync() {
 
-            return await _SetLockStatusAsync(true);
+            return await WriteLockInfoAsync(true);
         }
         public virtual async Task<LockStatus> SetUnLockAsync() {
 
-            return await _SetLockStatusAsync(false);
+            return await WriteLockInfoAsync(false);
         }
         // =======================================================
         //データロック状態設定メソッド。
@@ -756,15 +759,53 @@ namespace NxRebuild.shared {
         protected virtual async Task<LockStatus> SetLockStatusAsync(bool doLock) {
             var result = await WriteLockInfoAsync(doLock);
 
-            // UI 世界線への反映
-            _rawData["locked_at"] = result.Locked_at ?? DateTime.MinValue;
+            var nowupdate_at = result.Locked_at ?? DateTime.MinValue;
+            // UIへの反映
+            _rawData["locked_at"] = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.ffffffZ");
+            _rawData["locked_by"] = result.LockedByUserId;
+
+            return result;
+        }
+
+        // ロック状態をDBに反映する
+        // 保存時以外に呼んではいけない。
+        public virtual async Task<LockStatus> ReWriteLockInfoAsync(
+                                                        IDbTransaction tran,
+                                                        Guid? Locked_by,
+                                                        DateTime? Locked_at) {
+            LockStatus result;
+
+            // ---- ロック情報が無い場合（ロック延命） ----
+            if (Locked_by == null || Locked_at == null) {
+                result = await WriteLockInfoAsync(true, tran);
+            } else {
+                // ---- ロック情報が既にある場合（ロック延命はしない） ----
+                result = new LockStatus {
+                    Exists = true,
+                    lockReqUsr = CurrUsrID,
+                    LockedByUserId = Locked_by,
+                    Locked_at = Locked_at,
+                    Update_at = Update_at,
+                    HasError = false,
+                    ErrorMessage = ""
+                };
+
+                // DBのロック情報を反映するためにプロパティ更新
+                Updateproperties();
+            }
+
+            // ---- UIへの反映（世界線整合） ----
+            _rawData["locked_at"] = result.Locked_at?.ToString("yyyy-MM-ddTHH:mm:ss.ffffffZ");
             _rawData["locked_by"] = result.LockedByUserId;
 
             return result;
         }
 
 
-        protected virtual async Task<LockStatus> WriteLockInfoAsync(bool doLock) {
+
+        //保存中にロック状態を更新する必要があるのでトランザクションを渡すが、基本は渡さない
+        //また通常は呼び出してはいけない
+        protected virtual async Task<LockStatus> WriteLockInfoAsync(bool doLock, IDbTransaction? tran = null) {
             // 時刻は必ず1回だけ取得
             var now = DateTime.UtcNow;
             var expiryTime = now.AddMinutes(-10);
@@ -789,7 +830,7 @@ namespace NxRebuild.shared {
                                                                 dataID = DataID,
                                                                 tenantCode = TenantCode,
                                                                 expiryTime = expiryTime
-                                                            });
+                                                            }, transaction: tran);
 
                     // ---- ロック成功 ----
                     if (affected > 0) {
@@ -839,7 +880,7 @@ namespace NxRebuild.shared {
                 await DBcon.ExecuteAsync(sqlUnlock, new {
                     dataID = DataID,
                     tenantCode = TenantCode
-                });
+                }, transaction: tran);
 
                 return new LockStatus {
                     Exists = true,

@@ -25,11 +25,10 @@ namespace NxRebuild.Api.Controllers {
             : base(config, userManager, schemaProvider) {
             _tblName = "ColName";
             _nameColName = "Name";
-            _idColName = "No";
 
 
         }
-        protected override async Task CreateObjMgr()
+        protected override async Task CreateObjMgr(RecordQuery query)
         {
             await SetUserInfo();
 
@@ -50,7 +49,7 @@ namespace NxRebuild.Api.Controllers {
             _dataObjMgr = new NutritionPropertiesMgr(_db, _tenantCode, uid);
         
             // DataObjMgr の初期化
-            await _dataObjMgr.Initialize();
+            await _dataObjMgr.Initialize(query);
         
             await Task.CompletedTask;
         }
@@ -58,7 +57,10 @@ namespace NxRebuild.Api.Controllers {
         [HttpPost("Visible/{dataId}/{newVal}")]
         public async Task<IActionResult> VisibleChg(int dataId, bool newVal)
         {
-            await CreateObjMgr();
+            var q = new RecordQuery();
+            q.TargetIds = new List<object> { dataId };
+            await CreateObjMgr(q);
+
             var mgr = _dataObjMgr as NutritionPropertiesMgr;
         
             var target = (mgr.DataList.FirstOrDefault(x => x.DataID == dataId) as NutritionProperty);
@@ -84,7 +86,7 @@ namespace NxRebuild.Api.Controllers {
         [HttpGet("sync")]
         public async Task<IActionResult> SyncAll() {
             // DataObjMgr を生成
-            await CreateObjMgr();
+            await CreateObjMgr(null);
             var mgr = _dataObjMgr;
 
             var resultList = new List<object>();
