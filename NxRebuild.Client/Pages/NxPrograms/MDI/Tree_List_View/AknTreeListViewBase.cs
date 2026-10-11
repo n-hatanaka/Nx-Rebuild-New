@@ -134,8 +134,8 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
             item.Name = item.EditingName;
 
             // ★ DataMgr に反映（DB更新）
-            if (item.ItemData is BaseDataObj<TKey> baseObj) {
-                var ok = await baseObj.ReName(item.EditingName);
+            if (item.ItemData is IBaseDataObj<TKey> baseObj) {
+                var ok = await baseObj.ReNameAsync(item.EditingName);
 
                 if (!ok) {
                     // 失敗したら元に戻す
@@ -332,7 +332,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
         /// 削除（選択行を削除）
         /// </summary>
         public virtual async Task DeleteSelectedItemAsync() {
-            if (DataMgr == null || SelectedFolder == null)
+            if (DataMgr == null)
                 return;
 
             // 選択行を取得
@@ -340,10 +340,11 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
             var item = GridDataItems.FirstOrDefault(x => x.IsSelected);
             if (item == null) return;
 
-            if (item.ItemData is TObj obj) {
+            if (item.ItemData is IBaseDataObj<TKey> obj) {
 
                 // 1件削除 → リストにして渡す
-                var failed = await DataMgr.DeleteData(new[] { obj.DataID });
+                var failed = await DataMgr.DeleteData(new List<TKey> { obj.DataID });
+
 
                 // 失敗した ID があればログ
                 if (failed.Count > 0)

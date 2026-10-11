@@ -1,3 +1,21 @@
+# NxTypeMapper Specification Update (2026-10)
+
+## ■ Change Summary
+A new method, **`HasColumn(table, column)`**, has been added to NxTypeMapper.  
+This method determines whether a specified column exists within the given table in the type map.
+
+## ■ Reason for the Change
+To support partial updates of `rawData`, it is necessary to update only columns that actually exist in the type map.  
+This method enables safe filtering of incoming data by checking column existence before applying updates.
+
+## ■ Effects
+- Allows safe partial updates even when only a subset of columns is provided  
+- Automatically excludes non‑existent columns  
+- Prevents corruption of `rawData`  
+
+## ■ Usage
+To enable partial update processing within `BaseDataObj.SetProperties()`.
+
 # NxTypeMapper Bug Fix (Guid / DateTime / Integer Type Handling) — 2026-10
 
 ## ■ Issue

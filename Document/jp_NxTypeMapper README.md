@@ -1,3 +1,21 @@
+# NxTypeMapper 仕様変更（2026-10）
+
+## ■ 変更内容
+NxTypeMapper に、  
+**引数で渡されたテーブル名に指定カラムが存在するかを返すメソッド**  
+`HasColumn(table, column)` を追加した。
+
+## ■ 変更理由
+rawDataの部分更新を行えるようにするため、型マップに存在するカラムだけを安全に更新できるようにする目的でこのメソッドを追加した。
+
+## ■ 効果
+- rawData 全カラム中 一部カラムだけ来ても安全に部分更新できる  
+- 存在しないカラムを自動で除外できる  
+- rawData が壊れない  
+
+## ■ 使用箇所
+BaseDataObj.SetProperties() の部分更新処理を可能にするため。
+
 # NxTypeMapper 不具合修正（Guid  DateTime / Integer 未対応）— 2026-10
 
 ## ■ 不具合内容

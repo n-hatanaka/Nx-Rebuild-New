@@ -33,7 +33,7 @@ namespace NxRebuild.shared {
         // ---------------------------------------------------------
         // ★ 名前変更禁止：常に false
         // ---------------------------------------------------------
-        public override Task<bool> ReName(string newName) {
+        public override Task<bool> ReNameAsync(string newName) {
             return Task.FromResult(false);
         }
 
@@ -51,14 +51,14 @@ namespace NxRebuild.shared {
         // ---------------------------------------------------------
         // ★ 削除禁止：常に false
         // ---------------------------------------------------------
-        public override Task<bool> DeleteQueryExec(IDbTransaction tran) {          
+        public override Task<bool> _DeleteQueryExecAsync(IDbTransaction tran) {          
             return Task.FromResult(false);
         }
 
         // ---------------------------------------------------------
         // ★ 論理削除禁止：常に false
         // ---------------------------------------------------------
-        public override Task<bool> SoftDeleteQueryExec(IDbTransaction tran) {
+        public override Task<bool> _SoftDeleteQueryExecAsync(IDbTransaction tran) {
             return Task.FromResult(false);
         }
 
@@ -203,7 +203,7 @@ namespace NxRebuild.shared {
         // 物理削除（保存前に既存レコードの削除の為のみに使う）
         // Zmstもtam_mも削除してはいけない
         // ---------------------------------------------------------
-        public override async Task<bool> DeleteQueryExec(IDbTransaction transaction)
+        public override async Task<bool> _DeleteQueryExecAsync(IDbTransaction transaction)
         {
             try
             {
@@ -248,7 +248,7 @@ namespace NxRebuild.shared {
         // ---------------------------------------------------------
         // ソフトデリート（Zmst のみ）単位マスタは消してはいけないので放置
         // ---------------------------------------------------------
-        public override async Task<bool> SoftDeleteQueryExec(IDbTransaction transaction) {
+        public override async Task<bool> _SoftDeleteQueryExecAsync(IDbTransaction transaction) {
             try {
 
                 var updateAt = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.ffffffZ");

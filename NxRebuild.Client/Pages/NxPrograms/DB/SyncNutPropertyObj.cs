@@ -32,7 +32,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
         // --- 読み取り専用（栄養素として扱うか） ---
         public bool Nutrition => NP.Nutrition;
-        public override async Task<bool> ReName(string newName) {
+        public override async Task<bool> ReNameAsync(string newName) {
             //リネームは行わないので無効化
             throw new NotImplementedException();
         }
@@ -72,9 +72,9 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             using (var transaction = DBcon.BeginTransaction()) {
                 try {
                     // サーバーからメタデータを受け取りクライアントのテーブルを更新
-                    if (UpdateRawData(updatedRaw, transaction)) {
+                    if (UpdateRawDataToTbl(updatedRaw, transaction)) {
                         // 保持しているプロパティも更新
-                        Setproperties(updatedRaw);
+                        _SetProperties(updatedRaw);
                     } else {
                         transaction.Rollback();
                         return false;

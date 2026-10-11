@@ -44,7 +44,7 @@ namespace NxRebuild.shared
             set
             {
                 _rawData["Visible"] = value;
-                // プロパティ側も同期したいならここで SetProperties 呼んでもよい
+                // プロパティ側も同期したいならここで _SetProperties 呼んでもよい
             }
         }
        public bool Nutrition
@@ -66,24 +66,24 @@ namespace NxRebuild.shared
                           );
         }
     
-        public override async Task<LockStatus> DataOpen()
+        public override async Task<LockStatus> DataOpenAsync()
         {
             throw new NotImplementedException();
         }
 
 
-        public override async Task<LockStatus> DataClose() {
+        public override async Task<LockStatus> DataCloseAsync() {
             throw new NotImplementedException();
         }
 
-        public override async Task<bool> DeleteQueryExec(IDbTransaction transaction)
+        public override async Task<bool> _DeleteQueryExecAsync(IDbTransaction transaction)
         {
             // No-op: 同期時にクライアント側で削除処理を行わない設計のため、何もしないで成功を返す
             await Task.CompletedTask;
             return true;
         }
     
-        public override async Task<bool> SoftDeleteQueryExec(IDbTransaction transaction)
+        public override async Task<bool> _SoftDeleteQueryExecAsync(IDbTransaction transaction)
         {
             // No-op: ソフトデリートを使わないので何もしないで成功を返す
             await Task.CompletedTask;

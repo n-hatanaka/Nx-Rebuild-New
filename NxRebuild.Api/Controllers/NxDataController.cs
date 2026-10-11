@@ -10,6 +10,7 @@ using NxRebuild.Api.Schema;
 using NxRebuild.shared;
 using System.Data;
 using System.Diagnostics.Contracts;
+using System.Net.Sockets;
 using System.Text.Json;
 using static Npgsql.EntityFrameworkCore.PostgreSQL.Query.Expressions.Internal.PgTableValuedFunctionExpression;
 
@@ -76,7 +77,7 @@ namespace NxRebuild.Api.Controllers {
         }
 
         //Httpエンドポイントで必ず呼び出す事。
-        protected abstract Task CreateObjMgr(RecordQuery query);
+        protected abstract Task CreateObjMgrAsync(RecordQuery query);
         // { 派生先での実装例（_dataObjMgr の型は派生先に合わせて変更すること）
         //   ※ ほぼコピペで使えるが、各コントローラ固有の ObjMgr を new する点だけ注意
         //     // ★ユーザー情報を取得（JWT の tenant_code を含む）
@@ -110,7 +111,7 @@ namespace NxRebuild.Api.Controllers {
             });
 
             // DataObjMgr を生成
-            await CreateObjMgr(q); 
+            await CreateObjMgrAsync(q); 
             var mgr = _dataObjMgr;
         
             var resultList = new List<object>();
@@ -143,18 +144,22 @@ namespace NxRebuild.Api.Controllers {
             var q = new RecordQuery();
             q.TargetIds = new List<object> { req.DataId };
 
-            await CreateObjMgr(q);
+            await CreateObjMgrAsync(q);
 
             // ① 対象データ取得
-            var dataObj = (IBaseDataObj<TKey>)_dataObjMgr.Get(req.DataId);
+            var dataObj = (BaseDataObj<TKey>)_dataObjMgr.Get(req.DataId);
 
             if (dataObj == null)
                 return BadRequest($"Data not found: {req.DataId}");
 
-            // ② ロック要求（セット／解除兼用）
-            var lockStatus = await dataObj.SetLockAsync();
+            // ② ロック要求（セット）
+            LockStatus lockStatus;
+            if (req.doLock)
+                lockStatus = await dataObj._SetLockAsync();
+            else
+                lockStatus = await dataObj._SetUnLockAsync();
 
-            // ③ 結果返却（SetLockAsync の戻り値そのまま）
+            // ③ 結果返却（_SetLockAsync の戻り値そのまま）
             return Ok(lockStatus);
         }
 
@@ -163,70 +168,55 @@ namespace NxRebuild.Api.Controllers {
             [FromBody] List<TKey> dataLst,
             [FromQuery] bool softDelete = false
         ) {
-            // ================================
-            // RecordQuery を組み立てる（対象ID世界線）
-            // ================================
             var q = new RecordQuery();
             q.TargetIds = dataLst.Cast<object>().ToList(); ;   // ★ IDリストを世界線にセット
 
-            // ================================
-            // ObjMgr を RecordQuery 付きで生成
-            // ================================
-            await CreateObjMgr(q);
+            await CreateObjMgrAsync(q);
 
             var failedIds = new List<TKey>();
 
             foreach (var dataId in dataLst) {
 
-                // ① DataObj を取得
-                var dataObj = _dataObjMgr.Get(dataId);
+                //  DataObj を取得
+                var dataObj = (BaseDataObj<TKey>)_dataObjMgr.Get(dataId);
 
                 if (dataObj == null) {
                     failedIds.Add(dataId);
                     continue;
                 }
 
-                // ② Validate（世界線の入口）
-                dataObj.Validate(OperationType.Delete);
+                //  _Validate（世界線の入口）
+                dataObj._Validate(OperationType.Delete);
 
-                // ③ ロック要求（冪等性保証）
-                var lockst = await dataObj.SetLockAsync();
+                //  ロック要求（冪等性保証）
+                var lockst = await dataObj._SetLockAsync();
 
-                // ④ ロック確認
-                if (!lockst.IsLocked || lockst.LockedByUserId != _userID) {
+                //　ロック確認
+                if (!lockst.CanEdit || lockst.Result != LockResult.Success) {
                     failedIds.Add(dataId);
                     continue;
                 }
 
-                // ⑤ 削除処理（ソフト／物理）
-                var transaction = _db.BeginTransaction();
-
-                bool result =
+                var failedList = await _dataObjMgr.DeleteData(
+                    new List<TKey> { dataObj.DataID },
                     softDelete
-                        ? await ((BaseDataObj<TKey>)dataObj).SoftDeleteQueryExec(transaction)
-                        : await ((BaseDataObj<TKey>)dataObj).DeleteQueryExec(transaction);
+                );
+
+                // 削除成功かどうか
+                bool result = failedList.Count == 0;
 
                 if (!result) {
-                    transaction.Rollback();
+                    // ロック解除（失敗時は必ず）
+                    await dataObj._SetUnLockAsync();
 
-                    // ⑥ ロック解除（失敗時も必ず）
-                    await dataObj.SetUnLockAsync();
-
-                    failedIds.Add(dataId);
+                    failedIds.Add(dataObj.DataID);
                     continue;
                 }
 
-                // ⑦ 削除成功
-                transaction.Commit();
-
-                // DataList から削除
-                _dataObjMgr.RemoveFromList((BaseDataObj<TKey>)dataObj);
-
-                // ⑧ ロック解除（正常系でも必ず）
-                await dataObj.SetUnLockAsync();
+                // 削除成功したらレコードは存在しないかソフトデリートでもロック解除は必要ない
             }
 
-            // ⑨ 結果返却
+            // 結果返却
             return Ok(failedIds);
         }
 
@@ -236,28 +226,28 @@ namespace NxRebuild.Api.Controllers {
             var q = new RecordQuery();
             q.TargetIds = new List<object> { dataId ?? default };
 
-            await CreateObjMgr(q);
+            await CreateObjMgrAsync(q);
             // ① 正本世界線のロック状態を取得
-            var DataObj = _dataObjMgr.Get(dataId);
-            var lockSt = await DataObj.SetLockAsync();
-    
+            var DataObj = (BaseDataObj<TKey>)_dataObjMgr.Get(dataId);
+            var lockst = await DataObj._SetLockAsync();
+
              // ② レコード無し（RecordNone）なら新規扱い
-            if (!lockSt.Exists)
+            if (!lockst.Exists)
             {
                 return new DataOpenResult {
                     HasError = false,
-                    LockStatus = lockSt,
+                    LockStatus = lockst,
                     Json = null
                 };
             }
 
             // ③ 編集不可（他人ロック）なら JSON は返さない
-            if (!lockSt.CanEdit || lockSt.HasError)
+            if ((!lockst.CanEdit || lockst.Result != LockResult.Success))
             {
                 return new DataOpenResult {
-                    HasError = lockSt.HasError,
-                    ErrorMessage = lockSt.ErrorMessage,
-                    LockStatus = lockSt,
+                    HasError = lockst.HasError,
+                    ErrorMessage = lockst.ErrorMessage,
+                    LockStatus = lockst,
                     Json = null
                 };
             }
@@ -269,7 +259,7 @@ namespace NxRebuild.Api.Controllers {
 
             return new DataOpenResult {
                 HasError = false,
-                LockStatus = lockSt,
+                LockStatus = lockst,
                 Json = json
             };
         }
@@ -280,18 +270,19 @@ namespace NxRebuild.Api.Controllers {
             var q = new RecordQuery();
             q.TargetIds = new List<object> { dataId ?? default };
 
-            await _dataObjMgr.Initialize(q);
+            await CreateObjMgrAsync(q);
 
             // 既存 or 新規オブジェクト取得
-            var obj = _dataObjMgr.Get(dataId)
-                      ?? _dataObjMgr.CreateNewDataObj(default);
+            var obj = (BaseDataObj<TKey>)(_dataObjMgr.Get(dataId)
+                      ?? _dataObjMgr.CreateNewDataObj(default));
 
-            // ★ Validate を最初に必ず通す
-            obj.Validate(OperationType.Save);
+            // ★ _Validate を最初に必ず通す
+            obj._Validate(OperationType.Save);
 
-            var lockinfo = await obj.SetLockAsync();
-            if (!lockinfo.IsLocked || lockinfo.LockedByUserId != _userID)
+            var lockst = await obj._SetLockAsync();
+            if (!lockst.CanEdit || lockst.Result != LockResult.Success) {
                 return BadRequest("Lock failed");
+            }
 
             using var tran = _db.BeginTransaction();
 
@@ -327,13 +318,13 @@ namespace NxRebuild.Api.Controllers {
                 SaveJson = JsonSerializer.Serialize(workingRaw);
 
                 // ★ 保存処理へ
-                if (!await obj.JsonToTbl(SaveJson, tran)) {
+                if (!await obj.JsonToTblAsync(SaveJson, tran)) {
                     tran.Rollback();
                     return BadRequest("JsonToTbl failed");
                 }
 
                 // ★ ロック情報が JSON で更新されてしまうので再設定
-                 await obj.ReWriteLockInfoAsync(tran, obj.CurrUsrID, DateTime.UtcNow);
+                 await obj._ReWriteLockInfoAsync(tran, obj.CurrUsrID, DateTime.UtcNow);
 
                 // ★ テーブル書き込み後フック
                 if (!await AfterSaveProcess(obj, workingRaw, tran)) {
@@ -342,7 +333,7 @@ namespace NxRebuild.Api.Controllers {
                 }
 
                 tran.Commit();
-                await obj.UpdatePropertiesFromTbl();
+                await obj._UpdatePropertiesFromTblAsync();
                 return Ok(new { NewID = obj.DataID, UpdateAt = obj.Update_at });
             }
             catch (Exception ex) {
@@ -379,24 +370,23 @@ namespace NxRebuild.Api.Controllers {
 
 
         [HttpPost("ReName/{dataId}/{newName}")]
-        public virtual async Task<IActionResult> Rename(TKey dataId, string newName)
+        public virtual async Task<IActionResult> ReName(TKey dataId, string newName)
         {
             var q = new RecordQuery();
             q.TargetIds = new List<object> { dataId };
-            await CreateObjMgr(q);
+            await CreateObjMgrAsync(q);
 
             // ① DataObj を取得
-            var dataObj = _dataObjMgr.DataList
-                .FirstOrDefault(d => d.DataID.Equals(dataId)) as BaseDataObj<TKey>;
+            var dataObj = (BaseDataObj<TKey>)_dataObjMgr.Get(dataId);
 
             if (dataObj == null)
                 return BadRequest("Data not found");
 
             // ② ローカルバリデーション（UI側と同型）
-            dataObj.Validate(OperationType.Rename);
+            dataObj._Validate(OperationType.Rename);
 
             // ③ ロック要求（冪等性保証）    
-            var lockst = await dataObj.SetLockAsync();
+            var lockst = await dataObj._SetLockAsync();
 
             // ④ ロック確認
             if (lockst.HasError)
@@ -409,14 +399,14 @@ namespace NxRebuild.Api.Controllers {
                 return BadRequest("Locked by another user");
 
             // ⑤ 名前変更（内部で DB 更新まで完結）
-            var renamed = await dataObj.ReName(newName);
+            var renamed = await dataObj.ReNameAsync(newName);
 
             // ⑥ ロック解除（成功/失敗に関わらず必ず）
-            lockst = await dataObj.SetUnLockAsync();
+            lockst = await dataObj._SetUnLockAsync();
 
             // ⑦ 結果返却
             if (renamed) {
-                dataObj.UpdatePropertiesFromTbl(); // DB から最新状態を反映
+                await dataObj._UpdatePropertiesFromTblAsync(); // DB から最新状態を反映
                 return Ok(dataObj._rawData);
             }
 

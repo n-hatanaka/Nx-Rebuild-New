@@ -7,7 +7,7 @@ namespace NxRebuild.shared {
     // ロック状態設定リクエスト用 DTO(APIで使用）
     public class LockCommand<TKey> {
         public TKey DataId { get; set; }
-        public bool? doLock { get; set; }   // true=ロック, false=アンロック
+        public bool doLock { get; set; } = false;   // true=ロック, false=アンロック
     }
 
     public enum LockResult {

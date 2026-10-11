@@ -11,7 +11,7 @@ using System.Threading.Tasks;
 namespace NxRebuild.Client.Pages.NxPrograms.DB {
     public class SyncZmstEntityMgr
         : SyncBaseDataObjMgr<ZmstEntity, SyncZmstEntity, int>, IZmstEntityMgr {
-        public override string ApiRoute => "/api/Zmst";
+        public override string ApiRoute => "/Zmst";
 
         // --- BaseDataObjの ZmstEntityMgr を保持 ---
         public SyncZmstEntityMgr(

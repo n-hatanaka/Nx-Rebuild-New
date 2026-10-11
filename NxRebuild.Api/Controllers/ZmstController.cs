@@ -21,7 +21,7 @@ namespace NxRebuild.Api.Controllers {
     [ApiController]
     [Route("Zmst")]
     public class ZmstController : NxDataController<ZmstEntity, int> {
-        protected override async Task CreateObjMgr(RecordQuery q) {
+        protected override async Task CreateObjMgrAsync(RecordQuery q) {
 
             await SetUserInfo();
 

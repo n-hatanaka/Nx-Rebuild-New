@@ -422,7 +422,7 @@ namespace NxRebuild.shared {
             root.SelfObjMgr = this;
 
             // ルートは物理レコードを持たないので空スキーマでよい
-            root.SetProperties(GetEmptySchema());
+            root._SetProperties(GetEmptySchema());
 
             root.TenantCode = TenantCode;
             root.CurrUsrID = CurrentUserID;
@@ -451,7 +451,7 @@ namespace NxRebuild.shared {
             var dataObj = new T();
             dataObj.DBcon = DBcon;
             dataObj.SelfObjMgr = this;
-            dataObj.SetProperties(GetEmptySchema());
+            dataObj._SetProperties(GetEmptySchema());
 
             // UI から渡された親IDだけセット
             dataObj.ParentID = parentID;
@@ -507,6 +507,12 @@ namespace NxRebuild.shared {
 
                 if (!string.IsNullOrEmpty(query.Keyword))
                     param["Keyword"] = "%" + query.Keyword + "%";
+                
+                // TargetIds（id0, id1, id2, ...）
+                if (query.TargetIds.Count > 0) {
+                    for (int i = 0; i < query.TargetIds.Count; i++)
+                        param[$"id{i}"] = query.TargetIds[i];
+                }
             }
 
             return await DBcon.QueryAsync<dynamic>(sql, param);
@@ -516,35 +522,37 @@ namespace NxRebuild.shared {
         //RecordQueryをもとにSQLを組み立てる
         public virtual string _BuildSql(RecordQuery? q) {
             var sql = new List<string>();
+
+            // SELECT
             sql.Add($"SELECT * FROM \"{_tblName}\"");
             sql.Add("WHERE 1=1");
 
             // 世界線境界（必ず入れる）
-            sql.Add("AND tenant_code = @TenantCode");
+            sql.Add("AND \"tenant_code\" = @TenantCode");
 
-            // null → 全件取得（tenant_code だけで絞る）
+            // null → 全件取得
             if (q == null)
                 return string.Join(" ", sql);
 
             var where = new List<string>();
 
-
+            // TargetIds
             if (q.TargetIds.Count > 0) {
                 var idParams = q.TargetIds
                     .Select((id, idx) => $"@id{idx}")
                     .ToList();
 
-                where.Add($"{_idColName} IN ({string.Join(", ", idParams)})");
+                where.Add($"\"{_idColName}\" IN ({string.Join(", ", idParams)})");
             }
-
 
             // AND 条件
             foreach (var c in q.And)
-                where.Add($"{c.Column} {c.Operator} @{c.Column}");
+                where.Add($"\"{c.Column}\" {c.Operator} @{c.Column}");
 
             // OR 条件
             if (q.Or.Count > 0) {
-                var orList = q.Or.Select(c => $"{c.Column} {c.Operator} @{c.Column}");
+                var orList = q.Or
+                    .Select(c => $"\"{c.Column}\" {c.Operator} @{c.Column}");
                 where.Add("(" + string.Join(" OR ", orList) + ")");
             }
 
@@ -554,7 +562,7 @@ namespace NxRebuild.shared {
 
             // ORDER
             if (!string.IsNullOrEmpty(q.OrderBy))
-                sql.Add($"ORDER BY {q.OrderBy} {(q.OrderDesc ? "DESC" : "ASC")}");
+                sql.Add($"ORDER BY \"{q.OrderBy}\" {(q.OrderDesc ? "DESC" : "ASC")}");
 
             // ページング
             if (q.PageSize > 0)
@@ -562,6 +570,7 @@ namespace NxRebuild.shared {
 
             return string.Join(" ", sql);
         }
+
 
 
 
@@ -579,7 +588,7 @@ namespace NxRebuild.shared {
                 T obj = new T();
                 obj.DBcon = DBcon;
                 obj.SelfObjMgr = this;
-                obj.SetProperties((IDictionary<string, object>)record);
+                obj._SetProperties((IDictionary<string, object>)record);
                 obj.TenantCode = TenantCode;
                 obj.CurrUsrID = CurrentUserID;
 
@@ -641,7 +650,7 @@ namespace NxRebuild.shared {
 
             foreach (var id in dataIDs) {
                 try {
-                    if (!await _DeleteDataObj(id, softDelete))
+                    if (!await _DeleteDataObjFromList(id, softDelete))
                         failedLst.Add(id);   // 正常系の失敗
                 } catch {
                     failedLst.Add(id);       // 異常系の破綻も「失敗」として扱う
@@ -654,9 +663,8 @@ namespace NxRebuild.shared {
 
 
         //指定したデータを削除し、_dataListからオブジェクトを削除
-        public virtual async Task<bool> _DeleteDataObj(TKey dataID, bool softDelete = false) {
-            var target = (BaseDataObj<TKey>)_dataList
-                .FirstOrDefault(x => ((BaseDataObj<TKey>)x).DataID.Equals(dataID));
+        public virtual async Task<bool> _DeleteDataObjFromList(TKey dataID, bool softDelete = false) {
+            var target = (ISharedDataObj<TKey>)Get(dataID);
 
             if (target == null)
                 return false;
@@ -665,10 +673,13 @@ namespace NxRebuild.shared {
             var transaction = DBcon.BeginTransaction();
 
             try {
-                bool result = softDelete
-                    ? await target.SoftDeleteQueryExec(transaction)
-                    : await target.DeleteQueryExec(transaction);
-
+                bool result;
+                var baseObj = target;
+                if (softDelete) 
+                    result = await baseObj._SoftDeleteQueryExecAsync(transaction);
+                else 
+                    result = await baseObj._DeleteQueryExecAsync(transaction);
+                
                 if (!result) {
                     transaction.Rollback();
                     return false;   // 正常系の失敗
@@ -677,7 +688,7 @@ namespace NxRebuild.shared {
                 transaction.Commit();
 
                 if (!softDelete)
-                    _dataList.Remove(target);
+                    _dataList.Remove((IBaseDataObj<TKey>)target);
 
                 return true;
             } catch {
@@ -699,7 +710,7 @@ namespace NxRebuild.shared {
             foreach (var id in idList) {
                 // 1. DataList から該当するオブジェクトを特定
                 // 既存の DataList（Object型）を T にキャストして検索
-                var dataObj = DataList.FirstOrDefault(d => d.DataID.Equals(id));
+                var dataObj = Get(id);
 
                 if (dataObj != null) {
                     // 2. 各オブジェクトの LoadDataAsJson() を呼ぶ
@@ -735,7 +746,7 @@ namespace NxRebuild.shared {
                     var id = (TKey)Convert.ChangeType(group.Key, typeof(TKey));
 
                     // 3. IDに対応するオブジェクトを探す
-                    var obj = DataList.FirstOrDefault(d => d.DataID.Equals(id));
+                    var obj = Get(id);
 
                     if (obj == null) {
                         // 存在しなければ新規作成
@@ -747,7 +758,7 @@ namespace NxRebuild.shared {
                     // 4. そのオブジェクト専用のJSONを作成して渡す
                     // グループ化したレコードを再度JSON文字列にして、個別のJsonToTblへ流し込む
                     string individualJson = JsonSerializer.Serialize(group.ToList());
-                    await obj.JsonToTbl(individualJson, tran);
+                    await obj.JsonToTblAsync(individualJson, tran);
                 }
 
                 tran.Commit();

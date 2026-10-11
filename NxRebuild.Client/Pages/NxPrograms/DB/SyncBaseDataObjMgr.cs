@@ -50,12 +50,18 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
         public virtual IBaseDataObj<TKey>? Get(TKey id) => _baseDataObjMgr.Get(id);
         public virtual IBaseDataObj<TKey> CreateNewDataObj(TKey? parentID) {
-            var newSyncObj = new TSync();
-            newSyncObj.Http = _http;
-            newSyncObj.Auth = _auth;
-            newSyncObj._dataObj = null;
-            newSyncObj.CurrUsrID = CurrentUserID;
-            return newSyncObj;
+            var baseObj = _baseDataObjMgr.CreateNewDataObj(parentID);
+            var syncObj = new TSync();
+            syncObj.Http = _http;
+            syncObj.Auth = _auth;
+            syncObj._dataObj = (TBase)baseObj;
+            syncObj.ParentID = parentID;
+            syncObj.SelfObjMgr = this;
+            syncObj.DBcon = DBcon;
+            syncObj.TenantCode = TenantCode;
+            syncObj.CurrUsrID = CurrentUserID;
+            _baseDataObjMgr._dataList.Add(syncObj);//親の登録（Setparent）はまだしない
+            return syncObj;
         }
 
 
@@ -79,7 +85,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             // ★ Sync 用の新しいリストを作る
             var syncList = new List<IBaseDataObj<TKey>>();
 
-            foreach (var baseObj in _baseDataObjMgr.DataList) {
+            foreach (var baseObj in _baseDataObjMgr._dataList) {//ここではDataListで呼び出してはいけない
 
                 var syncObj = new TSync();
                 syncObj.Http = _http;
@@ -89,9 +95,6 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                 syncObj.DBcon = DBcon;
                 syncObj.TenantCode = TenantCode;
                 syncObj.CurrUsrID = CurrentUserID;
-
-                // BaseDataObjの rawData をコピー
-                syncObj.SetProperties(((TBase)baseObj)._rawData);
 
                 syncList.Add(syncObj);
             }
@@ -132,16 +135,15 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                 var dataId = item.Key;
                 var dataJson = item.Data;
 
-                var target = _baseDataObjMgr.DataList
-                    .FirstOrDefault(x => x.DataID.Equals(dataId));
+                var target = _baseDataObjMgr.Get(dataId);
 
                 if (target != null) {
-                    await target.JsonToTbl(dataJson,tran);
+                    await target.JsonToTblAsync(dataJson,tran);
                 }
                 else {
                     var newSyncObj = CreateNewDataObj(default(TKey));
                     newSyncObj.DataID = dataId;
-                    await newSyncObj.JsonToTbl(dataJson,tran);
+                    await newSyncObj.JsonToTblAsync(dataJson,tran);
                     _baseDataObjMgr._dataList.Add(newSyncObj);
                 }
             }
@@ -180,40 +182,45 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             List<string>? failedStrLst = null;
 
             try {
+                // API の JSON をそのまま取り出す
                 failedStrLst = await response.Content.ReadFromJsonAsync<List<string>>();
             } catch (Exception ex) {
                 Console.WriteLine("DeleteData ERROR: JSONパース失敗");
                 Console.WriteLine(ex.Message);
-                return dataIDs.ToList();
+                return dataIDs.ToList(); // 全件失敗扱い
             }
 
-            if (failedStrLst == null) {
-                Console.WriteLine("DeleteData ERROR: APIレスポンスが null");
-                return dataIDs.ToList();
-            }
-
+            // 失敗IDが返ってきた場合
             var failedLst = failedStrLst
                 .Select(x => (TKey)Convert.ChangeType(x, typeof(TKey)))
                 .ToList();
 
-            foreach (var id in dataIDs) {
-                if (!failedLst.Contains(id)) {
-                    try {
-                        await _DeleteDataObj(id);
-                    } catch (Exception ex) {
-                        Console.WriteLine($"DeleteDataObj ERROR: ID={id}");
-                        Console.WriteLine(ex.Message);
-                        failedLst.Add(id);
-                    }
+            //  成功したIDを抽出する
+            var successIds = dataIDs
+                .Where(id => !failedLst.Contains(id))
+                .ToList();
+
+            // 成功したIDだけローカルオブジェクト削除 ★
+            foreach (var id in successIds) {
+                try {
+                    await _DeleteDataObjFromList(id, softDelete);
+                } catch (Exception ex) {
+                    Console.WriteLine($"DeleteDataObjFromList ERROR: ID={id}");
+                    Console.WriteLine(ex.Message);
+
+                    // ローカル削除失敗も「失敗ID」に追加して返す
+                    failedLst.Add(id);
                 }
             }
 
+            // 最終的に「失敗したIDだけ」返す（API仕様と一致）
             return failedLst;
         }
 
 
-        protected virtual async Task<bool> _DeleteDataObj(TKey dataID, bool softDelete = false) {
-            return await _baseDataObjMgr._DeleteDataObj(dataID, softDelete);
+
+        protected virtual async Task<bool> _DeleteDataObjFromList(TKey dataID, bool softDelete = false) {
+            return await _baseDataObjMgr._DeleteDataObjFromList(dataID, softDelete);
         }
 
         protected class SyncAllResult {

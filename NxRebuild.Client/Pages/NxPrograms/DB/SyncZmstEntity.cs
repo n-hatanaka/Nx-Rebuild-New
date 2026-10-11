@@ -27,62 +27,55 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             Zmst.SetNutritionValue(col, value);
         }
 
-        public async Task LoadSubTablesFromRaw() => Zmst.LoadSubTablesFromRaw();
+        public async Task LoadSubTablesFromRaw() => await Zmst.LoadSubTablesFromRaw();
 
         // --- SaveAsync（同期保存） ---
-        public override async Task<bool> SaveAsync(
-                Dictionary<string, object?> workingRaw,
-                List<List<Dictionary<string, object?>>>? subTables = null) 
-        {
-            using var tran = DBcon.BeginTransaction();
+        //public override async Task<bool> SaveAsync(
+        //        Dictionary<string, object?> workingRaw,
+        //        List<List<Dictionary<string, object?>>>? subTables = null) 
+        //{
+        //    using var tran = DBcon.BeginTransaction();
 
-            try {
-                if (!await Zmst.DeleteQueryExec(tran)) {
-                    tran.Rollback();
-                    return false;
-                }
-
-
-                workingRaw[IdColName] = Zmst.EnsureIDForSave(tran);
+        //    try {
+        //        if (!await Zmst._DeleteQueryExecAsync(tran)) {
+        //            tran.Rollback();
+        //            return false;
+        //        }
 
 
-                // ★ Working 全体保存（メイン＋サブ）
-                if (!await Zmst.SaveWorkingAsync(workingRaw, subTables, tran)) {
-                    tran.Rollback();
-                    return false;
-                }
-
-                var PostJSON = Zmst.TblToJson(this.DataID, tran);
-
-                var url = $"{ApiRoute}/Save/{DataID}";
-
-                HttpResponseMessage response;
-
-                response = await Http.PostAsJsonAsync(url, PostJSON);
-
-                // ★ コミット
-                tran.Commit();
-
-                // ★ 正本 Raw に反映
-                ApplyWorkingToRaw(workingRaw);
-
-                return true;
-            } catch (Exception ex) {
-                Console.WriteLine("SyncZmstEntity.SaveAsync ERROR:");
-                Console.WriteLine(ex.Message);
-                Console.WriteLine(ex.StackTrace);
-                tran.Rollback();
-                return false;
-            }
-
-        }
-
-        // --- ReName（同期世界線） ---
-        public async Task<bool> ReName(string newName) {
-            return await base.ReName(newName);
-        }
+        //        workingRaw[IdColName] = Zmst.EnsureIDForSave(tran);
 
 
+        //        // ★ Working 全体保存（メイン＋サブ）
+        //        if (!await Zmst.SaveWorkingAsync(workingRaw, subTables, tran)) {
+        //            tran.Rollback();
+        //            return false;
+        //        }
+
+        //        var PostJSON = Zmst.TblToJson(this.DataID, tran);
+
+        //        var url = $"{ApiRoute}/Save/{DataID}";
+
+        //        HttpResponseMessage response;
+
+        //        response = await Http.PostAsJsonAsync(url, PostJSON);
+
+        //        // ★ コミット
+        //        tran.Commit();
+
+        //        // ★ 正本 Raw に反映
+        //        ApplyWorkingToRaw(workingRaw);
+
+        //        return true;
+        //    } catch (Exception ex) {
+        //        Console.WriteLine("SyncZmstEntity.SaveAsync ERROR:");
+        //        Console.WriteLine(ex.Message);
+        //        Console.WriteLine(ex.StackTrace);
+        //        tran.Rollback();
+        //        return false;
+        //    }
+
+        //}
 
 
     }

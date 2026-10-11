@@ -1,0 +1,310 @@
+﻿License notice for Dapper (v2.1.79)
+------------------------------------
+
+https://github.com/DapperLib/Dapper at 72a54c475f75e18cb93cba0809d00a5e6e49efd9
+
+2019 Stack Exchange, Inc.
+
+Licensed under Apache-2.0
+
+Available at https://licenses.nuget.org/Apache-2.0
+
+
+License notice for Microsoft.AspNetCore.Authorization (v10.0.9)
+------------------------------------
+
+https://github.com/dotnet/dotnet at 901ca941248413c79832d2fdbd709da0c4386353
+
+https://asp.net/
+
+Copyright © Microsoft Corporation. All rights reserved.
+
+Licensed under MIT
+
+Available at https://licenses.nuget.org/MIT
+
+
+License notice for Microsoft.AspNetCore.Components (v10.0.9)
+------------------------------------
+
+https://github.com/dotnet/dotnet at 901ca941248413c79832d2fdbd709da0c4386353
+
+https://asp.net/
+
+Copyright © Microsoft Corporation. All rights reserved.
+
+Licensed under MIT
+
+Available at https://licenses.nuget.org/MIT
+
+
+License notice for Microsoft.AspNetCore.Components.Authorization (v10.0.9)
+------------------------------------
+
+https://github.com/dotnet/dotnet at 901ca941248413c79832d2fdbd709da0c4386353
+
+https://asp.net/
+
+Copyright © Microsoft Corporation. All rights reserved.
+
+Licensed under MIT
+
+Available at https://licenses.nuget.org/MIT
+
+
+License notice for Microsoft.Data.Sqlite (v10.0.9)
+------------------------------------
+
+https://github.com/dotnet/dotnet at 901ca941248413c79832d2fdbd709da0c4386353
+
+https://docs.microsoft.com/dotnet/standard/data/sqlite/
+
+Copyright © Microsoft Corporation. All rights reserved.
+
+Licensed under MIT
+
+Available at https://licenses.nuget.org/MIT
+
+
+License notice for Npgsql (v10.0.3)
+------------------------------------
+
+https://github.com/npgsql/npgsql at d3768398c17877b3a916c3c4d87e8e11698991fc
+
+Copyright 2025 © The Npgsql Development Team
+
+Licensed under PostgreSQL
+
+Available at https://licenses.nuget.org/PostgreSQL
+
+
+License notice for Microsoft.AspNetCore.Components.Analyzers (v10.0.9)
+------------------------------------
+
+https://github.com/dotnet/dotnet at 901ca941248413c79832d2fdbd709da0c4386353
+
+https://asp.net/
+
+Copyright © Microsoft Corporation. All rights reserved.
+
+Licensed under MIT
+
+Available at https://licenses.nuget.org/MIT
+
+
+License notice for Microsoft.AspNetCore.Metadata (v10.0.9)
+------------------------------------
+
+https://github.com/dotnet/dotnet at 901ca941248413c79832d2fdbd709da0c4386353
+
+https://asp.net/
+
+Copyright © Microsoft Corporation. All rights reserved.
+
+Licensed under MIT
+
+Available at https://licenses.nuget.org/MIT
+
+
+License notice for Microsoft.Data.Sqlite.Core (v10.0.9)
+------------------------------------
+
+https://github.com/dotnet/dotnet at 901ca941248413c79832d2fdbd709da0c4386353
+
+https://docs.microsoft.com/dotnet/standard/data/sqlite/
+
+Copyright © Microsoft Corporation. All rights reserved.
+
+Licensed under MIT
+
+Available at https://licenses.nuget.org/MIT
+
+
+License notice for Microsoft.Extensions.Configuration (v10.0.9)
+------------------------------------
+
+https://github.com/dotnet/dotnet at 901ca941248413c79832d2fdbd709da0c4386353
+
+https://dot.net/
+
+Copyright © Microsoft Corporation. All rights reserved.
+
+Licensed under MIT
+
+Available at https://licenses.nuget.org/MIT
+
+
+License notice for Microsoft.Extensions.Configuration.Abstractions (v10.0.9)
+------------------------------------
+
+https://github.com/dotnet/dotnet at 901ca941248413c79832d2fdbd709da0c4386353
+
+https://dot.net/
+
+Copyright © Microsoft Corporation. All rights reserved.
+
+Licensed under MIT
+
+Available at https://licenses.nuget.org/MIT
+
+
+License notice for Microsoft.Extensions.Configuration.Binder (v10.0.9)
+------------------------------------
+
+https://github.com/dotnet/dotnet at 901ca941248413c79832d2fdbd709da0c4386353
+
+https://dot.net/
+
+Copyright © Microsoft Corporation. All rights reserved.
+
+Licensed under MIT
+
+Available at https://licenses.nuget.org/MIT
+
+
+License notice for Microsoft.Extensions.DependencyInjection.Abstractions (v10.0.9)
+------------------------------------
+
+https://github.com/dotnet/dotnet at 901ca941248413c79832d2fdbd709da0c4386353
+
+https://dot.net/
+
+Copyright © Microsoft Corporation. All rights reserved.
+
+Licensed under MIT
+
+Available at https://licenses.nuget.org/MIT
+
+
+License notice for Microsoft.Extensions.Diagnostics (v10.0.9)
+------------------------------------
+
+https://github.com/dotnet/dotnet at 901ca941248413c79832d2fdbd709da0c4386353
+
+https://dot.net/
+
+Copyright © Microsoft Corporation. All rights reserved.
+
+Licensed under MIT
+
+Available at https://licenses.nuget.org/MIT
+
+
+License notice for Microsoft.Extensions.Diagnostics.Abstractions (v10.0.9)
+------------------------------------
+
+https://github.com/dotnet/dotnet at 901ca941248413c79832d2fdbd709da0c4386353
+
+https://dot.net/
+
+Copyright © Microsoft Corporation. All rights reserved.
+
+Licensed under MIT
+
+Available at https://licenses.nuget.org/MIT
+
+
+License notice for Microsoft.Extensions.Logging.Abstractions (v10.0.9)
+------------------------------------
+
+https://github.com/dotnet/dotnet at 901ca941248413c79832d2fdbd709da0c4386353
+
+https://dot.net/
+
+Copyright © Microsoft Corporation. All rights reserved.
+
+Licensed under MIT
+
+Available at https://licenses.nuget.org/MIT
+
+
+License notice for Microsoft.Extensions.Options (v10.0.9)
+------------------------------------
+
+https://github.com/dotnet/dotnet at 901ca941248413c79832d2fdbd709da0c4386353
+
+https://dot.net/
+
+Copyright © Microsoft Corporation. All rights reserved.
+
+Licensed under MIT
+
+Available at https://licenses.nuget.org/MIT
+
+
+License notice for Microsoft.Extensions.Options.ConfigurationExtensions (v10.0.9)
+------------------------------------
+
+https://github.com/dotnet/dotnet at 901ca941248413c79832d2fdbd709da0c4386353
+
+https://dot.net/
+
+Copyright © Microsoft Corporation. All rights reserved.
+
+Licensed under MIT
+
+Available at https://licenses.nuget.org/MIT
+
+
+License notice for Microsoft.Extensions.Primitives (v10.0.9)
+------------------------------------
+
+https://github.com/dotnet/dotnet at 901ca941248413c79832d2fdbd709da0c4386353
+
+https://dot.net/
+
+Copyright © Microsoft Corporation. All rights reserved.
+
+Licensed under MIT
+
+Available at https://licenses.nuget.org/MIT
+
+
+License notice for SQLitePCLRaw.bundle_e_sqlite3 (v2.1.11)
+------------------------------------
+
+https://github.com/ericsink/SQLitePCL.raw
+
+Copyright 2014-2024 SourceGear, LLC
+
+Licensed under Apache-2.0
+
+Available at https://licenses.nuget.org/Apache-2.0
+
+
+License notice for SQLitePCLRaw.core (v2.1.11)
+------------------------------------
+
+https://github.com/ericsink/SQLitePCL.raw
+
+Copyright 2014-2024 SourceGear, LLC
+
+Licensed under Apache-2.0
+
+Available at https://licenses.nuget.org/Apache-2.0
+
+
+License notice for SQLitePCLRaw.lib.e_sqlite3 (v2.1.11)
+------------------------------------
+
+https://github.com/ericsink/SQLitePCL.raw
+
+Copyright 2014-2024 SourceGear, LLC
+
+Licensed under Apache-2.0
+
+Available at https://licenses.nuget.org/Apache-2.0
+
+
+License notice for SQLitePCLRaw.provider.e_sqlite3 (v2.1.11)
+------------------------------------
+
+https://github.com/ericsink/SQLitePCL.raw
+
+Copyright 2014-2024 SourceGear, LLC
+
+Licensed under Apache-2.0
+
+Available at https://licenses.nuget.org/Apache-2.0
+
+

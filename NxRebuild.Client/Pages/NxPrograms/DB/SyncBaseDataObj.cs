@@ -13,6 +13,7 @@ using System.Text.Json;
 namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
     public interface ISyncBaseDataObj<TKey>: IBaseDataObj<TKey> {
+        Task<LockStatus> PingLockAsync();
         HttpClient Http { get; set; }
         CustomAuthStateProvider Auth { get; set; }
         
@@ -22,7 +23,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
     //DataObjのラッパークラス。<br/>サーバーとの同期機能を付与する。
     //UIからはインターフェース経由でaccessさせる。
     //オブジェクトの作成と削除はマネージャークラスから行う。
-    public abstract class SyncBaseDataObj<TKey> : ISyncBaseDataObj<TKey> {
+    public abstract class SyncBaseDataObj<TKey> : ISyncBaseDataObj<TKey>, ISharedDataObj<TKey> {
         public BaseDataObj<TKey> _dataObj;
 
         protected BaseDataObj<TKey> DataObj { get => _dataObj;}
@@ -42,7 +43,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                                             set => _dataObj.ParentDataObj = value; }
 
 
-        public void Validate(OperationType operationType) => _dataObj.Validate(operationType);
+        protected void _Validate(OperationType operationType) => _dataObj._Validate(operationType);
 
         public SyncBaseDataObj() {
         }
@@ -67,11 +68,9 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
         public string TblToJson(TKey dataId, IDbTransaction transaction) => _dataObj.TblToJson(dataId, transaction);
 
-        public Task<bool> JsonToTbl(string json, IDbTransaction transaction) => _dataObj.JsonToTbl(json, transaction);
+        public Task<bool> JsonToTblAsync(string json, IDbTransaction transaction) => _dataObj.JsonToTblAsync(json, transaction);
 
-        public abstract Task<bool> SaveAsync(
-                Dictionary<string, object?> workingRaw,
-                List<List<Dictionary<string, object?>>>? subTables = null);
+
 
         public TKey DataID {
             get => _dataObj.DataID;
@@ -115,15 +114,56 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         public string W_TblName => _dataObj.W_TblName;
         public string Ws_TblName => _dataObj.Ws_TblName;
 
-        public void ApplyWorkingToRaw(Dictionary<string, object?> workingRaw) => _dataObj.ApplyWorkingToRaw(workingRaw);
+        protected void ApplyWorkingToRaw(Dictionary<string, object?> workingRaw) => _dataObj.ApplyWorkingToRaw(workingRaw);
 
-        public virtual async Task Updateproperties() => await _dataObj.UpdatePropertiesFromTbl();
 
-        //public virtual void SetBaseDataObj(BaseDataObj<TKey> baseObj) {
-        //    _dataObj = baseObj ?? throw new ArgumentNullException(nameof(baseObj));
-        //}
+        // --- SaveAsync（同期保存） ---
+        public virtual async Task<bool> SaveAsync(
+                Dictionary<string, object?> workingRaw,
+                List<List<Dictionary<string, object?>>>? subTables = null) {
+            using var tran = DBcon.BeginTransaction();
 
-      
+            try {
+                if (!await _dataObj._DeleteQueryExecAsync(tran)) {
+                    tran.Rollback();
+                    return false;
+                }
+
+
+                workingRaw[IdColName] = _dataObj.EnsureIDForSave(tran);
+
+
+                // ★ Working 全体保存（メイン＋サブ）
+                if (!await _dataObj.SaveWorkingAsync(workingRaw, subTables, tran)) {
+                    tran.Rollback();
+                    return false;
+                }
+
+                var PostJSON = _dataObj.TblToJson(this.DataID, tran);
+
+                var url = $"{ApiRoute}/Save/{DataID}";
+
+                HttpResponseMessage response;
+
+                response = await Http.PostAsJsonAsync(url, PostJSON);
+
+                // ★ コミット
+                tran.Commit();
+
+                // ★ 正本 Raw に反映
+                ApplyWorkingToRaw(workingRaw);
+
+                return true;
+            } catch (Exception ex) {
+                Console.WriteLine("SyncZmstEntity.SaveAsync ERROR:");
+                Console.WriteLine(ex.Message);
+                Console.WriteLine(ex.StackTrace);
+                tran.Rollback();
+                return false;
+            }
+
+        }
+
         //ロック延命
         public async Task<LockStatus> PingLockAsync()
         {
@@ -131,10 +171,10 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             var lockStatus = await SetLockAsync();
 
             // ② UI ローカル世界線に反映
-            SetProperties(new Dictionary<string, object> {
+            UpdateRawDataToTbl(new Dictionary<string, object> {
                 { "locked_at", lockStatus.Locked_at },
                 { "locked_by", lockStatus.LockedByUserId }
-            });
+            }, null);
 
             // ③ サーバーから返ってきた LockStatus をそのまま返す
             return lockStatus;
@@ -194,26 +234,27 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
             // ③ UI 側のローカル状態を更新（世界線整合）
             if (serverStatus.Locked_at != null)
-                SetProperties(new Dictionary<string, object> {
+                UpdateRawDataToTbl(new Dictionary<string, object> {
                                     { "locked_at", serverStatus.Locked_at }
-                                });
+                                },null);
             else
-                SetProperties(new Dictionary<string, object> {
+                UpdateRawDataToTbl(new Dictionary<string, object> {
                                     { "locked_at", null }
-                                });
-            SetProperties(new Dictionary<string, object> {
+                                }, null);
+
+            UpdateRawDataToTbl(new Dictionary<string, object> {
                                     { "locked_by", serverStatus.LockedByUserId }
-                                });
+                                }, null);   
 
             // ④ サーバーが返した LockStatus をそのまま返す
             return serverStatus;
         }
 
         //保存時にロック情報を更新する。サーバー側の正本のロック情報を取得して、UI側のローカルに反映する。
-        public async Task<LockStatus> ReWriteLockInfoAsync(IDbTransaction tran,
+        protected async Task<LockStatus> _ReWriteLockInfoAsync(IDbTransaction tran,
                                                         Guid? Locked_by,
                                                         DateTime? Locked_at) 
-                                        => await _dataObj.ReWriteLockInfoAsync(tran, Locked_by, Locked_at);
+                                        => await _dataObj._ReWriteLockInfoAsync(tran, Locked_by, Locked_at);
 
         public async Task<LockStatus> SetUnLockAsync() {
             // ① Auth から UserID と UserName を取得
@@ -266,14 +307,14 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
             // ③ UI 側のローカル状態を更新（世界線整合）
             if (serverStatus.Locked_at != null)
-                SetProperties(new Dictionary<string, object> {
+                _SetProperties(new Dictionary<string, object> {
                                     { "locked_at", serverStatus.Locked_at }
                                 });
             else 
-                SetProperties(new Dictionary<string, object> {
+                _SetProperties(new Dictionary<string, object> {
                                     { "locked_at", null }
                                 });
-            SetProperties(new Dictionary<string, object> {
+            _SetProperties(new Dictionary<string, object> {
                                     { "locked_by", serverStatus.LockedByUserId }
                                 });
 
@@ -281,57 +322,42 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             return serverStatus;
         }
 
-        public async Task<LockStatus> DataOpen()
-        {
+        public async Task<LockStatus> DataOpenAsync() {
             // ① ローカルバリデーション（世界線の入口）
-            _dataObj.Validate(OperationType.LocalEdit);
+            _dataObj._Validate(OperationType.LocalEdit);
 
-            // ② ロック要求（サーバーが最新の LockStatus を返す）
-            var lockStatus = await SetLockAsync();
-
-            // ③ ロック失敗（他人ロック or エラー）
-            if (!lockStatus.CanEdit || lockStatus.HasError)
-            {
-                _rawData["locked_at"] = lockStatus.Locked_at;
-                _rawData["locked_by"] = lockStatus.LockedByUserId;
-                return lockStatus;
-            }
-
-            // ④ ロック成功 → ローカル編集世界線を開く
-            await _dataObj.DataOpen();
-
-            // ⑤ 最新データ取得（正本世界線 → ローカル世界線）
-            // ★ API: DataOpenLatest を呼び出して正本の JSON を取得
+            // ② サーバーへロック要求＋最新正本の取得
             var apiUrl = $"{ApiRoute}/DataOpenLatest";
             var result = await Http.PostAsJsonAsync(apiUrl, DataID);
             var openResult = await result.Content.ReadFromJsonAsync<DataOpenResult>();
 
+            // ③ LockStatus の確定（null やエラー時のフォールバック）
+            var lockStatus = openResult?.LockStatus
+                ?? new LockStatus { HasError = true, ErrorMessage = "ロック情報が取得できませんでした" };
+
+            // ④ API 側でエラーならロック情報だけ返す（世界線を開かない）
             if (openResult == null || openResult.HasError)
-            {
-                // API 側でエラーが起きた場合はロックだけ返す
                 return lockStatus;
-            }
 
+            // ⑤ 正本 JSON → DB 世界線へ反映（JsonToTbl）
             if (!string.IsNullOrEmpty(openResult.Json))
-            {
-                // ★ 正本 JSON → DB に反映
-                await _dataObj.JsonToTbl(openResult.Json, null);
+                await _dataObj.JsonToTblAsync(openResult.Json, null);
 
+            // ⑥ 編集モードへ（DataOpen）
+            await _dataObj.DataOpenAsync();
 
-            }
+            // ⑦ UI ローカル世界線へロック情報を反映
+            await _ReWriteLockInfoAsync(null, lockStatus.LockedByUserId, lockStatus.Locked_at);
 
-            // ⑥ UI 側のローカル状態を反映
-            ReWriteLockInfoAsync(null, lockStatus.LockedByUserId, lockStatus.Locked_at);
-            // ★ RawData を正本で上書き
-            await _dataObj.UpdatePropertiesFromTbl();
+            // ⑧ RawData を DB 世界線の正本で上書き（世界線の閉じ）
+            await _dataObj._UpdatePropertiesFromTblAsync();
 
-            // ⑦ ロック成功した LockStatus を返す
+            // ⑨ ロック成功した LockStatus を返す
             return lockStatus;
         }
 
 
-
-        public async Task<LockStatus> DataClose()
+        public async Task<LockStatus> DataCloseAsync()
         {
             // ① Auth から UserID と UserName を取得
             var authState = await Auth.GetAuthenticationStateAsync();
@@ -384,41 +410,26 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                 };
             }
 
-            // ③ ロック解除失敗なら DataClose しない
+            // ③ ロック解除失敗なら DataCloseAsync しない
             if (lockStatus.IsLocked || lockStatus.HasError)
                 return lockStatus;
 
-            // ④ ロック解除成功後に DataClose 実行
-            await _dataObj.DataClose();
+            // ④ ロック解除成功後に DataCloseAsync 実行
+            await _dataObj.DataCloseAsync();//ここでローカルのロック情報も削除される
 
             // ⑤ UIとDBのローカル状態を反映（MinValue は使わない）
-            _dataObj.SetProperties(new Dictionary<string, object> {
-                { "locked_at", null },
-                { "locked_by", null }
-            });
-            _dataObj.ReWriteLockInfoAsync(null, null, null);
+            await _UpdatePropertiesFromTblAsync();
             return lockStatus;
         }
 
 
-        public virtual async Task<bool> ReName(string newName)
+        public virtual async Task<bool> ReNameAsync(string newName)
         {
             // 1. バリデーション
             if (string.IsNullOrWhiteSpace(newName) || newName.Length > 20)
                 return false;
 
-            // 2. トランザクション開始（Base世界線）
-            using IDbTransaction transaction = DBcon.BeginTransaction();
-
-            // 3. Base世界線で仮更新
-            var localUpdated = await _dataObj.ReNameQueryExec(newName, transaction);
-            if (!localUpdated)
-            {
-                transaction.Rollback();
-                return false;
-            }
-
-            // 4. Sync世界線 → API呼び出し
+            // Sync世界線 → API呼び出し
             var url = $"{ApiRoute}/ReName/{DataID}/{newName}";
             HttpResponseMessage response;
 
@@ -428,90 +439,104 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             }
             catch
             {
-                transaction.Rollback();
                 return false;
             }
 
             if (!response.IsSuccessStatusCode)
             {
-                transaction.Rollback();
                 return false;
             }
 
-            // 5. API世界線（正本）を取得
+            // 5. API（正本）を取得
             var json = await response.Content.ReadAsStringAsync();
 
             Dictionary<string, object>? updatedRaw;
 
-            try
-            {
-                updatedRaw = JsonSerializer.Deserialize<Dictionary<string, object>>(json);
-                if (updatedRaw == null)
-                {
-                    transaction.Rollback();
+            try {
+                var tmp = JsonSerializer.Deserialize<Dictionary<string, object>>(json);
+                if (tmp == null)
                     return false;
-                }
-            }
-            catch
-            {
-                transaction.Rollback();
+
+                // NxTypeMapper で正本に変換
+                updatedRaw = NxTypeMapper.ConvertRow(TblName, tmp);
+            } catch {
                 return false;
             }
 
-            // 6. 正本世界線を Base世界線に反映
-            if (!UpdateRawData(updatedRaw, transaction))
-            {
-                transaction.Rollback();
+            // 6. 正本を Baseに反映
+            if (!UpdateRawDataToTbl(updatedRaw, null)) {
                 return false;
             }
-
-            // 7. プロパティ更新（正本世界線の反映）
-            SetProperties(updatedRaw);
-
-            // 8. 世界線を閉じる
-            transaction.Commit();
 
             return true;
         }
 
         //何かしらの更新をした時にサーバーから返ってきたメタデータ（TblName）を更新する際に使用する。
         //例えばRenameとか
-        public bool UpdateRawData(Dictionary<string, object> raw, IDbTransaction transaction) {
+        protected bool UpdateRawDataToTbl(Dictionary<string, object> raw, IDbTransaction transaction) {
+            string sql = "";
             try {
-                // 1. カラム名と値を準備（IDColNameとtenant_code は SET に含めない）
-                //raw（Dictionary）に入っている全カラムのうち、
-                //主キー（IdColName）とテナントキー（tenant_code）を除外して
-                //UPDATE の SET に使うカラムだけを抽出する。
-                //要はこれは「SET に入れていいカラムだけを抽出している」
+                // 1. SET に使うカラムを抽出（主キーと tenant_code は除外）
                 var columns = raw.Keys.Where(k => k != IdColName && k != "tenant_code");
                 var setClause = string.Join(", ", columns.Select(c => $"{c} = @{c}"));
 
-                // 2. UPDATE 実行（世界線の一意性を保証）
-                var sql =
-                        $"UPDATE {TblName} SET {setClause} " +
-                        $"WHERE {IdColName} = @DataID AND tenant_code = @TenantCode";
+                // 2. SQL を生成
+                sql =
+                    $"UPDATE {TblName} SET {setClause} " +
+                    $"WHERE {IdColName} = @DataID AND tenant_code = @TenantCode";
 
+                // 3. DynamicParameters に変換（Dapper が確実に扱える形）
+                // DynamicParameters は Dapper が最も確実に扱えるパラメータ形式。
+                // 内部的には：
+                // パラメータ名をそのまま保持
+                // 型をそのまま保持
+                // SQLite の大文字小文字問題を回避
+                // JsonElement を自動でプリミティブに変換
+                // Dictionary の曖昧さを完全排除
+                // 次のようにすることで確実にSQLを実行できるようになる。
+                var param = new DynamicParameters();
 
-                // 3. インメモリの RawData を更新（正本世界線の吸収）
-                DBcon.Execute(sql, raw, transaction);
+                // raw の全キーをパラメータとして追加
+                foreach (var kv in raw) {
+                    param.Add(kv.Key, kv.Value);
+                }
 
-                //4.　このオブジェクトのプロパティも更新する。これをやらないと、UI側の表示が変わらない。
-                SetProperties(raw);
+                // WHERE 用のパラメータを追加
+                param.Add("DataID", raw[IdColName]);
+                param.Add("TenantCode", raw["tenant_code"]);
+
+                // 4. UPDATE 実行
+                DBcon.Execute(sql, param, transaction);
+
+                // 5. UI の世界線を更新
+                _SetProperties(raw);
 
                 return true;
-            } catch {
+            } catch (Exception ex) {
+                Console.WriteLine("UpdateRawDataToTbl ERROR:");
+                Console.WriteLine($"Message: {ex.Message}");
+                Console.WriteLine($"SQL: {sql}");
+                Console.WriteLine($"StackTrace: {ex.StackTrace}");
                 return false;
             }
         }
 
-        public virtual async Task UpdatePropertiesFromTbl()
-                                    => await _dataObj.UpdatePropertiesFromTbl();
 
-        public void SetProperties(IDictionary<string, object> record) 
-                                    => _dataObj.SetProperties(record);
-        
 
-        public virtual NxValidationResult Validate(OperationType op, object? arg = null)
-                                                => _dataObj.Validate(op, arg);
+        protected virtual async Task _UpdatePropertiesFromTblAsync()
+                                    => await _dataObj._UpdatePropertiesFromTblAsync();
+
+        public void _SetProperties(IDictionary<string, object> record) 
+                                    => _dataObj._SetProperties(record);       
+
+        public virtual NxValidationResult _Validate(OperationType op, object? arg = null)
+                                                => _dataObj._Validate(op, arg);
+
+        public virtual async Task<bool> _DeleteQueryExecAsync(IDbTransaction transaction) 
+                                                => await _dataObj._DeleteQueryExecAsync(transaction);
+
+        public virtual async Task<bool> _SoftDeleteQueryExecAsync(IDbTransaction transaction)
+                                                => await _dataObj._SoftDeleteQueryExecAsync(transaction);
+
     }
 }

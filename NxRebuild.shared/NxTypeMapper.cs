@@ -35,6 +35,14 @@ namespace NxRebuild.shared {
 
             return Current.Convert(table, column, value);
         }
+        /// <summary>
+        /// 引数で渡されたテーブル名とカラム名が、型マップに存在するかどうかを返す。
+        /// BaseDataObj.Setproperties() で使用。
+        /// </summary>
+        public static bool HasColumn(string table, string column) {
+            return Current?.ColumnTypeMap.TryGetValue(table, out var cols) == true
+                && cols.ContainsKey(column);
+        }
 
         /// <summary>
         /// 1行分の辞書を一括で型変換する。

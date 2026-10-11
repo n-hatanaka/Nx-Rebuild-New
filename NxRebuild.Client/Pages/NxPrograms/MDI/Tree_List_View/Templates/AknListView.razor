@@ -102,8 +102,7 @@
                                @bind:event="oninput"
                                class="list-edit-input"
                                autofocus
-                               @onkeydown="(e) => HandleListEditKey(e, item)"
-                               @onfocusout="() => CancelRename(item)" />
+                               @onkeydown="(e) => HandleListEditKey(e, item)" />
                     </div>
 
                     @foreach (var col in Columns.Where(c => c.DataKey != "Name"))

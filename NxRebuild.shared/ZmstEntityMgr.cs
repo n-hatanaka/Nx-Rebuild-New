@@ -42,6 +42,7 @@ namespace NxRebuild.shared {
             : base(db, tenantCode, currUserID) {
             _tblName = "Zmst";
             _s_tblName = "tan_m";
+            _idColName = "LocalCode";
             _infoTbl = "";
             _w_tblName = "";
             _ws_tblName = "";
@@ -53,55 +54,26 @@ namespace NxRebuild.shared {
             return 0;
         }
 
-        public override IZmstEntity? Get(int id) {
-            // _dataList が null の場合は何も返さない
+        public override IZmstEntity Get(int id) {
             if (_dataList == null)
                 return null;
 
-            // DataList を手動で走査
-            foreach (var obj in _dataList) {
-                // ID が一致しないならスキップ
+            foreach (var obj in DataList) {
                 if (obj.DataID != id)
                     continue;
 
-                // CategoryEntity（フォルダ）は除外
                 if (obj is CategoryEntity)
                     continue;
 
-                // ZmstEntity だけ返す
-                if (obj is IZmstEntity zmst)
-                    return zmst;
+                // ★ ZmstEntity ならそのまま返す（BaseDataObj として扱える）
+                if (obj is IZmstEntity && (((IBaseDataObj<int>)obj).DataType == NxDataType.Zairyou))
+                    return (IZmstEntity)obj;
+
             }
 
             // 見つからなかった
             return null;
         }
-
-
-        // ---------------------------------------------------------
-        // Zmst をまとめてロードする
-        // ---------------------------------------------------------
-        public override async Task<IEnumerable<dynamic>> _LoadRecordsAsync(RecordQuery? q) {
-            string sqlMain = $@"
-                                    SELECT *
-                                    FROM ""{_tblName}""
-                                    WHERE ""tenant_code"" = @tc;
-                                ";
-
-
-            var rawZmstRows = await DBcon.QueryAsync<dynamic>(
-                sqlMain,
-                new { tc = TenantCode }
-            );
-
-            // Zmst の正本化
-            var zmstRows = rawZmstRows
-                .Select(r => NxTypeMapper.ConvertRow(_tblName, (IDictionary<string, object>)r))
-                .ToList();
-
-            return zmstRows;
-        }
-
 
 
         // ---------------------------------------------------------
@@ -144,7 +116,7 @@ namespace NxRebuild.shared {
                     cat.DBcon = DBcon;
                     cat.TenantCode = TenantCode;
                     cat.CurrUsrID = CurrentUserID;
-                    cat.SetProperties(row);
+                    cat._SetProperties(row);
 
                     _dataList.Add(cat);
                 }
@@ -172,7 +144,7 @@ namespace NxRebuild.shared {
                     cat.DBcon = DBcon;
                     cat.TenantCode = TenantCode;
                     cat.CurrUsrID = CurrentUserID;
-                    cat.SetProperties(row);
+                    cat._SetProperties(row);
 
                     _dataList.Add(cat);
                 }
@@ -180,7 +152,7 @@ namespace NxRebuild.shared {
                 // ---------------------------------------------------------
                 // Zmst + tan_m
                 // ---------------------------------------------------------
-                var records = await _LoadRecordsAsync(null);
+                var records = await _LoadRecordsAsync(q);
 
                 foreach (var record in records) {
                     var dict = (IDictionary<string, object>)record;
@@ -193,7 +165,7 @@ namespace NxRebuild.shared {
                         DataType = this.DataType
                     };
 
-                    obj.SetProperties(dict);
+                    obj._SetProperties(dict);
 
                     await obj.LoadSubTablesFromRaw();
 

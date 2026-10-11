@@ -58,7 +58,9 @@ namespace NxRebuild.shared {
 
     }
 
-
+    //BaseDataObjのインターフェース
+    //Syncラッパーとの同型性とUI側へ不要な実装の隠蔽のためにインターフェースを作成する
+    //やむおえずインターフェースメンバーとしたメソッドはアンダーバーを付けてあるのでaccessしない事
     public interface IBaseDataObj<TKey> {
         Guid CurrUsrID { get; set; }
         TKey DataID { get; set; }
@@ -81,31 +83,34 @@ namespace NxRebuild.shared {
         string W_TblName { get;  }
         string Ws_TblName { get;  }
         NxLocationKind LocationKind { get; }
-        void SetProperties(IDictionary<string, object> record);
         void CreateWorkingMemory(Dictionary<string, object?> workingRaw);
         void CreateWorkingSubTables(List<List<Dictionary<string, object?>>> workingSubList);
-        Task<LockStatus> DataOpen();
-        Task<LockStatus> DataClose();
+        Task<LockStatus> DataOpenAsync();
+        Task<LockStatus> DataCloseAsync();
         string TblToJson();
         string TblToJson(TKey id, IDbTransaction tran);
-        Task<bool> JsonToTbl(string json, IDbTransaction tran);
-        Task<bool> ReName(string newName);
+        Task<bool> JsonToTblAsync(string json, IDbTransaction tran);
+        Task<bool> ReNameAsync(string newName);
         Task<bool> SaveAsync(
                         Dictionary<string, object?> workingRaw,
                         List<List<Dictionary<string, object?>>>? subTables = null);
 
-        NxValidationResult Validate(OperationType op, object? arg = null);
-        Task<LockStatus> SetLockAsync(); 
-        Task<LockStatus> SetUnLockAsync();
-        Task<LockStatus> ReWriteLockInfoAsync(IDbTransaction tran,
-                                                Guid? Locked_by,
-                                                DateTime? Locked_at);
-        Task UpdatePropertiesFromTbl();
-
-        }
+        NxValidationResult _Validate(OperationType op, object? arg = null);
 
 
-        public abstract class BaseDataObj<TKey> : IBaseDataObj<TKey> {
+    }
+
+    public interface ISharedDataObj<TKey> {
+        Task<bool> _DeleteQueryExecAsync(IDbTransaction transaction);
+        Task<bool> _SoftDeleteQueryExecAsync(IDbTransaction transaction);
+    }
+        // -----------------------------------------------------------------
+        // BaseDataObj　クライアントとサーバーで直接DBにaccessするオブジェクト
+        // 同期機能の拡張用にSyncラッパークラスを使用するため本来protectedと
+        // すべきメソッドもパブリックになっているが、その様なメソッドはアンダーバー
+        // が名前の先頭にあるためラッパークラス以外からはアクセスしない事
+        // -----------------------------------------------------------------
+        public abstract class BaseDataObj<TKey> : IBaseDataObj<TKey>, ISharedDataObj<TKey> {
 
         // レコード内容をJSON（辞書）として保持するメンバ
         //　直接アクセスせずSetProperties()を通してセットすること
@@ -167,14 +172,14 @@ namespace NxRebuild.shared {
                 ? (v is Guid g ? g : Guid.Parse(v.ToString()!))
                 : Guid.Empty;
 
-            set => SetProperties(new Dictionary<string, object> { ["tenant_code"] = value });   
+            set => _SetProperties(new Dictionary<string, object> { ["tenant_code"] = value });   
         }
 
         
 
         public TKey DataID {
             get => (TKey)_rawData[_idColName];
-            set => SetProperties(new Dictionary<string, object> { [_idColName] = value });
+            set => _SetProperties(new Dictionary<string, object> { [_idColName] = value });
         }
 
         public string DataName {
@@ -200,7 +205,7 @@ namespace NxRebuild.shared {
                     return;
 
                 // 親ID列がある → 通常処理
-                SetProperties(new Dictionary<string, object> { [_parentIDColName] = value });
+                _SetProperties(new Dictionary<string, object> { [_parentIDColName] = value });
             }
         }
 
@@ -286,7 +291,7 @@ namespace NxRebuild.shared {
         ///     これにより循環依存を避け、抽象構造を汚さない。
         ///
         /// 【具象側の書き方例】
-        ///     var result = Validate(OperationType.Delete);
+        ///     var result = _Validate(OperationType.Delete);
         ///     if (!result.IsValid)
         ///         return result;   // 規則違反を呼び出し元へ返す
         ///
@@ -294,8 +299,8 @@ namespace NxRebuild.shared {
         ///   - Save / Delete / Rename / Import / Sync など、
         ///     正本世界線に影響する操作の直前で必ず発火する。
         ///   - WASM ローカル側の CRUD（working テーブル操作）は「作業用世界線」であり、
-        ///     正本ではないため Validate は発火しない。
-        ///   - クライアント側で唯一 Validate が発火するのは DataOpen（編集開始）時で、
+        ///     正本ではないため _Validate は発火しない。
+        ///   - クライアント側で唯一 _Validate が発火するのは DataOpenAsync（編集開始）時で、
         ///     これはロック状態と整合性を取るための軽量チェックに限定される。
         ///
         /// 【結果】
@@ -304,7 +309,7 @@ namespace NxRebuild.shared {
         ///   - すべての世界線（Base / Sync / API / UI）が同じ NxValidationResult を共有し、
         ///     規則が漏れず、二重発火せず、整合性が保たれる。
         /// </summary>
-        public virtual NxValidationResult Validate(OperationType op, object? arg = null)
+        public virtual NxValidationResult _Validate(OperationType op, object? arg = null)
         {
             // ★ BaseDataObj の値をコピーした Validator を生成（循環依存なし）
             var validator = new NxValidator<TKey>(this, _rawData);
@@ -356,11 +361,15 @@ namespace NxRebuild.shared {
         //}
 
         public virtual void SetAsRoot(string RootName, NxDataType DataType = NxDataType.root) {
-            SetProperties(new Dictionary<string, object> { [_nameColName] = RootName });
+            _SetProperties(new Dictionary<string, object> { [_nameColName] = RootName });
             _datatype = DataType;
         }
 
-        public virtual void SetProperties(IDictionary<string, object> record)
+        // ---------------------------------------------------------
+        // _rawDataが保持するレコードの内容を正本化してセットする
+        // セットするカラムは一部だけでもよい。正本化は NxTypeMapper に委譲する。
+        // ---------------------------------------------------------
+        public virtual void _SetProperties(IDictionary<string, object> record)
         {
             // ---------------------------------------------------------
             // ★ NxTypeMapper による「型の正本化」
@@ -369,10 +378,21 @@ namespace NxRebuild.shared {
             //   - datetime（マイクロ秒対応）もここで正しく変換
             //   - bool / string も型マップに従って正本化
             // ---------------------------------------------------------
-            var normalized = NxTypeMapper.ConvertRow(TblName, record.ToDictionary(k => k.Key, v => v.Value));
+
 
             // 正本化された辞書をそのまま保持
-            _rawData = normalized;
+            // rawData が null の場合は「空の正本」を作る
+            if (_rawData == null)
+                _rawData = NxTypeMapper.Current.CreateEmptyRow(_tblName);
+
+            foreach (var kvp in record) {
+                // 型マップに存在しないカラムは無視（セーブ時にエラーになるため）
+                if (!NxTypeMapper.HasColumn(_tblName, kvp.Key))
+                    continue;
+
+                // 単一カラムだけ正規化して上書き
+                _rawData[kvp.Key] = NxTypeMapper.Convert(_tblName, kvp.Key, kvp.Value);
+            }
         }
 
 
@@ -435,13 +455,13 @@ namespace NxRebuild.shared {
 
         //}
 
-        public async Task<bool> JsonToTbl(string json, IDbTransaction tran) {
+        public async Task<bool> JsonToTblAsync(string json, IDbTransaction tran) {
 
-            this.Validate(OperationType.Import);
+            this._Validate(OperationType.Import);
 
             var tables = JsonSerializer.Deserialize<List<TableJson>>(json);
 
-            var result = await DeleteQueryExec(tran);
+            var result = await _DeleteQueryExecAsync(tran);
             if (!result) return false;
 
             try {
@@ -472,12 +492,12 @@ namespace NxRebuild.shared {
 
 
         // ---------------------------------------------------------
-        // DataOpen（編集開始前処理）
+        // DataOpenAsync（編集開始前処理）
         //ローカル専用の派生ではロック機能を使わない。
-        //だから DataOpen / DataClose は null を返せばいい。
+        //だから DataOpenAsync / DataCloseAsync は null を返せばいい。
         //Sync や API の世界線では LockStatus をちゃんと返すようにしてある。
         // ---------------------------------------------------------
-        public virtual Task<LockStatus> DataOpen() {
+        public virtual Task<LockStatus> DataOpenAsync() {
 
 
             Opened = true;//編集中フラグをON
@@ -486,25 +506,26 @@ namespace NxRebuild.shared {
         }
 
         // ---------------------------------------------------------
-        // DataClose(編集終了）
+        // DataCloseAsync(編集終了）
         // フラグのセットのみ。UI側でSaveまたはRestoreを呼んだうえで
         // DataCloseを呼ぶこと
         // ローカル専用の派生ではロック機能を使わない。
-        // DataOpen / DataClose は null を返せばいい。
+        // DataOpenAsync / DataCloseAsync は null を返せばいい。
         // Sync や API の世界線では LockStatus をちゃんと返す様にしてある。
         // ---------------------------------------------------------
-        public virtual Task<LockStatus> DataClose() {
+        public virtual async Task<LockStatus> DataCloseAsync() {
             Opened = false; //編集中フラグをOFF
-            return Task.FromResult<LockStatus?>(null);
+            return await _ReWriteLockInfoAsync(null, null, null); //ロック情報をクリアする
+           
         }
 
 
 
-        public abstract Task<bool> DeleteQueryExec(IDbTransaction transaction);
+        public abstract Task<bool> _DeleteQueryExecAsync(IDbTransaction transaction);
         // データベースからエンティティを物理削除する。
         // 派生先では TblName テーブルおよび関連するサブテーブル（s_tblName など）を完全削除すること。
 
-        public virtual async Task<bool> SoftDeleteQueryExec(IDbTransaction transaction){
+        public virtual async Task<bool> _SoftDeleteQueryExecAsync(IDbTransaction transaction){
             // ※ API 層からのみ呼び出す。
             // 論理削除を実装する：
             //   - TblName テーブルのレコードを「削除済み」と扱える状態にする
@@ -519,7 +540,7 @@ namespace NxRebuild.shared {
 
         // 名前変更の検証メソッド
         // 必要に応じて派生クラスでオーバーライドできるように virtual にしておく
-        public virtual async Task<bool> ReName(string newName) {
+        public virtual async Task<bool> ReNameAsync(string newName) {
 
             // 1. バリデーション
             if (string.IsNullOrWhiteSpace(newName) || newName.Length > 20) {
@@ -527,9 +548,9 @@ namespace NxRebuild.shared {
             }
 
             IDbTransaction transaction = DBcon.BeginTransaction();
-            if (await ReNameQueryExec(newName, transaction)) {
+            if (await ReNameQueryExecAsync(newName, transaction)) {
                 transaction.Commit();
-                await UpdatePropertiesFromTbl();
+                await _UpdatePropertiesFromTblAsync();
                 return true;
             }
             transaction.Rollback();
@@ -537,15 +558,15 @@ namespace NxRebuild.shared {
         }
 
         //DBへのデータ名変更を試みる。成功した場合プロパティの値も書き換える
-        public virtual async Task<bool> ReNameQueryExec(string newName, IDbTransaction dbTransaction) {
+        public virtual async Task<bool> ReNameQueryExecAsync(string newName, IDbTransaction dbTransaction) {
             try {
                 // サーバー側でマイクロ秒精度の UTC を生成
-                var updateAt = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.ffffffZ");
+                var updateAt = DateTime.UtcNow;
 
                 string sql = $@"
                                 UPDATE ""{_tblName}""
                                 SET ""{_nameColName}"" = @name,
-                                    ""update_at"" = @update_at
+                                    ""Update_at"" = @update_at
                                 WHERE ""{_idColName}"" = @id
                                   AND ""tenant_code"" = @tenantCode;
                             ";
@@ -566,7 +587,7 @@ namespace NxRebuild.shared {
         }
 
         // データベースから最新のプロパティを取得して _rawData に反映する
-        public virtual async Task UpdatePropertiesFromTbl() {
+        public virtual async Task _UpdatePropertiesFromTblAsync() {
             try {
                 string sql = $@"
                                 SELECT *
@@ -587,7 +608,7 @@ namespace NxRebuild.shared {
 
                     var normalized = NxTypeMapper.ConvertRow(_tblName, dict);
 
-                    SetProperties(normalized);
+                    _SetProperties(normalized);
                 } else {
                     Console.WriteLine($"[Nx] Updateproperties: レコードなし {_tblName} DataID={DataID}");
                 }
@@ -617,7 +638,7 @@ namespace NxRebuild.shared {
 
             try
             {
-                if (!await DeleteQueryExec(tran))
+                if (!await _DeleteQueryExecAsync(tran))
                 {
                     tran.Rollback();
                     return false;
@@ -749,11 +770,11 @@ namespace NxRebuild.shared {
             return Task.FromResult(true);
         }
 
-        public virtual async Task<LockStatus> SetLockAsync() {
+        public virtual async Task<LockStatus> _SetLockAsync() {
 
             return await WriteLockInfoAsync(true);
         }
-        public virtual async Task<LockStatus> SetUnLockAsync() {
+        public virtual async Task<LockStatus> _SetUnLockAsync() {
 
             return await WriteLockInfoAsync(false);
         }
@@ -765,7 +786,7 @@ namespace NxRebuild.shared {
 
             var nowupdate_at = result.Locked_at ?? DateTime.MinValue;
             // UIへの反映
-            SetProperties(new Dictionary<string, object> {
+            _SetProperties(new Dictionary<string, object> {
                 ["locked_at"] = DateTime.UtcNow,
                 ["locked_by"] = result.LockedByUserId
             });
@@ -775,7 +796,7 @@ namespace NxRebuild.shared {
 
         // ロック状態をDBに反映する
         // 保存時以外に呼んではいけない。
-        public virtual async Task<LockStatus> ReWriteLockInfoAsync(
+        public virtual async Task<LockStatus> _ReWriteLockInfoAsync(
                                                         IDbTransaction tran,
                                                         Guid? Locked_by,
                                                         DateTime? Locked_at) {
@@ -797,14 +818,14 @@ namespace NxRebuild.shared {
                 };
 
                 // DBのロック情報を反映するためにプロパティ更新
-                SetProperties(new Dictionary<string, object> {
+                _SetProperties(new Dictionary<string, object> {
                     ["locked_at"] = result.Locked_at,
                     ["locked_by"] = result.LockedByUserId
                 });
             }
 
             // ---- UIへの反映（整合） ----
-            SetProperties(new Dictionary<string, object> {
+            _SetProperties(new Dictionary<string, object> {
                 ["locked_at"] = result.Locked_at,
                 ["locked_by"] = result.LockedByUserId
             });
@@ -827,13 +848,18 @@ namespace NxRebuild.shared {
                 // ============================================================
                 if (doLock) {
                     string sqlLock = $@"
-                                        UPDATE ""{TblName}""
-                                        SET ""locked_by"" = @userId,
-                                            ""locked_at"" = @lockedAt
-                                        WHERE ""{IdColName}"" = @dataID
-                                          AND ""tenant_code"" = @tenantCode
-                                          AND (""locked_at"" IS NULL OR ""locked_at"" < @expiryTime);
-                                    ";
+                            UPDATE ""{TblName}""
+                            SET ""locked_by"" = @userId,
+                                ""locked_at"" = @lockedAt
+                            WHERE ""{IdColName}"" = @dataID
+                              AND ""tenant_code"" = @tenantCode
+                              AND (
+                                    ""locked_by"" = @userId
+                                 OR ""locked_at"" IS NULL
+                                 OR ""locked_at"" < @expiryTime
+                              );
+                        ";
+
 
                     int affected = await DBcon.ExecuteAsync(sqlLock, new {
                                                                 userId = CurrUsrID,
@@ -881,16 +907,18 @@ namespace NxRebuild.shared {
                 // ② doLock == false → ロック解除要求
                 // ============================================================
                 string sqlUnlock = $@"
-                                        UPDATE ""{TblName}""
-                                        SET ""locked_by"" = NULL,
-                                            ""locked_at"" = NULL
-                                        WHERE ""{IdColName}"" = @dataID
-                                          AND ""tenant_code"" = @tenantCode;
-                                    ";
+                                    UPDATE ""{{TblName}}""
+                                    SET ""locked_by"" = NULL,
+                                        ""locked_at"" = NULL
+                                    WHERE ""{{IdColName}}"" = @dataID
+                                      AND ""tenant_code"" = @tenantCode
+                                      AND ""locked_by"" = @userId;
+                                    ";//他ユーザーがロックしているのに誤って解除する事故防止のためユーザーIDでも確認する
 
                 await DBcon.ExecuteAsync(sqlUnlock, new {
                     dataID = DataID,
-                    tenantCode = TenantCode
+                    tenantCode = TenantCode,
+                    userId = CurrUsrID
                 }, transaction: tran);
 
                 return new LockStatus {
@@ -962,7 +990,7 @@ namespace NxRebuild.shared {
                 };
 
                 // ---- UI世界線へ反映（rawData） ----
-                SetProperties(new Dictionary<string, object> {
+                _SetProperties(new Dictionary<string, object> {
                     ["locked_at"] = lockSt.Locked_at ?? DateTime.MinValue,
                     ["locked_by"] = lockSt.LockedByUserId
                 });

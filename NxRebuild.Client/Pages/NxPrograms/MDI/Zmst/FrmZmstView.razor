@@ -163,9 +163,9 @@
         await CreateNewItemAsync()!;
     }
 
-    private void HandleEdit()
+    private async Task HandleEdit()
     {
-        BeginEditSelectedItem();
+        await BeginEditSelectedItem();
     }
 
     private async Task HandleDelete()

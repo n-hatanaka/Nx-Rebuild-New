@@ -76,7 +76,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
 
             //  1. 孤立オブジェクト生成
             var newObj = DataMgr.CreateNewDataObj(parentID);
-
+            
             //  2. 編集画面を開く（閉じたら保存済み）
             Manager.Open<Z_Edit>(
                 $"新規作成: {newObj.DataName}",
@@ -104,7 +104,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
 
             var baseObj = (IZmstEntity)item.ItemData;
 
-            var lockst = await baseObj.DataOpen();
+            var lockst = await baseObj.DataOpenAsync();
 
             if (lockst.HasError) {
                 // エラーが発生した場合の処理

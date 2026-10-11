@@ -200,6 +200,8 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
                 //  成功メッセージ（任意）
                 await JS.InvokeVoidAsync("aknAlert", "保存しました。");
 
+                var zm = GlobalState.ZmstEntityMgr;
+                zm.SetParent(Entity);//親子関係を登録
 
             } catch (Exception ex) {
                 // エラー処理
@@ -214,7 +216,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
         }
         public async Task OnCloseHandler() {
             // ★ ZmstEntity のクローズ処理を呼ぶ
-            Entity?.DataClose();
+            Entity?.DataCloseAsync();
 
             Console.WriteLine($"Z_Edit(LocalCode={LocalCode}) が親により閉じられました。");
 

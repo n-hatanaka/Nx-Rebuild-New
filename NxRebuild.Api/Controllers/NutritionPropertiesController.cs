@@ -28,7 +28,7 @@ namespace NxRebuild.Api.Controllers {
 
 
         }
-        protected override async Task CreateObjMgr(RecordQuery query)
+        protected override async Task CreateObjMgrAsync(RecordQuery query)
         {
             await SetUserInfo();
 
@@ -59,11 +59,11 @@ namespace NxRebuild.Api.Controllers {
         {
             var q = new RecordQuery();
             q.TargetIds = new List<object> { dataId };
-            await CreateObjMgr(q);
+            await CreateObjMgrAsync(q);
 
             var mgr = _dataObjMgr as NutritionPropertiesMgr;
         
-            var target = (mgr.DataList.FirstOrDefault(x => x.DataID == dataId) as NutritionProperty);
+            var target = (mgr.Get(  dataId) as NutritionProperty);
             if (target == null)
                 return BadRequest("Data not found");
 
@@ -86,7 +86,7 @@ namespace NxRebuild.Api.Controllers {
         [HttpGet("sync")]
         public async Task<IActionResult> SyncAll() {
             // DataObjMgr を生成
-            await CreateObjMgr(null);
+            await CreateObjMgrAsync(null);
             var mgr = _dataObjMgr;
 
             var resultList = new List<object>();
@@ -120,7 +120,7 @@ namespace NxRebuild.Api.Controllers {
 
 
         [HttpPost("ReName/{dataId}/{newName}")]
-        public override async Task<IActionResult> Rename(int dataId, string newName) {
+        public override async Task<IActionResult> ReName(int dataId, string newName) {
             //無効化
             return Ok();
         }

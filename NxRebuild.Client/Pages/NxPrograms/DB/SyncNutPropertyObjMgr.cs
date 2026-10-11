@@ -57,12 +57,11 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
                 var tran = DBcon.BeginTransaction();
                 // ⑤ 既存 DataObj を探す
-                var target = _baseDataObjMgr.DataList
-                    .FirstOrDefault(x => x.DataID.Equals(dataId));
+                var target = _baseDataObjMgr.Get(dataId);
 
                 if (target != null) {
                     // ⑥ 既存オブジェクト流し込む
-                    await target.JsonToTbl(dataJson,tran);
+                    await target.JsonToTblAsync(dataJson,tran);
                 } else {
                     // ⑦ 新規作成
                     var newSyncObj = _baseDataObjMgr.CreateNewDataObj(default(int));
@@ -71,7 +70,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                     newSyncObj.DataID = dataId;
 
                     // ⑧ 流し込む
-                    await newSyncObj.JsonToTbl(dataJson,tran);
+                    await newSyncObj.JsonToTblAsync(dataJson,tran);
 
                     // ⑨ DataList に追加
                     _baseDataObjMgr._dataList.Add(newSyncObj);
@@ -87,7 +86,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             //削除は行わないので無効化
             throw new NotImplementedException();
         }
-        protected override async Task<bool> _DeleteDataObj(int dataID, bool softDelete = false) {
+        protected override async Task<bool> _DeleteDataObjFromList(int dataID, bool softDelete = false) {
             //削除は行わないので無効化
             throw new NotImplementedException();    
         }
