@@ -124,7 +124,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             using var tran = DBcon.BeginTransaction();
 
             try {
-                if (!await _dataObj._DeleteQueryExecAsync(tran)) {
+                if (!await _dataObj._HardDeleteQueryExecAsync(tran)) {
                     tran.Rollback();
                     return false;
                 }
@@ -186,7 +186,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             var authState = await Auth.GetAuthenticationStateAsync();
             var userName = authState.User.Identity?.Name;
 
-            // ② ロック要求（Exists は UI が決めない）
+            // ② ロック要求
             var req = new LockCommand<TKey> {
                 DataId = this.DataID,
                 doLock = true

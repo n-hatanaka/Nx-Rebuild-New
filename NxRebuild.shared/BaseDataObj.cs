@@ -406,7 +406,7 @@ namespace NxRebuild.shared {
             return;
         }
 
-        public virtual void CreateWorkingSubTables(
+        public virtual void CreateWorkingDetailTables(
                 List<List<Dictionary<string, object?>>> workingSubList) {
             // 抽象側は何もしない
             // 具象側が必要なときだけ override する(zmstEntity参照）
@@ -461,7 +461,7 @@ namespace NxRebuild.shared {
 
             var tables = JsonSerializer.Deserialize<List<TableJson>>(json);
 
-            var result = await _DeleteQueryExecAsync(tran);
+            var result = await _HardDeleteQueryExecAsync(tran);
             if (!result) return false;
 
             try {
@@ -520,6 +520,99 @@ namespace NxRebuild.shared {
         }
 
 
+public override async Task<bool> -_DeleteQueryExecAsync(IDbTransaction transaction, bool softDelete)
+{
+    if (soft)
+    {
+        // ソフトデリート：Primary のみ論理削除
+        return await SoftDeletePrimaryQueryExecAsync(transaction);
+    }
+    else
+    {
+        // 物理削除：Primary と Detail を完全削除ただしサーバー側の場合はクライアントに削除を伝播させるためプライマリテーブルのみ論理削除とする
+        if (LocationKind == NxLocationKind.Server) {
+          bool primaryDeleted = await SoftDeletePrimaryQueryExecAsync(transaction);
+        }
+        else
+        {
+          bool primaryDeleted = await DeletePrimaryQueryExecAsync(transaction);
+        }
+        bool detailDeleted  = await DeleteDetailQueryExecAsync(transaction);
+
+        return primaryDeleted && detailDeleted;
+    }
+}
+
+public virtual async Task<bool> _HardDeleteQueryExecAsync(IDbTransaction transaction)
+{
+    bool primaryDeleted = await DeletePrimaryQueryExecAsync(transaction);
+    bool detailDeleted  = await DeleteDetailQueryExecAsync(transaction);
+
+    return primaryDeleted && detailDeleted;
+}
+          
+protected virtual async Task<bool> -DeletePrimaryQueryExecAsync(IDbTransaction transaction)
+{
+    try
+    {
+        string sql = $@"
+            DELETE FROM ""{_tblName}""
+            WHERE ""{_idColName}"" = @DataID
+              AND ""tenant_code"" = @TenantCode;
+        ";
+
+        await DBcon.ExecuteAsync(sql, new {
+            DataID = this.DataID,
+            TenantCode = this.TenantCode
+        }, transaction);
+
+        return true;
+    }
+    catch
+    {
+        return false;
+    }
+}
+
+protected virtual async Task<bool> -SoftDeletePrimaryQueryExecAsync(IDbTransaction transaction)
+{
+    try
+    {
+        string sql = $@"
+            UPDATE ""{_tblName}""
+            SET ""deleted"" = 1,
+                ""Update_at"" = @UpdateAt,
+                ""Locked_at"" = @LockedAt
+            WHERE ""{_idColName}"" = @DataID
+              AND ""tenant_code"" = @TenantCode;
+        ";
+
+        await DBcon.ExecuteAsync(sql, new {
+            DataID = this.DataID,
+            TenantCode = this.TenantCode,
+            UpdateAt = DateTime.MaxValue,
+            LockedAt = DateTime.MinValue
+        }, transaction);
+
+        return true;
+    }
+    catch
+    {
+        return false;
+    }
+}        
+
+protected virtual async Task<bool> -DeleteDetailQueryExecAsync(IDbTransaction transaction)
+{
+    try
+    {
+        return true;
+    }
+    catch
+    {
+        return false;
+    }
+}
 
         public abstract Task<bool> _DeleteQueryExecAsync(IDbTransaction transaction);
         // データベースからエンティティを物理削除する。
@@ -638,7 +731,7 @@ namespace NxRebuild.shared {
 
             try
             {
-                if (!await _DeleteQueryExecAsync(tran))
+                if (!await _HardDeleteQueryExecAsync(tran))
                 {
                     tran.Rollback();
                     return false;
@@ -699,7 +792,7 @@ namespace NxRebuild.shared {
         // メインテーブル保存（WorkingRaw → _w_tblName）
         // =======================================================
 
-        public virtual async Task<bool> SaveWorkingMainAsync(
+        public virtual async Task<bool> SaveWorkingPrimaryAsync(
             Dictionary<string, object?> workingRaw,
             IDbTransaction tran)
         {
@@ -731,7 +824,7 @@ namespace NxRebuild.shared {
         // =======================================================
         // サブテーブル保存（DELETE → INSERT 再構築）
         // =======================================================
-        public virtual Task<bool> SaveWorkingSubAsync(
+        public virtual Task<bool> SaveWorkingDetailAsync(
             List<List<Dictionary<string, object?>>>? subTables,
             Dictionary<string, object?> MainWorkingRaw,
             IDbTransaction tran)
