@@ -67,12 +67,60 @@ namespace NxRebuild.shared {
         IBaseDataObj<TKey> CreateNewDataObj(TKey? parentID);
     }
 
-
-  public class Condition
+//setter → 入力許容getter → 利用時に因果保証
+//Column → null / 空 / スペース禁止
+//Operator → Allow-list
+//Value → パラメータ化で安全
+//Condition DTOは最低限のバリデは自分でやる
+public class Condition
 {
-    public string Column { get; set; }
+    private static readonly HashSet<string> AllowedOperators = new()
+    {
+        "=",
+        "<>",
+        ">",
+        "<",
+        ">=",
+        "<=",
+        "LIKE"
+    };
+
+    private string _column;
+    public string Column
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(_column))
+                throw new ArgumentException("Column cannot be null or empty.");
+
+            if (_column.Contains(" "))
+                throw new ArgumentException("Column cannot contain spaces.");
+
+            return _column;
+        }
+        set
+        {
+            _column = value;
+        }
+    }
+
     public object Value { get; set; }
-    public string Operator { get; set; } = "="; // =, <, >, LIKE, etc.
+
+    private string _operator = "=";
+    public string Operator
+    {
+        get
+        {
+            if (!AllowedOperators.Contains(_operator))
+                throw new ArgumentException($"Invalid operator: {_operator}");
+
+            return _operator;
+        }
+        set
+        {
+            _operator = value;
+        }
+    }
 }
     /*
         ================================
