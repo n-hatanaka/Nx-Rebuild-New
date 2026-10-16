@@ -72,6 +72,9 @@ namespace NxRebuild.shared {
 //Operator → Allow-list
 //Value → パラメータ化で安全
 //Condition DTOは最低限のバリデは自分でやる
+//DTO が最低限の自己防衛を持つことで
+//責務の境界が明確になり、後続レイヤーの負荷が減ります。
+//“責務分離” を成立させるための最低ラインです。
 public class Condition
 {
     private static readonly HashSet<string> AllowedOperators = new()
