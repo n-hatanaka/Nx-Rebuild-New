@@ -40,15 +40,9 @@ namespace NxRebuild.shared {
 
         public ZmstEntityMgr(IDbConnection db, Guid tenantCode, Guid currUserID)
             : base(db, tenantCode, currUserID) {
-            _tblName = "Zmst";
-            _s_tblName = "tan_m";
-            _idColName = "LocalCode";
-            _infoTbl = "";
-            _w_tblName = "";
-            _ws_tblName = "";
-            RootName = "食品分類";
-            DataType = NxDataType.Zairyou;
+        
         }
+
         protected override int GenerateDataID() {
             //"ZmstEntityMgr は採番をしないので ZmstentityでGenerateDataID を使用してください。"
             return 0;
@@ -79,7 +73,7 @@ namespace NxRebuild.shared {
         // ---------------------------------------------------------
         // Initialize（gun_m + Zmst + tan_m を DataList に突っ込む）
         // ---------------------------------------------------------
-        public override async Task Initialize(RecordQuery? q) {
+        public override async Task InitializeAsync(RecordQuery? q) {
             try {
                 this.DataType = NxDataType.Zairyou;
 
@@ -106,7 +100,7 @@ namespace NxRebuild.shared {
                     sqlCat,
                     new { tc = TenantCode }   // ← パラメータ名修正
                 );
-
+                    
                 var catRows = rawCatRows
                     .Select(r => NxTypeMapper.ConvertRow("gun_m", (IDictionary<string, object>)r))
                     .ToList();
@@ -152,6 +146,15 @@ namespace NxRebuild.shared {
                 // ---------------------------------------------------------
                 // Zmst + tan_m
                 // ---------------------------------------------------------
+                if (q == null)
+                {
+                    q = new RecordQuery();
+                    q.And.Add(new Condition {
+                        Column = "deleted",
+                        Operator = "<>",
+                        Value = "1"
+                    });
+                }
                 var records = await _LoadRecordsAsync(q);
 
                 foreach (var record in records) {
@@ -167,7 +170,7 @@ namespace NxRebuild.shared {
 
                     obj._SetProperties(dict);
 
-                    await obj.LoadSubTablesFromRaw();
+                    await obj._LoadDetailTablesFromRawAsync();
 
                     _dataList.Add(obj);
                 }

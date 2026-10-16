@@ -51,16 +51,16 @@ namespace NxRebuild.shared {
         // ---------------------------------------------------------
         // ★ 削除禁止：常に false
         // ---------------------------------------------------------
-        public override Task<bool> _DeleteQueryExecAsync(IDbTransaction tran) {          
+        public override Task<bool> _DeleteQueryExecAsync(IDbTransaction tran, bool softDelete = false) {          
             return Task.FromResult(false);
         }
 
         // ---------------------------------------------------------
         // ★ 論理削除禁止：常に false
         // ---------------------------------------------------------
-        public override Task<bool> _SoftDeleteQueryExecAsync(IDbTransaction tran) {
-            return Task.FromResult(false);
-        }
+        //protected override Task<bool> _SoftDeleteQueryExecAsync(IDbTransaction tran) {
+        //    return Task.FromResult(false);
+        //}
 
         // ---------------------------------------------------------
         // JSON生成SQLは使わないので空でOK
@@ -78,12 +78,40 @@ namespace NxRebuild.shared {
         decimal? GetNutritionValue(string col);
         void SetNutritionValue(string col, decimal? value);
 
-        Task LoadSubTablesFromRaw();
+        Task _LoadDetailTablesFromRawAsync();
 
     }
 
 
+    [NxObjsMetaData(
+        PrimaryTable = "Zmst", 
+        NameCol = "Z_name",
+        IdCol = "LocalCode",
+        ParentIDCol = "gun_cd",
+        DetailTable = "tan_m",
+        InfoTable = "",
+        WorkPriTable = "Zmst",
+        WorkDtlTable = "tan_m",
+        DataType = NxDataType.Zairyou,
+        RootName = "食品分類")]
     public class ZmstEntity : BaseDataObj<int>, IZmstEntity {
+        public ZmstEntity():base() {
+            
+            //_tblName = "Zmst";
+            //_nameColName = "Z_name";
+            //_idColName = "LocalCode";
+            //_parentIDColName = "gun_cd";
+            //_s_tblName = "tan_m";  // サブテーブル
+
+            //_infoTbl = "";
+
+            ////Zmst,tan_mはワークテーブルを持たないので同じテーブル名を設定する。
+            //_w_tblName = "Zmst";
+            //_ws_tblName = "tan_m";
+
+            //_datatype = NxDataType.Zairyou;
+        }
+
         // --- サブテーブル tan_m を保持する ---
         public List<List<Dictionary<string, object?>>> SubTables { get; set; }
                                                         = new List<List<Dictionary<string, object?>>>();
@@ -109,26 +137,12 @@ namespace NxRebuild.shared {
         }
 
 
-        public ZmstEntity() {
-            _tblName = "Zmst";
-            _nameColName = "Z_name";
-            _idColName = "LocalCode";
-            _parentIDColName = "gun_cd";
-            _s_tblName = "tan_m";  // サブテーブル
 
-            _infoTbl = "";
-
-            //Zmst,tan_mはワークテーブルを持たないので同じテーブル名を設定する。
-            _w_tblName = "Zmst";
-            _ws_tblName = "tan_m";
-
-            _datatype = NxDataType.Zairyou;
-        }
 
         // ---------------------------------------------------------
         // サブテーブル編集用ワーキングメモリ　
         // ---------------------------------------------------------
-        public override void CreateWorkingSubTables(
+        public override void CreateWorkingDetailTables(
                             List<List<Dictionary<string, object?>>> workingSubList) {
             workingSubList.Clear();
 
@@ -150,7 +164,7 @@ namespace NxRebuild.shared {
         // ---------------------------------------------------------
         // サブテーブルの読み込み（tan_m）
         // ---------------------------------------------------------
-        public async Task LoadSubTablesFromRaw() {
+        public async Task _LoadDetailTablesFromRawAsync() {
             SubTables.Clear(); // 一旦クリア
 
             string sqlSub = $@"
@@ -180,7 +194,15 @@ namespace NxRebuild.shared {
             SubTables.Add(subList);
         }
 
+        public override async Task<bool> JsonToTblAsync(string json, IDbTransaction tran) {
+            var result = await base.JsonToTblAsync(json, tran);
+            
+            if (!result)
+                return result;
 
+            await _LoadDetailTablesFromRawAsync();
+            return result;
+        }
 
 
 
@@ -200,24 +222,13 @@ namespace NxRebuild.shared {
 
          
         // ---------------------------------------------------------
-        // 物理削除（保存前に既存レコードの削除の為のみに使う）
+        // 物理削除（保存前に既存レコードを削除する為のみに使う）
         // Zmstもtam_mも削除してはいけない
         // ---------------------------------------------------------
-        public override async Task<bool> _DeleteQueryExecAsync(IDbTransaction transaction)
+        protected override async Task<bool> _DeletePrimaryQueryExecAsync(IDbTransaction transaction)
         {
             try
             {
-                // ★ サブテーブル tan_m を削除（Zmst 固定世界線）
-                string delSubSql = $@"
-                    DELETE FROM ""{_s_tblName}""
-                    WHERE ""{_idColName}"" = @dataID
-                      AND ""tenant_code"" = @tenantCode;
-                ";
-
-                await DBcon.ExecuteAsync(delSubSql, new {
-                    dataID = this.DataID,
-                    tenantCode = this.TenantCode
-                }, transaction);
 
                 // ★ メインテーブル zmst を削除
                 string delMainSql = $@"
@@ -235,7 +246,31 @@ namespace NxRebuild.shared {
             } 
             catch (Exception ex) 
             {
-                Console.WriteLine("DeleteQueryExec ERROR:");
+                Console.WriteLine("DeletePrimaryQueryExec ERROR:");
+                Console.WriteLine(ex.Message);
+                Console.WriteLine(ex.StackTrace);
+
+                return false;
+            }
+        }
+
+        protected override async Task<bool> _DeleteDetailQueryExecAsync(IDbTransaction transaction) {
+            try {
+                // ★ サブテーブル tan_m を削除（Zmst 固定世界線）
+                string delSubSql = $@"
+                    DELETE FROM ""{_s_tblName}""
+                    WHERE ""{_idColName}"" = @dataID
+                      AND ""tenant_code"" = @tenantCode;
+                ";
+
+                await DBcon.ExecuteAsync(delSubSql, new {
+                    dataID = this.DataID,
+                    tenantCode = this.TenantCode
+                }, transaction);
+
+                return true;
+            } catch (Exception ex) {
+                Console.WriteLine("DeleteDetailQueryExec ERROR:");
                 Console.WriteLine(ex.Message);
                 Console.WriteLine(ex.StackTrace);
 
@@ -244,14 +279,11 @@ namespace NxRebuild.shared {
         }
 
 
-
         // ---------------------------------------------------------
         // ソフトデリート（Zmst のみ）単位マスタは消してはいけないので放置
         // ---------------------------------------------------------
-        public override async Task<bool> _SoftDeleteQueryExecAsync(IDbTransaction transaction) {
-            try {
-
-                var updateAt = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.ffffffZ");
+        protected override async Task<bool> _SoftDeletePrimaryQueryExecAsync(IDbTransaction transaction) {
+            try {               
 
                 string sql = $@"
                     UPDATE ""{_tblName}""
@@ -264,7 +296,7 @@ namespace NxRebuild.shared {
                 await DBcon.ExecuteAsync(sql, new {
                     DataID = this.DataID,
                     TenantCode = this.TenantCode,
-                    UpdateAt = updateAt
+                    UpdateAt = DateTime.UtcNow
                 }, transaction);
 
                 return true;
@@ -318,17 +350,17 @@ namespace NxRebuild.shared {
         }
 
 
-        public override async Task<bool> SaveWorkingSubAsync(
-            List<List<Dictionary<string, object?>>>? w_SubTblList,
+        public override async Task<bool> SaveWorkingDetailsAsync(
+            List<List<Dictionary<string, object?>>>? w_DetailTblList,
             Dictionary<string, object?> MainWorkingRaw,
             IDbTransaction tran) {
-            if (w_SubTblList == null)
+            if (w_DetailTblList == null)
                 return true;
 
-            // w_SubTblList = サブテーブルごとの行リスト
-            foreach (var subTableRows in w_SubTblList) {
-                // subTableRows = 1つのサブテーブルの行一覧
-                foreach (var row in subTableRows) {
+            // w_DetailTblList = 詳細テーブルごとの行リスト
+            foreach (var detailTableRows in w_DetailTblList) {
+                // detailTableRows = 1つの詳細テーブルの行一覧
+                foreach (var row in detailTableRows) {
                     //新規レコードには未確定のコードがあり編集時書き込まれないためここで設定する
                     row["tenant_code"] = this.TenantCode;
                     row["LocalCode"] = MainWorkingRaw["LocalCode"];

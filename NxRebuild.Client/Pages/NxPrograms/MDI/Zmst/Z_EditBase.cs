@@ -123,7 +123,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
             // ★ DeepCopy を Entity にやらせる
             Entity.CreateWorkingMemory(WorkingRaw);
 
-            Entity.CreateWorkingSubTables(WorkingSubTables);
+            Entity.CreateWorkingDetailTables(WorkingSubTables);
 
 
             // TanList は WorkingSubTables[0]

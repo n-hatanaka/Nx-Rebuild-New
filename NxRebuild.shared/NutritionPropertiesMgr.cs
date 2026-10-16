@@ -9,7 +9,7 @@ namespace NxRebuild.shared {
 
         public NutritionPropertiesMgr(IDbConnection db, Guid tenantCode, Guid currentUserID)
             : base(db, tenantCode, currentUserID) {
-            _tblName = "ColName";
+
         }
 
         // DBから栄養素プロパティを取得
@@ -53,17 +53,17 @@ namespace NxRebuild.shared {
 
 
         // 削除は行わない → 空のリストを返す
-        public override Task<List<int>> DeleteData(IEnumerable<int> dataIDs, bool softDelete) {
-            return Task.FromResult(new List<int>());
+        public override async Task<List<int>> DeleteDataAsync(IEnumerable<int> dataIDs, bool softDelete) {
+            return await Task.FromResult(new List<int>());
         }
 
         // 削除は行わない → false を返す
-        public override Task<bool> _DeleteDataObjFromList(int dataID, bool softDelete) {
-            return Task.FromResult(false);
+        public override async Task<bool> _DeleteDataObjFromListAsync(int dataID, bool softDelete) {
+            return await Task.FromResult(false);
         }
 
         // 削除は行わない → 何もしない
-        public override void RemoveFromList(BaseDataObj<int> obj) {
+        public override void _RemoveFromList(IBaseDataObj<int> obj) {
             // no-op
         }
 

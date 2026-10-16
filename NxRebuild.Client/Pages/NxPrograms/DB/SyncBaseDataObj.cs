@@ -20,9 +20,10 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
     }
 
 
-    //DataObjのラッパークラス。<br/>サーバーとの同期機能を付与する。
+    //DataObjのラッパークラス。
+    //サーバーとの同期機能を付与する。
     //UIからはインターフェース経由でaccessさせる。
-    //オブジェクトの作成と削除はマネージャークラスから行う。
+    //オブジェクトの作成と削除はSyncマネージャークラスから行う。
     public abstract class SyncBaseDataObj<TKey> : ISyncBaseDataObj<TKey>, ISharedDataObj<TKey> {
         public BaseDataObj<TKey> _dataObj;
 
@@ -62,8 +63,10 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         public virtual NxLocationKind LocationKind => _dataObj.LocationKind;
 
         // DataObjのメソッドへのアクセスラッパー
-        public void CreateWorkingMemory(Dictionary<string, object?> wirkingRaw) => _dataObj.CreateWorkingMemory(wirkingRaw);
-        public void CreateWorkingSubTables(List<List<Dictionary<string, object?>>>? subTables) => _dataObj.CreateWorkingSubTables(subTables);
+        public void CreateWorkingMemory(Dictionary<string, object?> wirkingRaw)
+                        => _dataObj.CreateWorkingMemory(wirkingRaw);
+        public void CreateWorkingDetailTables(List<List<Dictionary<string, object?>>>? subTables) 
+                        => _dataObj.CreateWorkingDetailTables(subTables);
         public string TblToJson() => _dataObj.TblToJson();
 
         public string TblToJson(TKey dataId, IDbTransaction transaction) => _dataObj.TblToJson(dataId, transaction);
@@ -118,20 +121,53 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
 
         // --- SaveAsync（同期保存） ---
+        // ===============================================================
+        // SyncBase の Save は「ローカル先行 → サーバー反映」が正しい理由
+        // ===============================================================
+        //
+        // 【1. SyncBase は単一ユーザーであり、編集中はローカルDBが正史である】
+        //   - SyncBase は他ユーザーとデータを共有しない。
+        //   - よってローカルDBが唯一の正史（canonical timeline）となる。
+        //   - サーバー側は正史のバックアップ／同期先に過ぎない。
+        //   - そのため、正史は必ずローカル側で先に確定させる必要がある。
+        //
+        // 【2. サーバーへ送る JSON は「ローカル正史の写像」である】
+        //   - サーバーへ送信する JSON はローカルDBに書き込まれた内容を
+        //     一度読み出して生成する。
+        //   - つまりローカルDBが先に確定していないと正しい JSON が作れない。
+        //   - この構造上、ローカル先行でなければ保存処理がが破綻する。
+        //
+        // 【3. ローカルトランザクションが長くても問題ない（単一ユーザー）】
+        //   - SyncBase は単一ユーザーのため、ローカルDBのロック競合が発生しない。
+        //   - ネットワーク待ちでトランザクションを開いたままでも UI が詰まらない。
+        //   - 一般的な多ユーザーDBの制約を受けないため、ローカル先行が成立する。
+        //
+        // 【4. サーバー側の保存は「正史の投影更新」に過ぎない】
+        //   - サーバー側はローカル正史の写像（projection timeline）。
+        //   - サーバー保存が失敗した場合はローカル正史をロールバックすればよい。
+        //   - 正史はローカルにあるため、サーバー失敗は致命傷にならない。
+        //   - 次の同期でサーバー側を再構築できるため、データの整合性が保たれる。
+        //
+        // 【5. 結論：SyncBase の Save はローカル先行が唯一の正解】
+        //   - ローカル正史を確定 → JSON 化 → サーバー反映。
+        //   - サーバー失敗時はローカル正史をロールバック。
+        //   - CRUDの因果が常に一貫し、保存の信頼性が最大化される。
+        // ===============================================================
+
         public virtual async Task<bool> SaveAsync(
-                Dictionary<string, object?> workingRaw,
-                List<List<Dictionary<string, object?>>>? subTables = null) {
+                        Dictionary<string, object?> workingRaw,
+                        List<List<Dictionary<string, object?>>>? subTables = null) {
             using var tran = DBcon.BeginTransaction();
 
             try {
+                // ★ 既存行の HardDelete（ローカル側のデータ初期化）
                 if (!await _dataObj._HardDeleteQueryExecAsync(tran)) {
                     tran.Rollback();
                     return false;
                 }
 
-
+                // ★ 新規ならローカル側で仮ID採番（サーバー側で上書きされる可能性あり）
                 workingRaw[IdColName] = _dataObj.EnsureIDForSave(tran);
-
 
                 // ★ Working 全体保存（メイン＋サブ）
                 if (!await _dataObj.SaveWorkingAsync(workingRaw, subTables, tran)) {
@@ -139,30 +175,72 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                     return false;
                 }
 
-                var PostJSON = _dataObj.TblToJson(this.DataID, tran);
-
+                // ★ サーバーへ送る JSON を生成
+                var postJson = _dataObj.TblToJson(this.DataID, tran);
                 var url = $"{ApiRoute}/Save/{DataID}";
 
                 HttpResponseMessage response;
 
-                response = await Http.PostAsJsonAsync(url, PostJSON);
+                try {
+                    // ★ サーバーへ送信
+                    response = await Http.PostAsJsonAsync(url, postJson);
+                } catch (Exception ex) {
+                    // ★ 通信レベルのエラー（ネットワーク断・タイムアウト等）
+                    Console.WriteLine("SyncBaseDataObj.SaveAsync NETWORK ERROR:");
+                    Console.WriteLine(ex.Message);
+                    tran.Rollback();
+                    return false;
+                }
 
-                // ★ コミット
+                // ★ HTTP ステータス異常（4xx / 5xx）
+                if (!response.IsSuccessStatusCode) {
+                    Console.WriteLine("SyncBaseDataObj.SaveAsync HTTP ERROR:");
+                    Console.WriteLine($"StatusCode: {response.StatusCode}");
+                    tran.Rollback();
+                    return false;
+                }
+
+                SaveResponseDto<TKey>? respObj = null;
+
+                try {
+                    // ★ 応答を読む（JSON パース）
+                    respObj = await response.Content.ReadFromJsonAsync<SaveResponseDto<TKey>>();
+                } catch (Exception ex) {
+                    // ★ JSON パース失敗（サーバー側の異常応答）
+                    Console.WriteLine("SyncBaseDataObj.SaveAsync RESPONSE PARSE ERROR:");
+                    Console.WriteLine(ex.Message);
+                    tran.Rollback();
+                    return false;
+                }
+
+                if (respObj == null) {
+                    // ★ サーバーが空応答を返した場合
+                    Console.WriteLine("SyncBaseDataObj.SaveAsync EMPTY RESPONSE ERROR:");
+                    tran.Rollback();
+                    return false;
+                }
+
+                // ★ コミット（ローカル世界線の確定）
                 tran.Commit();
 
-                // ★ 正本 Raw に反映
+                // ★ Working → Raw 反映（ローカル正本）
                 ApplyWorkingToRaw(workingRaw);
+
+                // ★ サーバー正史の プロパティ をオブジェクトに反映
+                await _dataObj._UpdatePropertiesFromTblAsync();
 
                 return true;
             } catch (Exception ex) {
-                Console.WriteLine("SyncZmstEntity.SaveAsync ERROR:");
+                Console.WriteLine("SyncBaseDataObj.SaveAsync ERROR:");
                 Console.WriteLine(ex.Message);
                 Console.WriteLine(ex.StackTrace);
                 tran.Rollback();
                 return false;
             }
-
         }
+
+
+
 
         //ロック延命
         public async Task<LockStatus> PingLockAsync()
@@ -326,10 +404,37 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             // ① ローカルバリデーション（世界線の入口）
             _dataObj._Validate(OperationType.LocalEdit);
 
-            // ② サーバーへロック要求＋最新正本の取得
-            var apiUrl = $"{ApiRoute}/DataOpenLatest";
-            var result = await Http.PostAsJsonAsync(apiUrl, DataID);
-            var openResult = await result.Content.ReadFromJsonAsync<DataOpenResult>();
+            HttpResponseMessage result;
+
+            try {
+                // ② サーバーへロック要求＋最新正本の取得
+                var apiUrl = $"{ApiRoute}/DataOpenLatest";
+                result = await Http.PostAsJsonAsync(apiUrl, DataID);
+            } catch (Exception ex) {
+                // ★ 通信レベルのエラー（ネットワーク断・タイムアウト等）
+                Console.WriteLine("DataOpenAsync NETWORK ERROR:");
+                Console.WriteLine(ex.Message);
+                return new LockStatus { HasError = true, ErrorMessage = "通信エラーが発生しました" };
+            }
+
+            // ★ HTTP ステータス異常（4xx / 5xx）
+            if (!result.IsSuccessStatusCode) {
+                Console.WriteLine("DataOpenAsync HTTP ERROR:");
+                Console.WriteLine($"StatusCode: {result.StatusCode}");
+                return new LockStatus { HasError = true, ErrorMessage = "サーバー応答が異常です" };
+            }
+
+            DataOpenResult? openResult = null;
+
+            try {
+                // ★ 応答を読む（JSON パース）
+                openResult = await result.Content.ReadFromJsonAsync<DataOpenResult>();
+            } catch (Exception ex) {
+                // ★ JSON パース失敗（サーバー側の異常応答）
+                Console.WriteLine("DataOpenAsync RESPONSE PARSE ERROR:");
+                Console.WriteLine(ex.Message);
+                return new LockStatus { HasError = true, ErrorMessage = "応答の解析に失敗しました" };
+            }
 
             // ③ LockStatus の確定（null やエラー時のフォールバック）
             var lockStatus = openResult?.LockStatus
@@ -355,6 +460,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             // ⑨ ロック成功した LockStatus を返す
             return lockStatus;
         }
+
 
 
         public async Task<LockStatus> DataCloseAsync()
@@ -532,11 +638,9 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         public virtual NxValidationResult _Validate(OperationType op, object? arg = null)
                                                 => _dataObj._Validate(op, arg);
 
-        public virtual async Task<bool> _DeleteQueryExecAsync(IDbTransaction transaction) 
-                                                => await _dataObj._DeleteQueryExecAsync(transaction);
+        public virtual async Task<bool> _DeleteQueryExecAsync(IDbTransaction transaction, bool softDelete) 
+                                                => await _dataObj._DeleteQueryExecAsync(transaction, softDelete);
 
-        public virtual async Task<bool> _SoftDeleteQueryExecAsync(IDbTransaction transaction)
-                                                => await _dataObj._SoftDeleteQueryExecAsync(transaction);
 
     }
 }

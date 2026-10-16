@@ -40,6 +40,16 @@ namespace NxRebuild.Api.Controllers {
             _connectionString = config.GetConnectionString("DefaultConnection");
             _userMgr = userManager;
             _schemaProvider = schemaProvider;
+
+            var meta = NxObjsMetaReader.Read(typeof(T));
+            if (meta == null)
+                throw new Exception($"NxObjsMetaDataAttribute が {typeof(T).Name} に設定されていません。");
+
+            _tblName = meta.PrimaryTable;
+            _nameColName = meta.NameCol;
+            _idColName = meta.IdCol;
+            
+
         }
 
         protected NpgsqlConnection CreateConnection() {
@@ -87,9 +97,6 @@ namespace NxRebuild.Api.Controllers {
         //     // ★ObjMgr を生成（Initialize は呼ばない）
         //    _dataObjMgr = new BaseDataObjMgr<T, TKey>(_db, _tenantCode, _userID);
 
-        //    _dataObjMgr.TableName   = _tblName;
-        //    _dataObjMgr.IdColName   = _idColName;
-        //    _dataObjMgr.NameColName = _nameColName;
         //     ★DataList やテーブル情報を読み込む
         //    _dataObjMgr.Initialize();
         //}
@@ -185,7 +192,7 @@ namespace NxRebuild.Api.Controllers {
                     continue;
                 }
 
-                //  _Validate（世界線の入口）
+                //  _Validate
                 dataObj._Validate(OperationType.Delete);
 
                 //  ロック要求（冪等性保証）
@@ -197,7 +204,7 @@ namespace NxRebuild.Api.Controllers {
                     continue;
                 }
 
-                var failedList = await _dataObjMgr.DeleteData(
+                var failedList = await _dataObjMgr.DeleteDataAsync(
                     new List<TKey> { dataObj.DataID },
                     softDelete
                 );
@@ -264,9 +271,20 @@ namespace NxRebuild.Api.Controllers {
             };
         }
 
-      [HttpPost("Save/{dataId}")]
-        public virtual async Task<IActionResult> Save(TKey? dataId, [FromBody] string ReceiveJson)
-        {
+        // =======================================================
+        // サーバー側保存処理を行う
+        // Nxでは複数ユーザーによる単一データに対する同時編集を許可しないため、
+        // 他ユーザーによる同時書き込み・ロック競合が発生しません。
+        // そのため保存処理中にトランザクションが詰まる要因が存在しません。
+        // よって保存後の処理は一本のトランザクションで安全に完結させることができます。
+        //
+        // protected virtual Task<bool> BeforeSaveProcess
+        // protected virtual Task<bool> AfterSaveProcess
+        // の二つのメソッドをオーバーライドすることで、保存前後の追加処理を実装できます。
+        // この中でトランザクションを使用する場合は、引数の tran を使用してください。
+        // =======================================================
+        [HttpPost("Save/{dataId}")]
+        public virtual async Task<IActionResult> Save(TKey? dataId, [FromBody] string ReceiveJson) {
             var q = new RecordQuery();
             q.TargetIds = new List<object> { dataId ?? default };
 
@@ -315,6 +333,8 @@ namespace NxRebuild.Api.Controllers {
                     return BadRequest("BeforeSaveProcess failed");
                 }
 
+                var UpdateAtsrv = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
+                Row["Update_at"] = UpdateAtsrv;
                 SaveJson = JsonSerializer.Serialize(workingRaw);
 
                 // ★ 保存処理へ
@@ -324,7 +344,7 @@ namespace NxRebuild.Api.Controllers {
                 }
 
                 // ★ ロック情報が JSON で更新されてしまうので再設定
-                 await obj._ReWriteLockInfoAsync(tran, obj.CurrUsrID, DateTime.UtcNow);
+                await obj._ReWriteLockInfoAsync(tran, obj.CurrUsrID, DateTime.UtcNow);
 
                 // ★ テーブル書き込み後フック
                 if (!await AfterSaveProcess(obj, workingRaw, tran)) {
@@ -333,14 +353,23 @@ namespace NxRebuild.Api.Controllers {
                 }
 
                 tran.Commit();
+
+                // ★ DB → オブジェクトへ最新値を反映
                 await obj._UpdatePropertiesFromTblAsync();
-                return Ok(new { NewID = obj.DataID, UpdateAt = obj.Update_at });
-            }
-            catch (Exception ex) {
+
+                // ★ SaveResponseDto<TKey> を返す（正史の世界線）
+                var responseDto = new SaveResponseDto<TKey> {
+                                            NewID = obj.DataID,
+                                            UpdateAt = obj.Update_at.ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+                                        };
+
+                return Ok(responseDto);
+            } catch (Exception ex) {
                 tran.Rollback();
                 return BadRequest(ex.Message);
             }
         }
+
         // =======================================================
         // 保存の前後に追加処理を行いたい場合は継承先で
         // BeforeSaveProcess / AfterSaveProcess をオーバーライドする

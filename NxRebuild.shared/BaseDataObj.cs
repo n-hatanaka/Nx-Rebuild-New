@@ -11,6 +11,7 @@ using System.Data.Common;
 using System.Diagnostics;
 using System.Net.Http.Json; // GetFromJsonAsync用
 using System.Net.Sockets;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using System.Transactions;
@@ -84,7 +85,7 @@ namespace NxRebuild.shared {
         string Ws_TblName { get;  }
         NxLocationKind LocationKind { get; }
         void CreateWorkingMemory(Dictionary<string, object?> workingRaw);
-        void CreateWorkingSubTables(List<List<Dictionary<string, object?>>> workingSubList);
+        void CreateWorkingDetailTables(List<List<Dictionary<string, object?>>> workingSubList);
         Task<LockStatus> DataOpenAsync();
         Task<LockStatus> DataCloseAsync();
         string TblToJson();
@@ -101,9 +102,9 @@ namespace NxRebuild.shared {
     }
 
     public interface ISharedDataObj<TKey> {
-        Task<bool> _DeleteQueryExecAsync(IDbTransaction transaction);
-        Task<bool> _SoftDeleteQueryExecAsync(IDbTransaction transaction);
+        Task<bool> _DeleteQueryExecAsync(IDbTransaction transaction, bool softDelete);
     }
+
         // -----------------------------------------------------------------
         // BaseDataObj　クライアントとサーバーで直接DBにaccessするオブジェクト
         // 同期機能の拡張用にSyncラッパークラスを使用するため本来protectedと
@@ -111,6 +112,22 @@ namespace NxRebuild.shared {
         // が名前の先頭にあるためラッパークラス以外からはアクセスしない事
         // -----------------------------------------------------------------
         public abstract class BaseDataObj<TKey> : IBaseDataObj<TKey>, ISharedDataObj<TKey> {
+        // -------------------------------------------------------------
+        // コンストラクタ
+        // ここで固定のテーブル名やNameカラム名などのプロパティを設定する
+        // -------------------------------------------------------------
+        public BaseDataObj() {
+            var meta = NxObjsMetaReader.Read(this.GetType());
+            _tblName = meta.PrimaryTable;
+            _nameColName = meta.NameCol;
+            _idColName = meta.IdCol;
+            _parentIDColName = meta.ParentIDCol;
+            _s_tblName = meta.DetailTable;
+            _infoTbl = meta.InfoTable;
+            _w_tblName = meta.WorkPriTable;
+            _ws_tblName = meta.WorkDtlTable;
+            _datatype = meta.DataType;
+        }
 
         // レコード内容をJSON（辞書）として保持するメンバ
         //　直接アクセスせずSetProperties()を通してセットすること
@@ -265,11 +282,7 @@ namespace NxRebuild.shared {
 
 
 
-        // この中は派生先で実装する事。
-        //ここで固定のテーブル名やNameカラム名などのプロパティを設定する
-        public BaseDataObj() {
 
-        }
 
         /// <summary>
         /// 【役割】
@@ -455,12 +468,13 @@ namespace NxRebuild.shared {
 
         //}
 
-        public async Task<bool> JsonToTblAsync(string json, IDbTransaction tran) {
+        public virtual async Task<bool> JsonToTblAsync(string json, IDbTransaction tran) {
 
             this._Validate(OperationType.Import);
 
             var tables = JsonSerializer.Deserialize<List<TableJson>>(json);
 
+            // ★ まず既存のレコードを削除する（物理削除）
             var result = await _HardDeleteQueryExecAsync(tran);
             if (!result) return false;
 
@@ -519,117 +533,116 @@ namespace NxRebuild.shared {
            
         }
 
+        // ---------------------------------------------------------
+        // 削除クエリを実行する。
+        // BaseDataObjMgrからはこれを呼び出す事
+        // ---------------------------------------------------------
+        public virtual async Task<bool> _DeleteQueryExecAsync(IDbTransaction transaction, bool softDelete) {
+            if (softDelete) {
+                // ソフトデリート：Primary のみ論理削除
+                return await _SoftDeletePrimaryQueryExecAsync(transaction);
+            } else {
+                // 物理削除：Detail → Primary の順に削除
+                bool detailDeleted = await _DeleteDetailQueryExecAsync(transaction);
 
-public override async Task<bool> -_DeleteQueryExecAsync(IDbTransaction transaction, bool softDelete)
-{
-    if (soft)
-    {
-        // ソフトデリート：Primary のみ論理削除
-        return await SoftDeletePrimaryQueryExecAsync(transaction);
-    }
-    else
-    {
-        // 物理削除：Primary と Detail を完全削除ただしサーバー側の場合はクライアントに削除を伝播させるためプライマリテーブルのみ論理削除とする
-        if (LocationKind == NxLocationKind.Server) {
-          bool primaryDeleted = await SoftDeletePrimaryQueryExecAsync(transaction);
+                bool primaryDeleted;
+                if (LocationKind == NxLocationKind.Server) {
+                    // サーバー側：削除伝播のため Primary は論理削除
+                    primaryDeleted = await _SoftDeletePrimaryQueryExecAsync(transaction);
+                } else {
+                    // クライアント側：Primary を物理削除
+                    primaryDeleted = await _DeletePrimaryQueryExecAsync(transaction);
+                }
+
+                return detailDeleted && primaryDeleted;
+            }
         }
-        else
-        {
-          bool primaryDeleted = await DeletePrimaryQueryExecAsync(transaction);
-        }
-        bool detailDeleted  = await DeleteDetailQueryExecAsync(transaction);
 
-        return primaryDeleted && detailDeleted;
-    }
-}
 
-public virtual async Task<bool> _HardDeleteQueryExecAsync(IDbTransaction transaction)
-{
-    bool primaryDeleted = await DeletePrimaryQueryExecAsync(transaction);
-    bool detailDeleted  = await DeleteDetailQueryExecAsync(transaction);
-
-    return primaryDeleted && detailDeleted;
-}
-          
-protected virtual async Task<bool> -DeletePrimaryQueryExecAsync(IDbTransaction transaction)
-{
-    try
-    {
-        string sql = $@"
-            DELETE FROM ""{_tblName}""
-            WHERE ""{_idColName}"" = @DataID
-              AND ""tenant_code"" = @TenantCode;
-        ";
-
-        await DBcon.ExecuteAsync(sql, new {
-            DataID = this.DataID,
-            TenantCode = this.TenantCode
-        }, transaction);
-
-        return true;
-    }
-    catch
-    {
-        return false;
-    }
-}
-
-protected virtual async Task<bool> -SoftDeletePrimaryQueryExecAsync(IDbTransaction transaction)
-{
-    try
-    {
-        string sql = $@"
-            UPDATE ""{_tblName}""
-            SET ""deleted"" = 1,
-                ""Update_at"" = @UpdateAt,
-                ""Locked_at"" = @LockedAt
-            WHERE ""{_idColName}"" = @DataID
-              AND ""tenant_code"" = @TenantCode;
-        ";
-
-        await DBcon.ExecuteAsync(sql, new {
-            DataID = this.DataID,
-            TenantCode = this.TenantCode,
-            UpdateAt = DateTime.MaxValue,
-            LockedAt = DateTime.MinValue
-        }, transaction);
-
-        return true;
-    }
-    catch
-    {
-        return false;
-    }
-}        
-
-protected virtual async Task<bool> -DeleteDetailQueryExecAsync(IDbTransaction transaction)
-{
-    try
-    {
-        return true;
-    }
-    catch
-    {
-        return false;
-    }
-}
-
-        public abstract Task<bool> _DeleteQueryExecAsync(IDbTransaction transaction);
+        // 保存処理ではこのメソッドを呼び出す事。
         // データベースからエンティティを物理削除する。
-        // 派生先では TblName テーブルおよび関連するサブテーブル（s_tblName など）を完全削除すること。
+        // 派生先では TblName テーブルおよび関連するサブテーブル（s_tblName など）を完全削除すること
+        public virtual async Task<bool> _HardDeleteQueryExecAsync(IDbTransaction transaction)
+        {
+            bool detailDeleted  = await _DeleteDetailQueryExecAsync(transaction);
+            bool primaryDeleted = await _DeletePrimaryQueryExecAsync(transaction);
 
-        public virtual async Task<bool> _SoftDeleteQueryExecAsync(IDbTransaction transaction){
-            // ※ API 層からのみ呼び出す。
-            // 論理削除を実装する：
-            //   - TblName テーブルのレコードを「削除済み」と扱える状態にする
-            //     （例：Name をクリア、Parent カラムを NULL にする、Updated_at を更新する）。
-            //   - サブテーブル以下の関連レコードは物理削除する。
-            // UI では、この論理削除状態を参照して「削除済みデータ」を判定する。
-            // 実装時は挙動に注意すること。
-            return await Task.FromResult(true);
+            return primaryDeleted && detailDeleted;
         }
+          
+        protected virtual async Task<bool> _DeletePrimaryQueryExecAsync(IDbTransaction transaction)
+        {
+            try
+            {
+                string sql = $@"
+                    DELETE FROM ""{_tblName}""
+                    WHERE ""{_idColName}"" = @DataID
+                      AND ""tenant_code"" = @TenantCode;
+                ";
 
+                await DBcon.ExecuteAsync(sql, new {
+                    DataID = this.DataID,
+                    TenantCode = this.TenantCode
+                }, transaction);
 
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+        // softデリートメソッド ※ API 層からの削除についてプライマリテーブルに対しては必ずこれを実行する。
+        // 論理削除を実装する：
+        //   - TblName テーブルのレコードを「削除済み」と扱える状態にする
+        //     （Nxの標準は：Updated_atを最大値に、Locked_atを最小値にすることで削除済と判定するが、
+        //     　アプリケーションロジックとしてソフトデリートを実装する場合は明示的に無効化フラグを
+        //     　持たせそのフラグで判定するロジックに修正することを推奨）。
+        //   -
+        // クライアント側 では、この論理削除状態を参照して「削除済みデータ」を判定する。
+        // 実装時は挙動に注意すること。
+        protected virtual async Task<bool> _SoftDeletePrimaryQueryExecAsync(IDbTransaction transaction)
+        {
+            try
+            {
+                string sql = $@"
+                    UPDATE ""{_tblName}""
+                    SET ""deleted"" = 1,
+                        ""Update_at"" = @UpdateAt,
+                        ""Locked_at"" = @LockedAt
+                    WHERE ""{_idColName}"" = @DataID
+                      AND ""tenant_code"" = @TenantCode;
+                ";
+
+                await DBcon.ExecuteAsync(sql, new {
+                    DataID = this.DataID,
+                    TenantCode = this.TenantCode,
+                    UpdateAt = DateTime.MaxValue,
+                    LockedAt = DateTime.MinValue
+                }, transaction);
+
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }        
+
+        //ディティールテーブル(サブテーブル)の物理削除。
+        //保存ロジックは物理削除→インサートの順で実行されるため、
+        //ディテールテーブルの削除を行わないっ設計であっても派生先で必ず実装すること
+        protected virtual async Task<bool> _DeleteDetailQueryExecAsync(IDbTransaction transaction)
+        {
+            try
+            {
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
 
         // 名前変更の検証メソッド
         // 必要に応じて派生クラスでオーバーライドできるように virtual にしておく
@@ -719,7 +732,7 @@ protected virtual async Task<bool> -DeleteDetailQueryExecAsync(IDbTransaction tr
             return this.DataID;
         }
         // =======================================================
-        // 保存の標準実
+        // 保存のローカル実装
         // =======================================================
 
         public virtual async Task<bool> SaveAsync(
@@ -731,6 +744,25 @@ protected virtual async Task<bool> -DeleteDetailQueryExecAsync(IDbTransaction tr
 
             try
             {
+                // =======================================================
+                // NxではDelete → Insertで保存処理を行います。
+                //
+                // Delete → Insert は危険とされる場合がありますが、それは複数
+                // ユーザーが同一データを同時に編集するケース（サーバー絶対・MVCC・差分同期）
+                // が前提のためです。
+                // そのケースでは Delete と Insert の間に他ユーザーが割り込み、
+                // FK 整合性が壊れる可能性があります。
+                //
+                // Nx は単一ユーザーによる Create/Update/Deleteで動作するため、
+                // 同時編集・割り込み・競合が因果として存在しません。
+                // また同期取り込みは必ず 1 トランザクション内で完結するため、
+                // Delete → Insert の間に整合性が崩れることはありません。
+                // FK チェックは tran.Commit() 時に一括で評価されるため安全です。
+                //
+                // よって Nx では UPSERT に寄せる必要はなく、
+                // Delete → Insert は安全に成立します。
+                // =======================================================
+
                 if (!await _HardDeleteQueryExecAsync(tran))
                 {
                     tran.Rollback();
@@ -779,11 +811,11 @@ protected virtual async Task<bool> -DeleteDetailQueryExecAsync(IDbTransaction tr
             IDbTransaction tran)
         {
             // ★ メインテーブル保存
-            if (!await SaveWorkingMainAsync(workingRaw, tran))
+            if (!await SaveWorkingPrimaryAsync(workingRaw, tran))
                 return false;
 
             // ★ サブテーブル保存（具象側で追加）
-            if (!await SaveWorkingSubAsync(subTables, workingRaw, tran))
+            if (!await SaveWorkingDetailsAsync(subTables, workingRaw, tran))
                 return false;
 
             return true;
@@ -824,7 +856,7 @@ protected virtual async Task<bool> -DeleteDetailQueryExecAsync(IDbTransaction tr
         // =======================================================
         // サブテーブル保存（DELETE → INSERT 再構築）
         // =======================================================
-        public virtual Task<bool> SaveWorkingDetailAsync(
+        public virtual Task<bool> SaveWorkingDetailsAsync(
             List<List<Dictionary<string, object?>>>? subTables,
             Dictionary<string, object?> MainWorkingRaw,
             IDbTransaction tran)
@@ -976,7 +1008,7 @@ protected virtual async Task<bool> -DeleteDetailQueryExecAsync(IDbTransaction tr
                     }
 
                     // ---- ロック失敗 → 現在の状態を返す ----
-                    var current = await LockedChkfromTbl();
+                    var current = await LockedChkfromTblAsync();
                     current.lockReqUsr = CurrUsrID;
 
                     if (!current.Exists) {
@@ -1038,7 +1070,7 @@ protected virtual async Task<bool> -DeleteDetailQueryExecAsync(IDbTransaction tr
 
 
         //テーブルからロック情報を読み取って返す。ユーザー名はクライアントで取得して
-        protected virtual async Task<LockStatus> LockedChkfromTbl()
+        protected virtual async Task<LockStatus> LockedChkfromTblAsync()
         {
             var sql = $@"
                 SELECT

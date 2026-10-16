@@ -343,7 +343,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
             if (item.ItemData is IBaseDataObj<TKey> obj) {
 
                 // 1件削除 → リストにして渡す
-                var failed = await DataMgr.DeleteData(new List<TKey> { obj.DataID });
+                var failed = await DataMgr.DeleteDataAsync(new List<TKey> { obj.DataID });
 
 
                 // 失敗した ID があればログ

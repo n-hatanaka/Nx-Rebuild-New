@@ -43,7 +43,7 @@ namespace NxRebuild.Api.Controllers {
             _dataObjMgr = new ZmstEntityMgr(_db, _tenantCode, uid);
             
             // DataObjMgr の初期化
-            await _dataObjMgr.Initialize(q);
+            await _dataObjMgr.InitializeAsync(q);
 
             await Task.CompletedTask;
         }
@@ -54,9 +54,7 @@ namespace NxRebuild.Api.Controllers {
             IDatabaseSchemaProvider schemaProvider)
             : base(config, userManager, schemaProvider) 
         {
-            _tblName = "Zmst";
-            _nameColName = "name";
-            _idColName = "id";
+
         }
         // =======================================================
         // 保存の時にDataIDを確定させる

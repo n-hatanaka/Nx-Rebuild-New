@@ -82,11 +82,11 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             return true;
         }
 
-        public override async Task<List<int>> DeleteData(IEnumerable<int> dataIDs, bool softDelete = false) {
+        public override async Task<List<int>> DeleteDataAsync(IEnumerable<int> dataIDs, bool softDelete = false) {
             //削除は行わないので無効化
             throw new NotImplementedException();
         }
-        protected override async Task<bool> _DeleteDataObjFromList(int dataID, bool softDelete = false) {
+        protected override async Task<bool> _DeleteDataObjFromListAsync(int dataID, bool softDelete = false) {
             //削除は行わないので無効化
             throw new NotImplementedException();    
         }

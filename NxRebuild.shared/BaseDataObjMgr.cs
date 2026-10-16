@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Data.Sqlite;
 using Npgsql;
 using NxRebuild.shared;
+using System.ComponentModel.DataAnnotations;
 using System.Data;
 using System.Data.Common;
 using System.Net.Http.Json; // GetFromJsonAsync用
@@ -29,10 +30,10 @@ namespace NxRebuild.shared {
         IBaseDataObj<TKey> CreateNewDataObj(TKey? parentID);
         void InsertNewDataItem(IBaseDataObj<TKey> obj);
 
-        Task<List<TKey>> DeleteData(IEnumerable<TKey> dataIDs, bool softDelete = false);
+        Task<List<TKey>> DeleteDataAsync(IEnumerable<TKey> dataIDs, bool softDelete = false);
         void SetParent(IBaseDataObj<TKey> obj);
-        Task DistributeJsonData(string json);
-        Task Initialize(RecordQuery? query);
+        Task DistributeJsonDataAsync(string json);
+        Task InitializeAsync(RecordQuery? query);
         string LoadMultipleDataAsJson(List<TKey> idList);
         
     }
@@ -55,76 +56,74 @@ namespace NxRebuild.shared {
         string W_TblName { get; }
         string Ws_TblName { get; }
 
-        Task<List<TKey>> DeleteData(IEnumerable<TKey> dataIDs, bool softDelete = false);
+        Task<List<TKey>> DeleteDataAsync(IEnumerable<TKey> dataIDs, bool softDelete = false);
 
         IBaseDataObj<TKey>? Get(TKey id);
 
 
-        Task DistributeJsonData(string json);
-        Task Initialize(RecordQuery? query);
+        Task DistributeJsonDataAsync(string json);
+        Task InitializeAsync(RecordQuery? query);
         string LoadMultipleDataAsJson(List<TKey> idList);
-        void RemoveFromList(BaseDataObj<TKey> obj);
+        void _RemoveFromList(IBaseDataObj<TKey> obj);
         IBaseDataObj<TKey> CreateNewDataObj(TKey? parentID);
     }
 
-//setter → 入力許容getter → 利用時に因果保証
-//Column → null / 空 / スペース禁止
-//Operator → Allow-list
-//Value → パラメータ化で安全
-//Condition DTOは最低限のバリデは自分でやる
-//DTO が最低限の自己防衛を持つことで
-//責務の境界が明確になり、後続レイヤーの負荷が減ります。
-//“責務分離” を成立させるための最低ラインです。
-public class Condition
-{
-    private static readonly HashSet<string> AllowedOperators = new()
+    //setter → 入力許容getter → 利用時に安全性保証
+    //Column → null / 空 / スペース禁止
+    //Operator → Allow-list
+    //Value → パラメータ化で安全
+    //Condition DTOは最低限のバリデは自分でやる
+    //DTO が最低限の自己防衛を持つことで
+    //責務の境界が明確になり、後続レイヤーの負荷が減ります。
+    //“責務分離” を成立させるための最低ラインです。
+    public class Condition
     {
-        "=",
-        "<>",
-        ">",
-        "<",
-        ">=",
-        "<=",
-        "LIKE"
-    };
-
-    private string _column;
-    public string Column
-    {
-        get
+        private static readonly HashSet<string> AllowedOperators = new()
         {
-            if (string.IsNullOrWhiteSpace(_column))
-                throw new ArgumentException("Column cannot be null or empty.");
+            "=",
+            "<>",
+            ">",
+            "<",
+            ">=",
+            "<=",
+            "LIKE"
+        };
 
-            if (_column.Contains(" "))
-                throw new ArgumentException("Column cannot contain spaces.");
+        private string _column;
+        public string Column {
+            get {
+                if (string.IsNullOrWhiteSpace(_column))
+                    throw new ArgumentException("Column cannot be null or empty.");
 
-            return _column;
+                if (_column.Contains(' '))
+                    throw new ArgumentException("Column cannot contain spaces.");
+
+                return _column;
+            }
+            set {
+                _column = value;
+            }
         }
-        set
+
+
+        public object Value { get; set; }
+
+        private string _operator = "=";
+        public string Operator
         {
-            _column = value;
+            get
+            {
+                if (!AllowedOperators.Contains(_operator))
+                    throw new ArgumentException($"Invalid operator: {_operator}");
+
+                return _operator;
+            }
+            set
+            {
+                _operator = value;
+            }
         }
     }
-
-    public object Value { get; set; }
-
-    private string _operator = "=";
-    public string Operator
-    {
-        get
-        {
-            if (!AllowedOperators.Contains(_operator))
-                throw new ArgumentException($"Invalid operator: {_operator}");
-
-            return _operator;
-        }
-        set
-        {
-            _operator = value;
-        }
-    }
-}
     /*
         ================================
         RecordQuery の使い方（簡易 AND / OR 版）
@@ -457,9 +456,22 @@ public class Condition
         public BaseDataObjMgr(IDbConnection db , Guid tenantCode , Guid currUserID) {
             DBcon = db;
             TenantCode = tenantCode;
-            CurrentUserID = currUserID;
+            CurrentUserID = currUserID; 
+            
+            var meta = NxObjsMetaReader.Read(typeof(T));
+            if (meta == null)
+                throw new Exception($"NxObjsMetaDataAttribute が {typeof(T).Name} に設定されていません。");
 
-            //テーブル名などの基本情報は派生先のコンストラクタでハードコードする事。
+            _tblName = meta.PrimaryTable;
+            //_nameColName = meta.NameCol;
+            _idColName = meta.IdCol;
+            //_parentIDColName = meta.ParentIDCol;
+            _s_tblName = meta.DetailTable;
+            _infoTbl = meta.InfoTable;
+            _w_tblName = meta.WorkPriTable;
+            _ws_tblName = meta.WorkDtlTable;
+            //_datatype = meta.DataType;
+
             //Initialize()はインスタンス生成元が呼び出す事(この中で呼んではいけない)
         }
         protected abstract TKey GenerateDataID();
@@ -629,7 +641,7 @@ public class Condition
 
         //データベースからデータを取得する。(クライアント、サーバー共用）
         //コンストラクタで呼び出してはいけない。
-        public virtual async Task Initialize(RecordQuery? query) {
+        public virtual async Task InitializeAsync(RecordQuery? query) {
             if (!string.IsNullOrEmpty(RootName))
                 CreateRoot();
 
@@ -696,12 +708,12 @@ public class Condition
         // 指定したID群を順次削除し、削除に失敗したIDを返す。
         // 返り値のリストが空なら全件成功。
         // UIはこの返り値を観測して成功／部分失敗を判断する。
-        public virtual async Task<List<TKey>> DeleteData(IEnumerable<TKey> dataIDs, bool softDelete = false) {
+        public virtual async Task<List<TKey>> DeleteDataAsync(IEnumerable<TKey> dataIDs, bool softDelete = false) {
             var failedLst = new List<TKey>();
 
             foreach (var id in dataIDs) {
                 try {
-                    if (!await _DeleteDataObjFromList(id, softDelete))
+                    if (!await _DeleteDataObjFromListAsync(id, softDelete))
                         failedLst.Add(id);   // 正常系の失敗
                 } catch {
                     failedLst.Add(id);       // 異常系の破綻も「失敗」として扱う
@@ -714,7 +726,7 @@ public class Condition
 
 
         //指定したデータを削除し、_dataListからオブジェクトを削除
-        public virtual async Task<bool> _DeleteDataObjFromList(TKey dataID, bool softDelete = false) {
+        public virtual async Task<bool> _DeleteDataObjFromListAsync(TKey dataID, bool softDelete = false) {
             var target = (ISharedDataObj<TKey>)Get(dataID);
 
             if (target == null)
@@ -726,10 +738,7 @@ public class Condition
             try {
                 bool result;
                 var baseObj = target;
-                if (softDelete) 
-                    result = await baseObj._SoftDeleteQueryExecAsync(transaction);
-                else 
-                    result = await baseObj._DeleteQueryExecAsync(transaction);
+                result = await baseObj._DeleteQueryExecAsync(transaction, softDelete);
                 
                 if (!result) {
                     transaction.Rollback();
@@ -738,8 +747,7 @@ public class Condition
 
                 transaction.Commit();
 
-                if (!softDelete)
-                    _dataList.Remove((IBaseDataObj<TKey>)target);
+                _RemoveFromList((IBaseDataObj<TKey>)target);
 
                 return true;
             } catch {
@@ -749,7 +757,7 @@ public class Condition
         }
 
 
-        public virtual void RemoveFromList(BaseDataObj<TKey> obj) {
+        public virtual void _RemoveFromList(IBaseDataObj<TKey> obj) {
             _dataList.Remove(obj);
         }
 
@@ -780,7 +788,7 @@ public class Condition
         //インメモリ世界線は“正本”になれない。
         //だから巨大 JSON を分配して BaseObj に流し込むメソッドが必要になる。
         //APIからのみ使用する。
-        public async Task DistributeJsonData(string json) {
+        public async Task DistributeJsonDataAsync(string json) {
             // 1. JSON全体をレコードのリストにパース
             var allRecords = JsonSerializer.Deserialize<List<Dictionary<string, object>>>(json);
 

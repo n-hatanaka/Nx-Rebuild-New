@@ -24,6 +24,12 @@ namespace NxRebuild.shared
 
     //栄養素のプロパティを表すクラス（更新対象のカラムはVisibleだけ。排他制御は行わないので少し特殊）最初の具象実装にうってつけ
     // 非ジェネリックにして BaseDataObj<int> を継承し、抽象メンバーをオーバーライドする
+    
+    [NxObjsMetaData(
+        PrimaryTable = "ColName",
+        NameCol = "Name",
+        IdCol = "No"
+        )]
     public class NutritionProperty : BaseDataObj<int>, INutritionProperty {
         public int SortNo => Convert.ToInt32(_rawData["SortNo"]);
         public string Col => _rawData["Col"]?.ToString() ?? "";
@@ -52,10 +58,10 @@ namespace NxRebuild.shared
            get => _rawData.ContainsKey("Nutrition") && Convert.ToBoolean(_rawData["Nutrition"]);
        }
 
-        public NutritionProperty() {
-            _tblName = "ColName";
-            _nameColName = "Name";
-            _idColName = "No";
+        public NutritionProperty():base() {
+            //_tblName = "ColName";
+            //_nameColName = "Name";
+            //_idColName = "No";
         }
     
         protected override IEnumerable<(string tableName, string sql)> CreateJSONsql()
@@ -76,14 +82,14 @@ namespace NxRebuild.shared
             throw new NotImplementedException();
         }
 
-        public override async Task<bool> _DeleteQueryExecAsync(IDbTransaction transaction)
+        public override async Task<bool> _DeleteQueryExecAsync(IDbTransaction transaction, bool softDelete)
         {
             // No-op: 同期時にクライアント側で削除処理を行わない設計のため、何もしないで成功を返す
             await Task.CompletedTask;
             return true;
         }
     
-        public override async Task<bool> _SoftDeleteQueryExecAsync(IDbTransaction transaction)
+        protected override async Task<bool> _SoftDeletePrimaryQueryExecAsync(IDbTransaction transaction)
         {
             // No-op: ソフトデリートを使わないので何もしないで成功を返す
             await Task.CompletedTask;

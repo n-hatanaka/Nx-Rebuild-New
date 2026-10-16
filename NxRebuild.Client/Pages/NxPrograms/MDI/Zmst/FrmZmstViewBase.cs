@@ -67,6 +67,30 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
 
         //    StateHasChanged();
         //}
+        public override async Task DeleteSelectedItemAsync() {
+            if (DataMgr == null)
+                return;
+
+            // 選択行を取得
+            //あとで複数選択できる仕様にするけどとりあえず1件だけで
+            var item = GridDataItems.FirstOrDefault(x => x.IsSelected);
+            if (item == null) return;
+
+            if (item.ItemData is IZmstEntity obj) {
+
+                // 1件削除 → リストにして渡す
+                //ソフトデリート
+                var failed = await DataMgr.DeleteDataAsync(new List<int> { obj.DataID }, true);
+
+
+                // 失敗した ID があればログ
+                if (failed.Count > 0)
+                    Console.WriteLine($"削除失敗: {failed[0]}");
+
+                // グリッド再構築
+                BuildGridFromFolder(SelectedFolder);
+            }
+        }
 
         public override async Task CreateNewItemAsync() {
             if (DataMgr == null || SelectedFolder == null)

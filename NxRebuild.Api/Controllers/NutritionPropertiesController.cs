@@ -23,8 +23,8 @@ namespace NxRebuild.Api.Controllers {
             UserManager<ApplicationUser> userManager,
             IDatabaseSchemaProvider schemaProvider)
             : base(config, userManager, schemaProvider) {
-            _tblName = "ColName";
-            _nameColName = "Name";
+            //_tblName = "ColName";
+            //_nameColName = "Name";
 
 
         }
@@ -49,7 +49,7 @@ namespace NxRebuild.Api.Controllers {
             _dataObjMgr = new NutritionPropertiesMgr(_db, _tenantCode, uid);
         
             // DataObjMgr の初期化
-            await _dataObjMgr.Initialize(query);
+            await _dataObjMgr.InitializeAsync(query);
         
             await Task.CompletedTask;
         }

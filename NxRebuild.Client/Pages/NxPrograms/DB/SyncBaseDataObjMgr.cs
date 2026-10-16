@@ -77,10 +77,10 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
 
         // データベースからデータを取得する（クライアント・サーバー共用）
-        public virtual async Task Initialize(RecordQuery q) {
+        public virtual async Task InitializeAsync(RecordQuery q) {
 
             // BaseDataObjでプロパティをロード
-            await _baseDataObjMgr.Initialize(q);
+            await _baseDataObjMgr.InitializeAsync(q);
 
             // ★ Sync 用の新しいリストを作る
             var syncList = new List<IBaseDataObj<TKey>>();
@@ -114,16 +114,36 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             return await DBcon.QueryAsync<dynamic>(sql, new { TenantCode = TenantCode });
         }
 
+        // =======================================================
+        // サーバー側との同期処理を行う
+        // Nxではローカル正史を保持し、サーバーは正史の写像を返すだけの世界線のため、
+        // 差分検出や競合解決は必要ありません。
+        // 通信は「正史スナップショット(JSON)の受信」が唯一の役割となります。
+        //
+        // 通信失敗時はスナップショット更新が進まないだけでローカル正史は壊れません。
+        // そのためネットワーク例外・タイムアウト・APIエラーが発生しても、
+        // ローカル側の整合性が崩れることはありません。次回の同期で解決されます。
+        // =======================================================
         public virtual async Task<bool> SyncData() {
             DateTime refreshed_at = _baseDataObjMgr.Refreshed_at;
 
             var url = $"{ApiRoute}/sync/{refreshed_at:O}";
-            var response = await _http.GetAsync(url);
+
+            HttpResponseMessage response;
+
+            try {
+                // --- 通信ハンドリング（世界線は通信失敗で壊れない） ---
+                response = await _http.GetAsync(url);
+            } catch {
+                // ネットワーク例外時は世界線が進まないだけなので false を返す
+                return false;
+            }
 
             if (!response.IsSuccessStatusCode)
                 return false;
 
             var tran = DBcon.BeginTransaction();
+
             var json = await response.Content.ReadAsStringAsync();
             var syncResult = JsonSerializer.Deserialize<SyncAllResult>(json);
 
@@ -138,29 +158,46 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                 var target = _baseDataObjMgr.Get(dataId);
 
                 if (target != null) {
-                    await target.JsonToTblAsync(dataJson,tran);
+                    await target.JsonToTblAsync(dataJson, tran);
+                } else {
+                    target = CreateNewDataObj(default(TKey));
+                    target.DataID = dataId;
+                    await target.JsonToTblAsync(dataJson, tran);
+                    _baseDataObjMgr._dataList.Add(target);
                 }
-                else {
-                    var newSyncObj = CreateNewDataObj(default(TKey));
-                    newSyncObj.DataID = dataId;
-                    await newSyncObj.JsonToTblAsync(dataJson,tran);
-                    _baseDataObjMgr._dataList.Add(newSyncObj);
+
+                // =======================================================
+                // 削除済みデータの扱い
+                // Nxでは削除は「正史のスナップショットに存在しない」ことで表現されます。
+                // Update_at = MaxValue かつ LockedAt = MinValue の組み合わせは
+                // 「サーバーで削除済み」を意味します。
+                //
+                // 独自の削除フラグを持つ場合は、このメソッドを修正せずに
+                // InitializeAsync 側でリストに入れないように具象側を調整してください。
+                // =======================================================
+                if (target.Update_at == DateTime.MaxValue
+                    && target.LockedAt == DateTime.MinValue) {
+
+                    await _baseDataObjMgr._DeleteDataObjFromListAsync(target.DataID);
                 }
             }
-            
+
             tran.Commit();
 
-            // SetParent を再度呼び出して、全てのオブジェクトに対して親子関係を更新
-            // Tree順にデータが届く事はほぼない
+            // =======================================================
+            // 親子関係の再構築
+            // サーバーから届く正史スナップショットは階層順ではないため、
+            // 全オブジェクトに対して SetParent を再実行して世界線を整えます。
+            // =======================================================
             foreach (var obj in DataList) {
                 SetParent(obj);
             }
 
-
             return true;
         }
 
-        public virtual async Task<List<TKey>> DeleteData(IEnumerable<TKey> dataIDs, bool softDelete = false) {
+
+        public virtual async Task<List<TKey>> DeleteDataAsync(IEnumerable<TKey> dataIDs, bool softDelete = false) {
 
             var url = $"{ApiRoute}/Delete";
 
@@ -203,7 +240,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             // 成功したIDだけローカルオブジェクト削除 ★
             foreach (var id in successIds) {
                 try {
-                    await _DeleteDataObjFromList(id, softDelete);
+                    await _DeleteDataObjFromListAsync(id, softDelete);
                 } catch (Exception ex) {
                     Console.WriteLine($"DeleteDataObjFromList ERROR: ID={id}");
                     Console.WriteLine(ex.Message);
@@ -219,8 +256,8 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
 
 
-        protected virtual async Task<bool> _DeleteDataObjFromList(TKey dataID, bool softDelete = false) {
-            return await _baseDataObjMgr._DeleteDataObjFromList(dataID, softDelete);
+        protected virtual async Task<bool> _DeleteDataObjFromListAsync(TKey dataID, bool softDelete = false) {
+            return await _baseDataObjMgr._DeleteDataObjFromListAsync(dataID, softDelete);
         }
 
         protected class SyncAllResult {
@@ -236,11 +273,11 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         public virtual string LoadMultipleDataAsJson(List<TKey> idList)
             => _baseDataObjMgr.LoadMultipleDataAsJson(idList);
 
-        public virtual Task DistributeJsonData(string json)
-            => _baseDataObjMgr.DistributeJsonData(json);
+        public virtual Task DistributeJsonDataAsync(string json)
+            => _baseDataObjMgr.DistributeJsonDataAsync(json);
 
-        public virtual void RemoveFromList(BaseDataObj<TKey> obj)
-            => _baseDataObjMgr.RemoveFromList(obj);
+        public virtual void _RemoveFromList(BaseDataObj<TKey> obj)
+            => _baseDataObjMgr._RemoveFromList(obj);
 
         // ★ 新規レコード用の空辞書（NxTypeMapper の型正本に基づく）
         protected Dictionary<string, object?> GetEmptySchema() {
