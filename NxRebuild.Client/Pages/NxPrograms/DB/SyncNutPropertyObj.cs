@@ -32,15 +32,25 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
         // --- 読み取り専用（栄養素として扱うか） ---
         public bool Nutrition => NP.Nutrition;
-        public override async Task<bool> ReNameAsync(string newName) {
-            //リネームは行わないので無効化
-            throw new NotImplementedException();
+        public override async Task<NxOperationResult<int>> ReNameAsync(string newName) {
+            // リネームは行わないので無効化
+            return new NxOperationResult<int> {
+                ValidationErrorCode = NxValidationErrorCode.RenameEmpty,
+                Message = "このエンティティはリネームをサポートしていません"
+            };
         }
 
 
-        public override Task<bool> SaveAsync(Dictionary<string, object?> workingRaw, List<List<Dictionary<string, object?>>>? subTables = null) {
-            throw new NotImplementedException();
+        public override async Task<NxOperationResult<int>> SaveAsync(
+            Dictionary<string, object?> workingRaw,
+            List<List<Dictionary<string, object?>>>? subTables = null) {
+            // 保存は行わないので無効化
+            return new NxOperationResult<int> {
+                ValidationErrorCode = NxValidationErrorCode.LocalEditDenied,
+                Message = "このエンティティは保存をサポートしていません"
+            };
         }
+
 
         public async Task<bool> NutVisibleChg(bool NewVal) {
             var url = $"{ApiRoute}/Visible/{DataID}/{NewVal}";

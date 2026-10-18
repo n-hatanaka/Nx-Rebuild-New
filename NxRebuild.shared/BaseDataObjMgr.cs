@@ -30,7 +30,7 @@ namespace NxRebuild.shared {
         IBaseDataObj<TKey> CreateNewDataObj(TKey? parentID);
         void InsertNewDataItem(IBaseDataObj<TKey> obj);
 
-        Task<List<TKey>> DeleteDataAsync(IEnumerable<TKey> dataIDs, bool softDelete = false);
+        Task<NxOperationResult<TKey>> DeleteDataAsync(IEnumerable<TKey> dataIDs, bool softDelete = false);
         void SetParent(IBaseDataObj<TKey> obj);
         Task DistributeJsonDataAsync(string json);
         Task InitializeAsync(RecordQuery? query);
@@ -56,7 +56,7 @@ namespace NxRebuild.shared {
         string W_TblName { get; }
         string Ws_TblName { get; }
 
-        Task<List<TKey>> DeleteDataAsync(IEnumerable<TKey> dataIDs, bool softDelete = false);
+        Task<NxOperationResult<TKey>> DeleteDataAsync(IEnumerable<TKey> dataIDs, bool softDelete = false);
 
         IBaseDataObj<TKey>? Get(TKey id);
 
@@ -635,10 +635,6 @@ namespace NxRebuild.shared {
         }
 
 
-
-
-
-
         //データベースからデータを取得する。(クライアント、サーバー共用）
         //コンストラクタで呼び出してはいけない。
         public virtual async Task InitializeAsync(RecordQuery? query) {
@@ -708,19 +704,22 @@ namespace NxRebuild.shared {
         // 指定したID群を順次削除し、削除に失敗したIDを返す。
         // 返り値のリストが空なら全件成功。
         // UIはこの返り値を観測して成功／部分失敗を判断する。
-        public virtual async Task<List<TKey>> DeleteDataAsync(IEnumerable<TKey> dataIDs, bool softDelete = false) {
+        public virtual async Task<NxOperationResult<TKey>> DeleteDataAsync(IEnumerable<TKey> dataIDs, bool softDelete = false) {
             var failedLst = new List<TKey>();
 
             foreach (var id in dataIDs) {
                 try {
                     if (!await _DeleteDataObjFromListAsync(id, softDelete))
-                        failedLst.Add(id);   // 正常系の失敗
-                } catch {
-                    failedLst.Add(id);       // 異常系の破綻も「失敗」として扱う
+                        failedLst.Add(id);
+                } catch (Exception ex) {
+                    failedLst.Add(id);
                 }
             }
 
-            return failedLst;
+            return new NxOperationResult<TKey> {
+                FailedIds = failedLst,
+                Message = failedLst.Count == 0 ? "Delete completed" : "Some items failed"
+            };
         }
 
 

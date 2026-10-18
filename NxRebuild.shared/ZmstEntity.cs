@@ -33,18 +33,23 @@ namespace NxRebuild.shared {
         // ---------------------------------------------------------
         // ★ 名前変更禁止：常に false
         // ---------------------------------------------------------
-        public override Task<bool> ReNameAsync(string newName) {
-            return Task.FromResult(false);
+        public override async Task<NxOperationResult<int>> ReNameAsync(string newName) {
+            return new NxOperationResult<int> {
+                OperationErrorCode = NxOperationErrorCode.None,
+                ValidationErrorCode = NxValidationErrorCode.None
+            };
         }
 
         // ---------------------------------------------------------
         // ★ 保存禁止：常に false
         // ---------------------------------------------------------
-        public override async Task<bool> SaveAsync(
+        public override async Task<NxOperationResult<int>> SaveAsync(
             Dictionary<string, object?> workingRaw,
             List<List<Dictionary<string, object?>>>? subTables = null) {
-
-            return false;
+            return new NxOperationResult<int> {
+                OperationErrorCode = NxOperationErrorCode.None,
+                ValidationErrorCode = NxValidationErrorCode.None
+            };
         }
 
 

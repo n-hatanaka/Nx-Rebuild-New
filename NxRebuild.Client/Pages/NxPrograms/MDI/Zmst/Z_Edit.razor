@@ -1,34 +1,6 @@
 @namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst
 @inherits Z_EditBase
 
-<style>
-    /* 栄養素全体のコンテナ：画面幅に合わせて折り返し */
-    .nut-container {
-        display: flex;
-        flex-wrap: wrap;        /* ★ 画面幅に合わせて折り返す */
-        gap: 12px 20px;         /* 行間・列間の余白 */
-        margin-top: 10px;
-    }
-
-    /* 栄養素1項目のカード */
-    .nut-row {
-        display: flex;
-        flex-direction: column; /* 名前 → 入力欄 の縦並び */
-        width: 180px;           /* ★ 画面幅に応じて折り返す基準幅 */
-    }
-
-    /* 栄養素名 */
-    .nut-name {
-        font-weight: 600;
-        margin-bottom: 4px;
-    }
-
-    /* 数値入力欄を右寄せ */
-    .nut-row input {
-        text-align: right;      /* ★ 右寄せ */
-    }
-
-</style>
 
 @if (Entity == null)
 {
@@ -36,99 +8,101 @@
 }
 else
 {
-    <EditForm Model="Entity" OnValidSubmit="SaveAsync">
-        <DataAnnotationsValidator />
+    <div class="edit-padding">
+        <EditForm Model="Entity" OnValidSubmit="SaveAsync">
+            <DataAnnotationsValidator />
 
-        <!-- 基本情報 -->
-        <h4>基本情報</h4>
+            <!-- 基本情報 -->
+            <h4>基本情報</h4>
 
-        <div class="mb-3">
-            <label>材料コード</label>
-            <InputText class="form-control" @bind-Value="ZCode" />
-        </div>
-
-        <div class="mb-3">
-            <label>材料名</label>
-            <InputText class="form-control" @bind-Value="ZName" />
-        </div>
-
-        <div class="mb-3">
-            <label>食品群</label>
-            <InputSelect class="form-control" @bind-Value="GunCd">
-                @foreach (var g in GunList.Where(x => x.ParentID != 0))
-                {
-                    <option value="@g.DataID">
-                        @(g.ParentDataObj.DataName + "・" + g.DataName)
-                    </option>
-                }
-            </InputSelect>
-        </div>
-
-        <div class="mb-3">
-            <label>備考</label>
-            <InputTextArea class="form-control" @bind-Value="Txt" />
-        </div>
-
-        <!-- 栄養素 -->
-        <h4>栄養素</h4>
-
-        <div class="nut-container">
-            <div class="row">
-                    @foreach (var np in NutritionList)
-                    {
-
-                        <div class="nut-row">
-                            <span class="nut-name">@np.DataName</span>
-                            <InputNumber TValue="decimal?"
-                                         Value="Nut[np.Col]"
-                                         ValueChanged="v => Nut[np.Col] = v"
-                                         ValueExpression="() => Nut.ValueProxy" />
-                            <span class="nut-name">@np.PTanni</span>
-                        </div>
-                    }
+            <div class="mb-3">
+                <label>材料コード</label>
+                <InputText class="form-control" @bind-Value="ZCode" />
             </div>
-        </div>
 
-        <!-- 単位（追加のみ） -->
-        <h4>単位（追加のみ）</h4>
+            <div class="mb-3">
+                <label>材料名</label>
+                <InputText class="form-control" @bind-Value="ZName" />
+            </div>
 
-        <div class="mb-3">
-            <label>単位コード</label>
-            <InputNumber class="form-control" @bind-Value="NewTanCd" />
-        </div>
+            <div class="mb-3">
+                <label>食品群</label>
+                <InputSelect class="form-control" @bind-Value="GunCd">
+                    @foreach (var g in GunList.Where(x => x.ParentID != 0))
+                    {
+                        <option value="@g.DataID">
+                            @(g.ParentDataObj.DataName + "・" + g.DataName)
+                        </option>
+                    }
+                </InputSelect>
+            </div>
 
-        <div class="mb-3">
-            <label>単位名</label>
-            <InputText class="form-control" @bind-Value="NewTanName" />
-        </div>
+            <div class="mb-3">
+                <label>備考</label>
+                <InputTextArea class="form-control" @bind-Value="Txt" />
+            </div>
 
-        <div class="mb-3">
-            <label>並び順（jun）</label>
-            <InputNumber class="form-control" @bind-Value="NewJun" />
-        </div>
+            <!-- 栄養素 -->
+            <h4>栄養素</h4>
 
-        <div class="mb-3">
+            <div class="nut-container">
+                <div class="row">
+                        @foreach (var np in NutritionList)
+                        {
 
-            <label>重量</label>
-            <InputNumber class="form-control" @bind-Value="NewJyuuryou" />
-        </div>
+                            <div class="nut-row">
+                                <span class="nut-name">@np.DataName</span>
+                                <InputNumber TValue="decimal?"
+                                             Value="Nut[np.Col]"
+                                             ValueChanged="v => Nut[np.Col] = v"
+                                             ValueExpression="() => Nut.ValueProxy" />
+                                <span class="nut-name">@np.PTanni</span>
+                            </div>
+                        }
+                </div>
+            </div>
 
-        <button type="button" class="btn btn-secondary" @onclick="AddTanUnit">
-            単位追加
-        </button>
+            <!-- 単位（追加のみ） -->
+            <h4>単位（追加のみ）</h4>
+
+            <div class="mb-3">
+                <label>単位コード</label>
+                <InputNumber class="form-control" @bind-Value="NewTanCd" />
+            </div>
+
+            <div class="mb-3">
+                <label>単位名</label>
+                <InputText class="form-control" @bind-Value="NewTanName" />
+            </div>
+
+            <div class="mb-3">
+                <label>並び順（jun）</label>
+                <InputNumber class="form-control" @bind-Value="NewJun" />
+            </div>
+
+            <div class="mb-3">
+
+                <label>重量</label>
+                <InputNumber class="form-control" @bind-Value="NewJyuuryou" />
+            </div>
+
+            <button type="button" class="btn btn-secondary" @onclick="AddTanUnit">
+                単位追加
+            </button>
 
 
-        <h5 class="mt-3">追加済み単位（jun順）</h5>
-        <ul>
-            @foreach (var t in WorkingTanList.OrderBy(x => Convert.ToDouble(x["jun"])))
-            {
-                <li>@t["tan_cd"] - @t["tan_Name"] (@t["jun"] / @t["jyuuryou"])</li>
-            }
+            <h5 class="mt-3">追加済み単位（jun順）</h5>
+            <ul>
+                @foreach (var t in WorkingTanList.OrderBy(x => Convert.ToDouble(x["jun"])))
+                {
+                    <li>@t["tan_cd"] - @t["tan_Name"] (@t["jun"] / @t["jyuuryou"])</li>
+                }
 
-        </ul>
+            </ul>
 
-        <button class="btn btn-primary mt-4">保存</button>
-    </EditForm>
+            <button class="btn btn-primary mt-4">保存</button>
+        </EditForm>
+    </div>
 }
 
 @code {

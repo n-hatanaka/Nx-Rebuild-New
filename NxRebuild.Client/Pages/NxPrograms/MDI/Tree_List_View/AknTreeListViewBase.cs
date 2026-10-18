@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Components.Web;
+using Microsoft.JSInterop;
 using NxRebuild.Client.Pages.Auth;
 using NxRebuild.Client.Pages.NxPrograms.DB;
 using NxRebuild.Client.Pages.NxPrograms.MDI.Zmst;
@@ -12,6 +13,8 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
     public class AknTreeListViewBase<TObj, TKey> : ComponentBase
         where TObj : BaseDataObj<TKey>
         where TKey : notnull {
+        [Inject]
+        protected Microsoft.JSInterop.IJSRuntime JS { get; set; } = default!;
 
         [Inject] protected CustomAuthStateProvider AuthProvider { get; set; }
         [Parameter] public EventCallback<MyDataObj<TKey>> OnRenameRequested { get; set; }
@@ -135,14 +138,21 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
 
             // ★ DataMgr に反映（DB更新）
             if (item.ItemData is IBaseDataObj<TKey> baseObj) {
-                var ok = await baseObj.ReNameAsync(item.EditingName);
 
-                if (!ok) {
-                    // 失敗したら元に戻す
+                // ★ ReNameAsync は NxOperationResult を返す
+                var result = await baseObj.ReNameAsync(item.EditingName);
+
+                // ★ 失敗したら元に戻す
+                if (!result.Success) {
+                    Console.WriteLine($"Rename failed: {result.Message}");
+
                     item.Name = baseObj.DataName;
                     item.IsEditing = false;
+
+                    // UI にエラー表示したいならここでイベント発火も可能
                     return;
                 }
+
             }
 
             item.IsEditing = false;
@@ -151,6 +161,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
             if (SelectedFolder != null)
                 BuildGridFromFolder(SelectedFolder);
         }
+
 
 
         public void AddDefaultColumns() {
@@ -342,18 +353,24 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
 
             if (item.ItemData is IBaseDataObj<TKey> obj) {
 
-                // 1件削除 → リストにして渡す
-                var failed = await DataMgr.DeleteDataAsync(new List<TKey> { obj.DataID });
+                // ★ 1件削除 → リストにして渡す
+                var result = await DataMgr.DeleteDataAsync(new List<TKey> { obj.DataID });
 
+                // ★ NxOperationResult に統一されたので Success / FailedIds を見る
+                if (!result.Success) {
+                    Console.WriteLine($"削除失敗: {result.Message}");
 
-                // 失敗した ID があればログ
-                if (failed.Count > 0)
-                    Console.WriteLine($"削除失敗: {failed[0]}");
+                    if (result.FailedIds != null && result.FailedIds.Count > 0)
+                        Console.WriteLine($"失敗ID: {result.FailedIds[0]}");
 
-                // グリッド再構築
+                    return;
+                }
+
+                // ★ 成功したのでグリッド再構築
                 BuildGridFromFolder(SelectedFolder);
             }
         }
+
 
 
     }

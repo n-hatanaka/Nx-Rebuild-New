@@ -72,14 +72,20 @@ namespace NxRebuild.shared
                           );
         }
     
-        public override async Task<LockStatus> DataOpenAsync()
+        public override async Task<NxOperationResult<int>> DataOpenAsync()
         {
-            throw new NotImplementedException();
+            return await Task.FromResult(new NxOperationResult<int> {
+                OperationErrorCode = NxOperationErrorCode.None,
+                ValidationErrorCode = NxValidationErrorCode.None
+            });
         }
 
 
-        public override async Task<LockStatus> DataCloseAsync() {
-            throw new NotImplementedException();
+        public override async Task<NxOperationResult<int>> DataCloseAsync() {
+            return await Task.FromResult(new NxOperationResult<int> {
+                OperationErrorCode = NxOperationErrorCode.None,
+                ValidationErrorCode = NxValidationErrorCode.None
+            });
         }
 
         public override async Task<bool> _DeleteQueryExecAsync(IDbTransaction transaction, bool softDelete)

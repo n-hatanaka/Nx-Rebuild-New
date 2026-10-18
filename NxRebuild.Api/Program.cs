@@ -76,6 +76,53 @@ public class ApiProgram
 
         var app = builder.Build();
 
+        // ★★★ ユーザー自動作成（新仕様でもそのまま使える）★★★
+        using (var scope = app.Services.CreateScope()) {
+            var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+
+            var email = "test@example.com";
+            var password = "Test123!";
+
+            if (userManager.FindByEmailAsync(email).Result == null) {
+                var user = new ApplicationUser {
+                    UserName = email,
+                    Email = email,
+                    TenantCode = "00000000-0001-7000-8000-000000000000"
+                };
+
+                var result = userManager.CreateAsync(user, password).Result;
+
+                if (!result.Succeeded) {
+                    Console.WriteLine("ユーザー1作成失敗:");
+                    foreach (var err in result.Errors)
+                        Console.WriteLine($" - {err.Description}");
+                } else {
+                    Console.WriteLine("テストユーザー1作成完了");
+                }
+            }
+
+            email = "test2@example2.com";
+            password = "Test223!";
+
+            if (userManager.FindByEmailAsync(email).Result == null) {
+                var user = new ApplicationUser {
+                    UserName = email,
+                    Email = email,
+                    TenantCode = "00000000-0001-7000-8000-000000000000"
+                };
+
+                var result = userManager.CreateAsync(user, password).Result;
+
+                if (!result.Succeeded) {
+                    Console.WriteLine("ユーザー2作成失敗:");
+                    foreach (var err in result.Errors)
+                        Console.WriteLine($" - {err.Description}");
+                } else {
+                    Console.WriteLine("テストユーザー2作成完了");
+                }
+            }
+        }
+
 
         // --- ミドルウェア（順番が超重要） ---
         app.UseRouting(); // ← 1回だけ

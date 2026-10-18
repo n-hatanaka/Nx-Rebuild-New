@@ -33,56 +33,101 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         }
 
 
-        public override async Task<bool> SyncData() {
+        public override async Task<NxOperationResult<int>> SyncData() {
             // ① API に世界線同期点を渡す
             var url = $"{ApiRoute}/sync";
-            var response = await _http.GetAsync(url);
 
-            if (!response.IsSuccessStatusCode)
-                return false;
+            HttpResponseMessage response;
+
+            try {
+                response = await _http.GetAsync(url);
+            } catch (Exception ex) {
+                return new NxOperationResult<int> {
+                    OperationErrorCode = NxOperationErrorCode.NetworkError,
+                    Message = $"通信エラー: {ex.Message}"
+                };
+            }
+
+            if (!response.IsSuccessStatusCode) {
+                return new NxOperationResult<int> {
+                    OperationErrorCode = NxOperationErrorCode.HttpError,
+                    Message = $"HTTPエラー: {response.StatusCode}"
+                };
+            }
 
             // ② JSON を受け取る
-            var json = await response.Content.ReadAsStringAsync();
+            SyncAllResult? syncResult = null;
 
-            // ③ パース（API の返却構造に合わせた型を使用）
-            var syncResult = JsonSerializer.Deserialize<SyncAllResult>(json);
+            try {
+                var json = await response.Content.ReadAsStringAsync();
+                syncResult = JsonSerializer.Deserialize<SyncAllResult>(json);
+            } catch (Exception ex) {
+                return new NxOperationResult<int> {
+                    OperationErrorCode = NxOperationErrorCode.ResponseParseError,
+                    Message = $"レスポンス解析エラー: {ex.Message}"
+                };
+            }
 
-            if (syncResult?.Items == null)
-                return false;
+            if (syncResult?.Items == null) {
+                return new NxOperationResult<int> {
+                    OperationErrorCode = NxOperationErrorCode.Unknown,
+                    Message = "同期データが空です"
+                };
+            }
 
-            // ④ ループして DataObjMgr の世界線を更新
+            // ③ 世界線反映（削除判定なし）
             foreach (var item in syncResult.Items) {
+
                 var dataId = item.Key;
                 var dataJson = item.Data;
 
                 var tran = DBcon.BeginTransaction();
-                // ⑤ 既存 DataObj を探す
-                var target = _baseDataObjMgr.Get(dataId);
 
-                if (target != null) {
-                    // ⑥ 既存オブジェクト流し込む
-                    await target.JsonToTblAsync(dataJson,tran);
-                } else {
-                    // ⑦ 新規作成
-                    var newSyncObj = _baseDataObjMgr.CreateNewDataObj(default(int));
+                try {
+                    var target = _baseDataObjMgr.Get(dataId);
 
-                    // DataID をセット（必要なら）
-                    newSyncObj.DataID = dataId;
+                    if (target != null) {
+                        var ok = await target.JsonToTblAsync(dataJson, tran);
+                        if (!ok) {
+                            tran.Rollback();
+                            return new NxOperationResult<int> {
+                                OperationErrorCode = NxOperationErrorCode.DbError,
+                                Message = $"JsonToTblAsync 失敗: ID={dataId}"
+                            };
+                        }
+                    } else {
+                        var newSyncObj = _baseDataObjMgr.CreateNewDataObj(default(int));
+                        newSyncObj.DataID = dataId;
 
-                    // ⑧ 流し込む
-                    await newSyncObj.JsonToTblAsync(dataJson,tran);
+                        var ok = await newSyncObj.JsonToTblAsync(dataJson, tran);
+                        if (!ok) {
+                            tran.Rollback();
+                            return new NxOperationResult<int> {
+                                OperationErrorCode = NxOperationErrorCode.DbError,
+                                Message = $"JsonToTblAsync 新規作成失敗: ID={dataId}"
+                            };
+                        }
 
-                    // ⑨ DataList に追加
-                    _baseDataObjMgr._dataList.Add(newSyncObj);
+                        _baseDataObjMgr._dataList.Add(newSyncObj);
+                    }
 
+                    tran.Commit();
+                } catch (Exception ex) {
+                    tran.Rollback();
+                    return new NxOperationResult<int> {
+                        OperationErrorCode = NxOperationErrorCode.ServerException,
+                        Message = $"同期処理中に例外が発生しました: {ex.Message}"
+                    };
                 }
-                tran.Commit();
             }
 
-            return true;
+            return new NxOperationResult<int> {
+                Message = "Sync completed"
+            };
         }
 
-        public override async Task<List<int>> DeleteDataAsync(IEnumerable<int> dataIDs, bool softDelete = false) {
+
+        public override async Task<NxOperationResult<int>> DeleteDataAsync(IEnumerable<int> dataIDs, bool softDelete = false) {
             //削除は行わないので無効化
             throw new NotImplementedException();
         }

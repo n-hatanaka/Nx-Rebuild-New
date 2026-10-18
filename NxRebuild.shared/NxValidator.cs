@@ -1,12 +1,12 @@
 using System.Data;
 
 namespace NxRebuild.shared {
-    public enum NxValidationErrorCode
-    {
+    public enum NxValidationErrorCode {
         None = 0,
 
         // Save
         EmptyName,
+        CannotRename,
         InvalidParent,
         DuplicateName,
 
@@ -28,7 +28,8 @@ namespace NxRebuild.shared {
 
         // その他
         Unknown
-      }
+    }
+
 
     public struct NxValidationResult
     {
@@ -44,8 +45,7 @@ namespace NxRebuild.shared {
             => new NxValidationResult { ErrorCode = code, ErrorMessage = msg };
     }
 
-    public class NxValidator<TKey>
-    {
+    public class NxValidator<TKey> {
         public TKey DataID { get; }
         public string DataName { get; }
         public NxDataType DataType { get; }
@@ -58,8 +58,7 @@ namespace NxRebuild.shared {
         public Dictionary<string, object> RawData { get; }
         public IDbConnection DBcon { get; }
 
-        public NxValidator(IBaseDataObj<TKey> obj, Dictionary<string,object> ValidData)
-        {
+        public NxValidator(IBaseDataObj<TKey> obj, Dictionary<string, object> ValidData) {
             DataID = obj.DataID;
             DataName = obj.DataName;
             DataType = obj.DataType;
@@ -76,112 +75,128 @@ namespace NxRebuild.shared {
         // ---------------------------------------------------------
         // Save
         // ---------------------------------------------------------
-        public virtual NxValidationResult ValidateSave()
-        {
-            try
-            {
+        public virtual NxOperationResult<TKey> ValidateSave() {
+            try {
                 if (string.IsNullOrWhiteSpace(DataName))
-                    return NxValidationResult.Fail(NxValidationErrorCode.EmptyName, "名前が空です");
+                    return new NxOperationResult<TKey> {
+                        ValidationErrorCode = NxValidationErrorCode.EmptyName,
+                        Message = "名前が空です"
+                    };
 
                 if (ParentID == null)
-                    return NxValidationResult.Fail(NxValidationErrorCode.InvalidParent, "親IDが不正です");
+                    return new NxOperationResult<TKey> {
+                        ValidationErrorCode = NxValidationErrorCode.InvalidParent,
+                        Message = "親IDが不正です"
+                    };
 
-                return NxValidationResult.Ok();
-            }
-            catch (Exception ex)
-            {
-                return NxValidationResult.Fail(NxValidationErrorCode.Unknown, $"例外: {ex.Message}");
+                return new NxOperationResult<TKey>(); // Success
+            } catch (Exception ex) {
+                return new NxOperationResult<TKey> {
+                    ValidationErrorCode = NxValidationErrorCode.Unknown,
+                    Message = $"例外: {ex.Message}"
+                };
             }
         }
 
         // ---------------------------------------------------------
         // Delete
         // ---------------------------------------------------------
-        public virtual NxValidationResult ValidateDelete()
-        {
-            try
-            {
+        public virtual NxOperationResult<TKey> ValidateDelete() {
+            try {
                 if (DataType == NxDataType.root)
-                    return NxValidationResult.Fail(NxValidationErrorCode.CannotDeleteRoot, "ルートは削除できません");
+                    return new NxOperationResult<TKey> {
+                        ValidationErrorCode = NxValidationErrorCode.CannotDeleteRoot,
+                        Message = "ルートは削除できません"
+                    };
 
-                return NxValidationResult.Ok();
-            }
-            catch (Exception ex)
-            {
-                return NxValidationResult.Fail(NxValidationErrorCode.Unknown, $"例外: {ex.Message}");
+                return new NxOperationResult<TKey>();
+            } catch (Exception ex) {
+                return new NxOperationResult<TKey> {
+                    ValidationErrorCode = NxValidationErrorCode.Unknown,
+                    Message = $"例外: {ex.Message}"
+                };
             }
         }
 
         // ---------------------------------------------------------
         // Rename
         // ---------------------------------------------------------
-        public virtual NxValidationResult ValidateRename(string newName)
-        {
-            try
-            {
+        public virtual NxOperationResult<TKey> ValidateRename(string newName) {
+            try {
                 if (string.IsNullOrWhiteSpace(newName))
-                    return NxValidationResult.Fail(NxValidationErrorCode.RenameEmpty, "名前が空です");
+                    return new NxOperationResult<TKey> {
+                        ValidationErrorCode = NxValidationErrorCode.RenameEmpty,
+                        Message = "名前が空です"
+                    };
 
                 if (newName.Length > 20)
-                    return NxValidationResult.Fail(NxValidationErrorCode.RenameTooLong, "名前が長すぎます");
+                    return new NxOperationResult<TKey> {
+                        ValidationErrorCode = NxValidationErrorCode.RenameTooLong,
+                        Message = "名前が長すぎます"
+                    };
 
-                return NxValidationResult.Ok();
-            }
-            catch (Exception ex)
-            {
-                return NxValidationResult.Fail(NxValidationErrorCode.Unknown, $"例外: {ex.Message}");
+                return new NxOperationResult<TKey>();
+            } catch (Exception ex) {
+                return new NxOperationResult<TKey> {
+                    ValidationErrorCode = NxValidationErrorCode.Unknown,
+                    Message = $"例外: {ex.Message}"
+                };
             }
         }
 
         // ---------------------------------------------------------
         // Sync
         // ---------------------------------------------------------
-        public virtual NxValidationResult ValidateSync()
-        {
-            try
-            {
+        public virtual NxOperationResult<TKey> ValidateSync() {
+            try {
                 if (LockerID != CurrUsrID)
-                    return NxValidationResult.Fail(NxValidationErrorCode.LockedByOther, "他人がロック中です");
+                    return new NxOperationResult<TKey> {
+                        ValidationErrorCode = NxValidationErrorCode.LockedByOther,
+                        Message = "他人がロック中です"
+                    };
 
-                return NxValidationResult.Ok();
-            }
-            catch (Exception ex)
-            {
-                return NxValidationResult.Fail(NxValidationErrorCode.Unknown, $"例外: {ex.Message}");
+                return new NxOperationResult<TKey>();
+            } catch (Exception ex) {
+                return new NxOperationResult<TKey> {
+                    ValidationErrorCode = NxValidationErrorCode.Unknown,
+                    Message = $"例外: {ex.Message}"
+                };
             }
         }
 
         // ---------------------------------------------------------
         // Import
         // ---------------------------------------------------------
-        public virtual NxValidationResult ValidateImport()
-        {
-            try
-            {
+        public virtual NxOperationResult<TKey> ValidateImport() {
+            try {
                 if (Update_at < DateTime.UtcNow.AddYears(-10))
-                    return NxValidationResult.Fail(NxValidationErrorCode.TooOldData, "古すぎるデータです");
+                    return new NxOperationResult<TKey> {
+                        ValidationErrorCode = NxValidationErrorCode.TooOldData,
+                        Message = "古すぎるデータです"
+                    };
 
-                return NxValidationResult.Ok();
-            }
-            catch (Exception ex)
-            {
-                return NxValidationResult.Fail(NxValidationErrorCode.Unknown, $"例外: {ex.Message}");
+                return new NxOperationResult<TKey>();
+            } catch (Exception ex) {
+                return new NxOperationResult<TKey> {
+                    ValidationErrorCode = NxValidationErrorCode.Unknown,
+                    Message = $"例外: {ex.Message}"
+                };
             }
         }
 
         // ---------------------------------------------------------
         // LocalEdit
         // ---------------------------------------------------------
-        public virtual NxValidationResult ValidateLocalEdit()
-        {
-            try
-            {
-                return NxValidationResult.Ok();
-            }
-            catch (Exception ex)
-            {
-                return NxValidationResult.Fail(NxValidationErrorCode.Unknown, $"例外: {ex.Message}");
+        public virtual NxOperationResult<TKey> ValidateLocalEdit() {
+            try {
+                return new NxOperationResult<TKey>();
+            } catch (Exception ex) {
+                return new NxOperationResult<TKey> {
+                    ValidationErrorCode = NxValidationErrorCode.Unknown,
+                    Message = $"例外: {ex.Message}"
+                };
             }
         }
     }
+
 }

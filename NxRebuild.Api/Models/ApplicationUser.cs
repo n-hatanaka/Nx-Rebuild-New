@@ -13,7 +13,7 @@ public class ApplicationUser : IdentityUser
         Id = Uuid7.NewUuid7().ToString();
 
         // グループコードも UUIDv7
-        TenantCode = Uuid7.NewUuid7().ToString();
+        //TenantCode = Uuid7.NewUuid7().ToString();
 
 
     }

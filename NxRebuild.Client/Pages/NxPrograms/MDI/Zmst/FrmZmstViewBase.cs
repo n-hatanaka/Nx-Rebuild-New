@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Components;
 using NxRebuild.Client.Pages.NxPrograms.DB;
 using NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View;
 using NxRebuild.Client.Services;
+using Microsoft.JSInterop;
+
 using NxRebuild.shared;
 
 namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
@@ -84,8 +86,8 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
 
 
                 // 失敗した ID があればログ
-                if (failed.Count > 0)
-                    Console.WriteLine($"削除失敗: {failed[0]}");
+                if (failed.FailedIds.Count > 0)
+                    Console.WriteLine($"削除失敗: {failed.FailedIds[0]}");
 
                 // グリッド再構築
                 BuildGridFromFolder(SelectedFolder);
@@ -100,7 +102,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
 
             //  1. 孤立オブジェクト生成
             var newObj = DataMgr.CreateNewDataObj(parentID);
-            
+
             //  2. 編集画面を開く（閉じたら保存済み）
             Manager.Open<Z_Edit>(
                 $"新規作成: {newObj.DataName}",
@@ -108,10 +110,13 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
                 {
                     { "LocalCode", newObj.DataID },
                     { "IsNew", true },
-                    { "OnSaved", EventCallback.Factory.Create(this, OnChildSaved) }
+                    { "OnSaved", EventCallback.Factory.Create(this, OnChildSaved) },
+                    { "OnClose", EventCallback.Factory.Create(this, OnChildClosed) }
                 }
             );
         }
+
+
         // ---------------------------------------------------------
         // ダブルクリック → 編集画面へ遷移（後で作る）
         // ---------------------------------------------------------
@@ -122,21 +127,21 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
             var item = GridDataItems.FirstOrDefault(x => x.IsSelected);
             if (item == null) return;
 
-
             if (item.ItemData.DataType != NxDataType.Zairyou)
                 return;
 
             var baseObj = (IZmstEntity)item.ItemData;
 
-            var lockst = await baseObj.DataOpenAsync();
+            // ★ DataOpenAsync は NxOperationResult を返す
+            var result = await baseObj.DataOpenAsync();
 
-            if (lockst.HasError) {
-                // エラーが発生した場合の処理
-                Console.WriteLine(lockst.ErrorMessage);
+            if (!result.Success) {
+                Console.WriteLine(result.Message);
+                await JS.InvokeVoidAsync("aknAlert", $"編集開始失敗: {result.Message}");
                 return;
             }
 
-            var winId = Guid.NewGuid(); // もし WindowInfo.Id を返すならそれを使う
+            var winId = Guid.NewGuid();
 
             Manager.Open<Z_Edit>(
                 $"材料編集: {baseObj.DataName}",
@@ -148,12 +153,12 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
                     { "OnClose", EventCallback.Factory.Create(this, OnChildClosed) }
                 }
             );
-
         }
-        
+
+
         private async Task OnChildClosed() {
             // 子が閉じられたときにやりたい処理を書く
-            Console.WriteLine("子画面が閉じられました");
+            Console.WriteLine("材料編集画面が閉じられました");
         }
 
         private async Task OnChildSaved() {

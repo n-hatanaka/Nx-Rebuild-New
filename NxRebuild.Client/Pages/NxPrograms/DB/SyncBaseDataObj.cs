@@ -13,7 +13,6 @@ using System.Text.Json;
 namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
     public interface ISyncBaseDataObj<TKey>: IBaseDataObj<TKey> {
-        Task<LockStatus> PingLockAsync();
         HttpClient Http { get; set; }
         CustomAuthStateProvider Auth { get; set; }
         
@@ -154,16 +153,19 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         //   - CRUDの因果が常に一貫し、保存の信頼性が最大化される。
         // ===============================================================
 
-        public virtual async Task<bool> SaveAsync(
-                        Dictionary<string, object?> workingRaw,
-                        List<List<Dictionary<string, object?>>>? subTables = null) {
+        public virtual async Task<NxOperationResult<TKey>> SaveAsync(
+                            Dictionary<string, object?> workingRaw,
+                            List<List<Dictionary<string, object?>>>? subTables = null) {
             using var tran = DBcon.BeginTransaction();
 
             try {
                 // ★ 既存行の HardDelete（ローカル側のデータ初期化）
                 if (!await _dataObj._HardDeleteQueryExecAsync(tran)) {
                     tran.Rollback();
-                    return false;
+                    return new NxOperationResult<TKey> {
+                        OperationErrorCode = NxOperationErrorCode.DbError,
+                        Message = "ローカル初期化に失敗しました"
+                    };
                 }
 
                 // ★ 新規ならローカル側で仮ID採番（サーバー側で上書きされる可能性あり）
@@ -172,7 +174,10 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                 // ★ Working 全体保存（メイン＋サブ）
                 if (!await _dataObj.SaveWorkingAsync(workingRaw, subTables, tran)) {
                     tran.Rollback();
-                    return false;
+                    return new NxOperationResult<TKey> {
+                        OperationErrorCode = NxOperationErrorCode.DbError,
+                        Message = "ローカル保存に失敗しました"
+                    };
                 }
 
                 // ★ サーバーへ送る JSON を生成
@@ -189,7 +194,10 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                     Console.WriteLine("SyncBaseDataObj.SaveAsync NETWORK ERROR:");
                     Console.WriteLine(ex.Message);
                     tran.Rollback();
-                    return false;
+                    return new NxOperationResult<TKey> {
+                        OperationErrorCode = NxOperationErrorCode.NetworkError,
+                        Message = $"通信エラー: {ex.Message}"
+                    };
                 }
 
                 // ★ HTTP ステータス異常（4xx / 5xx）
@@ -197,69 +205,78 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                     Console.WriteLine("SyncBaseDataObj.SaveAsync HTTP ERROR:");
                     Console.WriteLine($"StatusCode: {response.StatusCode}");
                     tran.Rollback();
-                    return false;
+                    return new NxOperationResult<TKey> {
+                        OperationErrorCode = NxOperationErrorCode.HttpError,
+                        Message = $"HTTPエラー: {response.StatusCode}"
+                    };
                 }
 
-                SaveResponseDto<TKey>? respObj = null;
+                NxOperationResult<TKey>? op = null;
 
                 try {
                     // ★ 応答を読む（JSON パース）
-                    respObj = await response.Content.ReadFromJsonAsync<SaveResponseDto<TKey>>();
+                    op = await response.Content.ReadFromJsonAsync<NxOperationResult<TKey>>();
                 } catch (Exception ex) {
                     // ★ JSON パース失敗（サーバー側の異常応答）
                     Console.WriteLine("SyncBaseDataObj.SaveAsync RESPONSE PARSE ERROR:");
                     Console.WriteLine(ex.Message);
                     tran.Rollback();
-                    return false;
+                    return new NxOperationResult<TKey> {
+                        OperationErrorCode = NxOperationErrorCode.ResponseParseError,
+                        Message = $"レスポンス解析エラー: {ex.Message}"
+                    };
                 }
 
-                if (respObj == null) {
-                    // ★ サーバーが空応答を返した場合
-                    Console.WriteLine("SyncBaseDataObj.SaveAsync EMPTY RESPONSE ERROR:");
+                if (op == null) {
                     tran.Rollback();
-                    return false;
+                    return new NxOperationResult<TKey> {
+                        OperationErrorCode = NxOperationErrorCode.Unknown,
+                        Message = "サーバー応答が空です"
+                    };
+                }
+
+                // ★ API 側でエラーならローカル正史をロールバックして返す
+                if (!op.Success) {
+                    tran.Rollback();
+                    return op;
                 }
 
                 // ★ コミット（ローカル世界線の確定）
                 tran.Commit();
 
-                // ★ Working → Raw 反映（ローカル正本）
+                // ★ Working → Raw 反映（ローカル正史）
                 ApplyWorkingToRaw(workingRaw);
 
-                // ★ サーバー正史の プロパティ をオブジェクトに反映
+                // ★ サーバー正史の RawData をローカルへ反映
+                if (op.RawData != null)
+                    UpdateRawDataToTbl(op.RawData, null);
+
+                // ★ サーバー正史のプロパティをオブジェクトに反映
                 await _dataObj._UpdatePropertiesFromTblAsync();
 
-                return true;
+                // ★ 正常終了
+                return new NxOperationResult<TKey> {
+                    RawData = op.RawData,
+                    NewID = op.NewID,
+                    UpdateAt = op.UpdateAt,
+                    Message = "Save completed"
+                };
             } catch (Exception ex) {
                 Console.WriteLine("SyncBaseDataObj.SaveAsync ERROR:");
                 Console.WriteLine(ex.Message);
                 Console.WriteLine(ex.StackTrace);
                 tran.Rollback();
-                return false;
+                return new NxOperationResult<TKey> {
+                    OperationErrorCode = NxOperationErrorCode.ServerException,
+                    Message = $"SaveAsync failed: {ex.Message}"
+                };
             }
         }
 
 
 
 
-        //ロック延命
-        public async Task<LockStatus> PingLockAsync()
-        {
-            // ① サーバーにロック延命要求（locked_at を更新）
-            var lockStatus = await SetLockAsync();
-
-            // ② UI ローカル世界線に反映
-            UpdateRawDataToTbl(new Dictionary<string, object> {
-                { "locked_at", lockStatus.Locked_at },
-                { "locked_by", lockStatus.LockedByUserId }
-            }, null);
-
-            // ③ サーバーから返ってきた LockStatus をそのまま返す
-            return lockStatus;
-        }
-      
-        public async Task<LockStatus> SetLockAsync()
-        {
+        public async Task<NxOperationResult<TKey>> SetLockAsync() {
             // ① Auth から UserID と UserName を取得
             var authState = await Auth.GetAuthenticationStateAsync();
             var userName = authState.User.Identity?.Name;
@@ -275,58 +292,67 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             HttpResponseMessage response;
 
             try {
+                // ★ サーバーへ送信
                 response = await Http.PostAsJsonAsync(url, req);
-            }
-            catch (Exception ex) {
-                return new LockStatus {
-                    HasError = true,
-                    ErrorMessage = $"通信エラー: {ex.Message}",                    
+            } catch (Exception ex) {
+                // ★ 通信レベルのエラー（ネットワーク断・タイムアウト等）
+                return new NxOperationResult<TKey> {
+                    OperationErrorCode = NxOperationErrorCode.NetworkError,
+                    Message = $"通信エラー: {ex.Message}"
                 };
             }
 
+            // ★ HTTP ステータス異常（4xx / 5xx）
             if (!response.IsSuccessStatusCode) {
-                return new LockStatus {
-                    HasError = true,
-                    ErrorMessage = $"HTTPエラー: {response.StatusCode}",
+                return new NxOperationResult<TKey> {
+                    OperationErrorCode = NxOperationErrorCode.HttpError,
+                    Message = $"HTTPエラー: {response.StatusCode}"
                 };
             }
 
-            LockStatus? serverStatus;
+            NxOperationResult<TKey>? op;
 
             try {
-                serverStatus = await response.Content.ReadFromJsonAsync<LockStatus>();
-            }
-            catch (Exception ex) {
-                return new LockStatus {
-                    HasError = true,
-                    ErrorMessage = $"レスポンス解析エラー: {ex.Message}",
+                // ★ 応答を読む（JSON パース）
+                op = await response.Content.ReadFromJsonAsync<NxOperationResult<TKey>>();
+            } catch (Exception ex) {
+                return new NxOperationResult<TKey> {
+                    OperationErrorCode = NxOperationErrorCode.ResponseParseError,
+                    Message = $"レスポンス解析エラー: {ex.Message}"
                 };
             }
 
-            if (serverStatus == null) {
-                return new LockStatus {
-                    HasError = true,
-                    ErrorMessage = "ロック情報が返されませんでした",
+            if (op == null) {
+                return new NxOperationResult<TKey> {
+                    OperationErrorCode = NxOperationErrorCode.Unknown,
+                    Message = "ロック情報が返されませんでした"
                 };
             }
 
-            // ③ UI 側のローカル状態を更新（世界線整合）
-            if (serverStatus.Locked_at != null)
-                UpdateRawDataToTbl(new Dictionary<string, object> {
-                                    { "locked_at", serverStatus.Locked_at }
-                                },null);
-            else
-                UpdateRawDataToTbl(new Dictionary<string, object> {
-                                    { "locked_at", null }
-                                }, null);
+            // ③ UI 側のローカル状態を更新
+            if (op.LockStatus != null) {
+                try {
+                    if (!UpdateRawDataToTbl(new Dictionary<string, object> {
+                                    { "locked_at", op.LockStatus.Locked_at },
+                                    { "locked_by", op.LockStatus.LockedByUserId }
+                                    }, null)) {
+                        return new NxOperationResult<TKey> {
+                            OperationErrorCode = NxOperationErrorCode.DbError,
+                            Message = "SetLockAsync:UpdateRawDataToTbl ERROR:ローカルDBの更新に失敗しました"
+                        };
+                    }
+                } catch (Exception ex) {
+                    return new NxOperationResult<TKey> {
+                        OperationErrorCode = NxOperationErrorCode.DbError,
+                        Message = $"SetLockAsync:UpdateRawDataToTbl ERROR:ローカルDB更新中に例外: {ex.Message}"
+                    };
+                }
+            }
 
-            UpdateRawDataToTbl(new Dictionary<string, object> {
-                                    { "locked_by", serverStatus.LockedByUserId }
-                                }, null);   
-
-            // ④ サーバーが返した LockStatus をそのまま返す
-            return serverStatus;
+            // ④ サーバーが返した NxOperationResult をそのまま返す
+            return op;
         }
+
 
         //保存時にロック情報を更新する。サーバー側の正本のロック情報を取得して、UI側のローカルに反映する。
         protected async Task<LockStatus> _ReWriteLockInfoAsync(IDbTransaction tran,
@@ -334,12 +360,12 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                                                         DateTime? Locked_at) 
                                         => await _dataObj._ReWriteLockInfoAsync(tran, Locked_by, Locked_at);
 
-        public async Task<LockStatus> SetUnLockAsync() {
+        public async Task<NxOperationResult<TKey>> SetUnLockAsync() {
             // ① Auth から UserID と UserName を取得
             var authState = await Auth.GetAuthenticationStateAsync();
             var userName = authState.User.Identity?.Name;
 
-            // ② ロック要求（Exists は UI が決めない）
+            // ② ロック解除要求
             var req = new LockCommand<TKey> {
                 DataId = this.DataID,
                 doLock = false
@@ -350,59 +376,73 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             HttpResponseMessage response;
 
             try {
+                // ★ サーバーへ送信
                 response = await Http.PostAsJsonAsync(url, req);
             } catch (Exception ex) {
-                return new LockStatus {
-                    HasError = true,
-                    ErrorMessage = $"通信エラー: {ex.Message}",
+                return new NxOperationResult<TKey> {
+                    OperationErrorCode = NxOperationErrorCode.NetworkError,
+                    Message = $"通信エラー: {ex.Message}"
                 };
             }
 
             if (!response.IsSuccessStatusCode) {
-                return new LockStatus {
-                    HasError = true,
-                    ErrorMessage = $"HTTPエラー: {response.StatusCode}",
+                return new NxOperationResult<TKey> {
+                    OperationErrorCode = NxOperationErrorCode.HttpError,
+                    Message = $"HTTPエラー: {response.StatusCode}"
                 };
             }
 
-            LockStatus? serverStatus;
+            NxOperationResult<TKey>? op;
 
             try {
-                serverStatus = await response.Content.ReadFromJsonAsync<LockStatus>();
+                op = await response.Content.ReadFromJsonAsync<NxOperationResult<TKey>>();
             } catch (Exception ex) {
-                return new LockStatus {
-                    HasError = true,
-                    ErrorMessage = $"レスポンス解析エラー: {ex.Message}",
+                return new NxOperationResult<TKey> {
+                    OperationErrorCode = NxOperationErrorCode.ResponseParseError,
+                    Message = $"レスポンス解析エラー: {ex.Message}"
                 };
             }
 
-            if (serverStatus == null) {
-                return new LockStatus {
-                    HasError = true,
-                    ErrorMessage = "ロック情報が返されませんでした",
+            if (op == null) {
+                return new NxOperationResult<TKey> {
+                    OperationErrorCode = NxOperationErrorCode.Unknown,
+                    Message = "ロック解除情報が返されませんでした"
                 };
             }
 
-            // ③ UI 側のローカル状態を更新（世界線整合）
-            if (serverStatus.Locked_at != null)
-                _SetProperties(new Dictionary<string, object> {
-                                    { "locked_at", serverStatus.Locked_at }
-                                });
-            else 
-                _SetProperties(new Dictionary<string, object> {
-                                    { "locked_at", null }
-                                });
-            _SetProperties(new Dictionary<string, object> {
-                                    { "locked_by", serverStatus.LockedByUserId }
-                                });
+            // ③ UI 側のローカル状態を更新
+            if (op.LockStatus != null) {
+                try {
+                    if (!UpdateRawDataToTbl(new Dictionary<string, object> {
+                                    { "locked_at", op.LockStatus.Locked_at },
+                                    { "locked_by", op.LockStatus.LockedByUserId }
+                                    }, null)) {
+                        return new NxOperationResult<TKey> {
+                            OperationErrorCode = NxOperationErrorCode.DbError,
+                            Message = "SetUnLockAsync:UpdateRawDataToTbl ERROR:ローカルDBの更新に失敗しました"
+                        };
+                    }
+                } catch (Exception ex) {
+                    return new NxOperationResult<TKey> {
+                        OperationErrorCode = NxOperationErrorCode.DbError,
+                        Message = $"SetUnLockAsync:UpdateRawDataToTbl ERROR:ローカルDB更新中に例外: {ex.Message}"
+                    };
+                }
+            }
 
-            // ④ サーバーが返した LockStatus をそのまま返す
-            return serverStatus;
+            return op;
         }
 
-        public async Task<LockStatus> DataOpenAsync() {
-            // ① ローカルバリデーション（世界線の入口）
-            _dataObj._Validate(OperationType.LocalEdit);
+
+        public async Task<NxOperationResult<TKey>> DataOpenAsync() {
+            // ① ローカルバリデーション
+            var v = _dataObj._Validate(OperationType.LocalEdit);
+            if (!v.Success) {
+                return new NxOperationResult<TKey> {
+                    ValidationErrorCode = v.ValidationErrorCode,
+                    Message = v.Message
+                };
+            }
 
             HttpResponseMessage result;
 
@@ -414,57 +454,82 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                 // ★ 通信レベルのエラー（ネットワーク断・タイムアウト等）
                 Console.WriteLine("DataOpenAsync NETWORK ERROR:");
                 Console.WriteLine(ex.Message);
-                return new LockStatus { HasError = true, ErrorMessage = "通信エラーが発生しました" };
+                return new NxOperationResult<TKey> {
+                    OperationErrorCode = NxOperationErrorCode.NetworkError,
+                    Message = "通信エラーが発生しました"
+                };
             }
 
             // ★ HTTP ステータス異常（4xx / 5xx）
             if (!result.IsSuccessStatusCode) {
                 Console.WriteLine("DataOpenAsync HTTP ERROR:");
                 Console.WriteLine($"StatusCode: {result.StatusCode}");
-                return new LockStatus { HasError = true, ErrorMessage = "サーバー応答が異常です" };
+                return new NxOperationResult<TKey> {
+                    OperationErrorCode = NxOperationErrorCode.HttpError,
+                    Message = "サーバー応答が異常です"
+                };
             }
 
-            DataOpenResult? openResult = null;
+            NxOperationResult<TKey>? openResult = null;
 
             try {
                 // ★ 応答を読む（JSON パース）
-                openResult = await result.Content.ReadFromJsonAsync<DataOpenResult>();
+                openResult = await result.Content.ReadFromJsonAsync<NxOperationResult<TKey>>();
             } catch (Exception ex) {
                 // ★ JSON パース失敗（サーバー側の異常応答）
                 Console.WriteLine("DataOpenAsync RESPONSE PARSE ERROR:");
                 Console.WriteLine(ex.Message);
-                return new LockStatus { HasError = true, ErrorMessage = "応答の解析に失敗しました" };
+                return new NxOperationResult<TKey> {
+                    OperationErrorCode = NxOperationErrorCode.ResponseParseError,
+                    Message = "応答の解析に失敗しました"
+                };
             }
 
-            // ③ LockStatus の確定（null やエラー時のフォールバック）
-            var lockStatus = openResult?.LockStatus
+            if (openResult == null) {
+                return new NxOperationResult<TKey> {
+                    OperationErrorCode = NxOperationErrorCode.Unknown,
+                    Message = "ロック情報が取得できませんでした"
+                };
+            }
+
+            var lockStatus = openResult.LockStatus
                 ?? new LockStatus { HasError = true, ErrorMessage = "ロック情報が取得できませんでした" };
 
-            // ④ API 側でエラーならロック情報だけ返す（世界線を開かない）
-            if (openResult == null || openResult.HasError)
-                return lockStatus;
+            // ③ API 側でエラーならロック情報だけ返す
+            if (!openResult.Success)
+                return new NxOperationResult<TKey> {
+                    ValidationErrorCode = openResult.ValidationErrorCode,
+                    OperationErrorCode = openResult.OperationErrorCode,
+                    Message = openResult.Message,
+                    LockStatus = lockStatus
+                };
 
-            // ⑤ 正本 JSON → DB 世界線へ反映（JsonToTbl）
-            if (!string.IsNullOrEmpty(openResult.Json))
-                await _dataObj.JsonToTblAsync(openResult.Json, null);
+            // ⑤ 正本 JSON → DB へ反映（JsonToTbl）
+            if (openResult.RawData != null && openResult.RawData.TryGetValue("json", out var jsonObj)
+                && jsonObj is string jsonStr && !string.IsNullOrEmpty(jsonStr)) {
+                await _dataObj.JsonToTblAsync(jsonStr, null);
+            }
 
             // ⑥ 編集モードへ（DataOpen）
             await _dataObj.DataOpenAsync();
 
-            // ⑦ UI ローカル世界線へロック情報を反映
+            // ⑦ UI ローカルへロック情報を反映
             await _ReWriteLockInfoAsync(null, lockStatus.LockedByUserId, lockStatus.Locked_at);
 
-            // ⑧ RawData を DB 世界線の正本で上書き（世界線の閉じ）
+            // ⑧ RawData を DB 正本で上書き
             await _dataObj._UpdatePropertiesFromTblAsync();
 
-            // ⑨ ロック成功した LockStatus を返す
-            return lockStatus;
+            // ⑨ NxOperationResult として返す（LockStatus を含む）
+            return new NxOperationResult<TKey> {
+                LockStatus = lockStatus,
+                Message = "Data opened successfully"
+            };
         }
 
 
 
-        public async Task<LockStatus> DataCloseAsync()
-        {
+
+        public async Task<NxOperationResult<TKey>> DataCloseAsync() {
             // ① Auth から UserID と UserName を取得
             var authState = await Auth.GetAuthenticationStateAsync();
             var userId = authState.User.FindFirst("sub")?.Value;
@@ -481,150 +546,212 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             HttpResponseMessage response;
 
             try {
+                // ★ サーバーへ送信
                 response = await Http.PostAsJsonAsync(url, req);
-            }
-            catch (Exception ex) {
-                return new LockStatus {
-                    HasError = true,
-                    ErrorMessage = $"通信エラー: {ex.Message}",
+            } catch (Exception ex) {
+                // ★ 通信レベルのエラー（ネットワーク断・タイムアウト等）
+                return new NxOperationResult<TKey> {
+                    OperationErrorCode = NxOperationErrorCode.NetworkError,
+                    Message = $"通信エラー: {ex.Message}"
                 };
             }
 
+            // ★ HTTP ステータス異常（4xx / 5xx）
             if (!response.IsSuccessStatusCode) {
-                return new LockStatus {
-                    HasError = true,
-                    ErrorMessage = $"HTTPエラー: {response.StatusCode}",
+                return new NxOperationResult<TKey> {
+                    OperationErrorCode = NxOperationErrorCode.HttpError,
+                    Message = $"HTTPエラー: {response.StatusCode}"
                 };
             }
 
-            LockStatus? lockStatus;
+            NxOperationResult<TKey>? op;
 
             try {
-                lockStatus = await response.Content.ReadFromJsonAsync<LockStatus>();
-            }
-            catch (Exception ex) {
-                return new LockStatus {
-                    HasError = true,
-                    ErrorMessage = $"レスポンス解析エラー: {ex.Message}",
+                // ★ 応答を読む（JSON パース）
+                op = await response.Content.ReadFromJsonAsync<NxOperationResult<TKey>>();
+            } catch (Exception ex) {
+                return new NxOperationResult<TKey> {
+                    OperationErrorCode = NxOperationErrorCode.ResponseParseError,
+                    Message = $"レスポンス解析エラー: {ex.Message}"
                 };
             }
 
-            if (lockStatus == null) {
-                return new LockStatus {
-                    HasError = true,
-                    ErrorMessage = "ロック解除情報が返されませんでした",
+            if (op == null) {
+                return new NxOperationResult<TKey> {
+                    OperationErrorCode = NxOperationErrorCode.Unknown,
+                    Message = "ロック解除情報が返されませんでした"
                 };
             }
+
+            var lockStatus = op.LockStatus;
 
             // ③ ロック解除失敗なら DataCloseAsync しない
-            if (lockStatus.IsLocked || lockStatus.HasError)
-                return lockStatus;
+            if (!op.Success || lockStatus == null || lockStatus.IsLocked || lockStatus.HasError) {
+                return new NxOperationResult<TKey> {
+                    ValidationErrorCode = op.ValidationErrorCode,
+                    OperationErrorCode = op.OperationErrorCode,
+                    Message = op.Message,
+                    LockStatus = lockStatus
+                };
+            }
 
-            // ④ ロック解除成功後に DataCloseAsync 実行
-            await _dataObj.DataCloseAsync();//ここでローカルのロック情報も削除される
+            try {
+                // ④ ロック解除成功後に DataCloseAsync 実行
+                await _dataObj.DataCloseAsync(); //ここでローカルのロック情報も削除される
 
-            // ⑤ UIとDBのローカル状態を反映（MinValue は使わない）
-            await _UpdatePropertiesFromTblAsync();
-            return lockStatus;
+                // ⑤ UIとDBのローカル状態を反映（MinValue は使わない）
+                await _UpdatePropertiesFromTblAsync();
+            } catch (Exception ex) {
+                return new NxOperationResult<TKey> {
+                    OperationErrorCode = NxOperationErrorCode.ServerException,
+                    Message = $"DataCloseAsync failed: {ex.Message}",
+                    LockStatus = lockStatus
+                };
+            }
+
+            // ⑥ 正常終了
+            return new NxOperationResult<TKey> {
+                LockStatus = lockStatus,
+                Message = "Data closed successfully"
+            };
         }
 
 
-        public virtual async Task<bool> ReNameAsync(string newName)
-        {
+
+        public virtual async Task<NxOperationResult<TKey>> ReNameAsync(string newName) {
             // 1. バリデーション
-            if (string.IsNullOrWhiteSpace(newName) || newName.Length > 20)
-                return false;
+            if (string.IsNullOrWhiteSpace(newName) || newName.Length > 20) {
+                return new NxOperationResult<TKey> {
+                    ValidationErrorCode = NxValidationErrorCode.RenameEmpty,
+                    Message = "名前が空、または長すぎます"
+                };
+            }
 
             // Sync世界線 → API呼び出し
             var url = $"{ApiRoute}/ReName/{DataID}/{newName}";
             HttpResponseMessage response;
 
-            try
-            {
+            try {
+                // ★ サーバーへ送信
                 response = await Http.PostAsync(url, null);
-            }
-            catch
-            {
-                return false;
-            }
-
-            if (!response.IsSuccessStatusCode)
-            {
-                return false;
+            } catch (Exception ex) {
+                // ★ 通信レベルのエラー（ネットワーク断・タイムアウト等）
+                return new NxOperationResult<TKey> {
+                    OperationErrorCode = NxOperationErrorCode.NetworkError,
+                    Message = $"通信エラー: {ex.Message}"
+                };
             }
 
-            // 5. API（正本）を取得
-            var json = await response.Content.ReadAsStringAsync();
+            // ★ HTTP ステータス異常（4xx / 5xx）
+            if (!response.IsSuccessStatusCode) {
+                return new NxOperationResult<TKey> {
+                    OperationErrorCode = NxOperationErrorCode.HttpError,
+                    Message = $"HTTPエラー: {response.StatusCode}"
+                };
+            }
 
-            Dictionary<string, object>? updatedRaw;
+            NxOperationResult<TKey>? op;
 
             try {
-                var tmp = JsonSerializer.Deserialize<Dictionary<string, object>>(json);
-                if (tmp == null)
-                    return false;
-
-                // NxTypeMapper で正本に変換
-                updatedRaw = NxTypeMapper.ConvertRow(TblName, tmp);
-            } catch {
-                return false;
+                // ★ API（正本）を取得
+                op = await response.Content.ReadFromJsonAsync<NxOperationResult<TKey>>();
+            } catch (Exception ex) {
+                // ★ JSON パース失敗（サーバー側の異常応答）
+                return new NxOperationResult<TKey> {
+                    OperationErrorCode = NxOperationErrorCode.ResponseParseError,
+                    Message = $"レスポンス解析エラー: {ex.Message}"
+                };
             }
+
+            if (op == null) {
+                return new NxOperationResult<TKey> {
+                    OperationErrorCode = NxOperationErrorCode.Unknown,
+                    Message = "Rename結果が返されませんでした"
+                };
+            }
+
+            // ★ API 側でエラーならそのまま返す
+            if (!op.Success)
+                return op;
 
             // 6. 正本を Baseに反映
-            if (!UpdateRawDataToTbl(updatedRaw, null)) {
-                return false;
+            if (op.RawData != null) {
+                try {
+                    if (!UpdateRawDataToTbl(op.RawData, null)) {
+                        return new NxOperationResult<TKey> {
+                            OperationErrorCode = NxOperationErrorCode.DbError,
+                            Message = "ReNameAsync:UpdateRawDataToTbl ERROR:ローカルDBの更新に失敗しました"
+                        };
+                    }
+                } catch (Exception ex) {
+                    return new NxOperationResult<TKey> {
+                        OperationErrorCode = NxOperationErrorCode.DbError,
+                        Message = $"ReNameAsync:UpdateRawDataToTbl ERROR:ローカルDB更新中に例外: {ex.Message}"
+                    };
+                }
             }
 
-            return true;
+            // ★ 正常終了
+            return new NxOperationResult<TKey> {
+                RawData = op.RawData,
+                Message = "Rename completed"
+            };
         }
+
 
         //何かしらの更新をした時にサーバーから返ってきたメタデータ（TblName）を更新する際に使用する。
         //例えばRenameとか
         protected bool UpdateRawDataToTbl(Dictionary<string, object> raw, IDbTransaction transaction) {
             string sql = "";
-            try {
-                // 1. SET に使うカラムを抽出（主キーと tenant_code は除外）
-                var columns = raw.Keys.Where(k => k != IdColName && k != "tenant_code");
-                var setClause = string.Join(", ", columns.Select(c => $"{c} = @{c}"));
+     
+            raw = NxTypeMapper.ConvertRow(TblName, raw);
 
-                // 2. SQL を生成
-                sql =
-                    $"UPDATE {TblName} SET {setClause} " +
-                    $"WHERE {IdColName} = @DataID AND tenant_code = @TenantCode";
+            // 1. SET に使うカラムを抽出（主キーと tenant_code は除外）
+            var columns = raw.Keys.Where(k => k != IdColName && k != "tenant_code");
+            var setClause = string.Join(", ", columns.Select(c => $"{c} = @{c}"));
 
-                // 3. DynamicParameters に変換（Dapper が確実に扱える形）
-                // DynamicParameters は Dapper が最も確実に扱えるパラメータ形式。
-                // 内部的には：
-                // パラメータ名をそのまま保持
-                // 型をそのまま保持
-                // SQLite の大文字小文字問題を回避
-                // JsonElement を自動でプリミティブに変換
-                // Dictionary の曖昧さを完全排除
-                // 次のようにすることで確実にSQLを実行できるようになる。
-                var param = new DynamicParameters();
+            // 2. SQL を生成
+            sql =
+                $"UPDATE {TblName} SET {setClause} " +
+                $"WHERE {IdColName} = @DataID AND tenant_code = @TenantCode";
 
-                // raw の全キーをパラメータとして追加
-                foreach (var kv in raw) {
-                    param.Add(kv.Key, kv.Value);
-                }
+            // 3. DynamicParameters に変換（Dapper が確実に扱える形）
+            // DynamicParameters は Dapper が最も確実に扱えるパラメータ形式。
+            // 内部的には：
+            // パラメータ名をそのまま保持
+            // 型をそのまま保持
+            // SQLite の大文字小文字問題を回避
+            // JsonElement を自動でプリミティブに変換
+            // Dictionary の曖昧さを完全排除
+            // 次のようにすることで確実にSQLを実行できるようになる。
+            var param = new DynamicParameters();
 
-                // WHERE 用のパラメータを追加
-                param.Add("DataID", raw[IdColName]);
-                param.Add("TenantCode", raw["tenant_code"]);
+            // raw の全キーをパラメータとして追加
+            foreach (var kv in raw) {
+                param.Add(kv.Key, kv.Value);
+            }
 
-                // 4. UPDATE 実行
-                DBcon.Execute(sql, param, transaction);
+            // WHERE 用のパラメータを追加
+            param.Add("DataID", raw[IdColName]);
+            param.Add("TenantCode", raw["tenant_code"]);
 
-                // 5. UI の世界線を更新
-                _SetProperties(raw);
+            // 4. UPDATE 実行
+            var rows = DBcon.Execute(sql, param, transaction);
 
-                return true;
-            } catch (Exception ex) {
-                Console.WriteLine("UpdateRawDataToTbl ERROR:");
-                Console.WriteLine($"Message: {ex.Message}");
-                Console.WriteLine($"SQL: {sql}");
-                Console.WriteLine($"StackTrace: {ex.StackTrace}");
+            if (rows == 0) {
+                Console.WriteLine($"UpdateRawDataToTbl: NO ROW UPDATED (DataID={raw[IdColName]})");
                 return false;
             }
+
+            if (rows > 1) {
+                Console.WriteLine($"WORLDLINE BROKEN: {rows} rows updated!");
+                return false; // or throw
+            }
+
+            // 5. UI の世界線を更新
+            _SetProperties(raw);
+
+            return true;
         }
 
 
@@ -635,7 +762,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         public void _SetProperties(IDictionary<string, object> record) 
                                     => _dataObj._SetProperties(record);       
 
-        public virtual NxValidationResult _Validate(OperationType op, object? arg = null)
+        public virtual NxOperationResult<TKey> _Validate(OperationType op, object? arg = null)
                                                 => _dataObj._Validate(op, arg);
 
         public virtual async Task<bool> _DeleteQueryExecAsync(IDbTransaction transaction, bool softDelete) 

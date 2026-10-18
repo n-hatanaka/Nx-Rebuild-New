@@ -1,0 +1,28 @@
+﻿namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
+    /* 栄養素全体のコンテナ：画面幅に合わせて折り返し */
+    .nut-container {
+        display: flex;
+        flex-wrap: wrap; /* ★ 画面幅に合わせて折り返す */
+        gap: 12px 20px; /* 行間・列間の余白 */
+        margin-top: 10px;
+    }
+    /* 栄養素1項目のカード */
+    .nut-row {
+        display: flex;
+        flex-direction: column; /* 名前 → 入力欄 の縦並び */
+        width: 180px; /* ★ 画面幅に応じて折り返す基準幅 */
+    }
+    /* 栄養素名 */
+    .nut-name {
+        font-weight: 600;
+        margin-bottom: 4px;
+    }
+    /* 数値入力欄を右寄せ */
+    .nut-row input {
+        text-align: right; /* ★ 右寄せ */
+    }
+
+    .edit-padding {
+        padding: 5px; /* ← 上下左右に 5px の余白 */
+    }
+}

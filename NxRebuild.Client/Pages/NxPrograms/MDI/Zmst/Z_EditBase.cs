@@ -192,7 +192,17 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
                 Nut.SaveToRaw(WorkingRaw);
 
                 //  INSERT / UPDATE は Entity.SaveAsync が判定する
-                await Entity.SaveAsync(WorkingRaw, WorkingSubTables);
+                var result = await Entity.SaveAsync(WorkingRaw, WorkingSubTables);
+
+                // ★ NxOperationResult に統一されたので Success / Message を見る
+                if (!result.Success) {
+                    Console.WriteLine($"保存失敗: {result.Message}");
+
+                    // UI にエラー表示（任意）
+                    await JS.InvokeVoidAsync("aknAlert", $"保存失敗: {result.Message}");
+
+                    return;
+                }
 
                 //  保存成功 → 親画面を更新（Window は閉じない）
                 await OnSaved.InvokeAsync();   // ← これを Z_Edit に追加する
@@ -206,10 +216,11 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
             } catch (Exception ex) {
                 // エラー処理
                 Console.WriteLine($"Z_EditBase.SaveAsync:保存中にエラーが発生しました: {ex.Message}");
+                await JS.InvokeVoidAsync("aknAlert", $"例外発生: {ex.Message}");
                 throw;
             }
-
         }
+
 
         public async Task CloseAsync() {
             await OnClose.InvokeAsync();

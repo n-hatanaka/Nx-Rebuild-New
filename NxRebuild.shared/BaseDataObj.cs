@@ -69,49 +69,55 @@ namespace NxRebuild.shared {
         NxDataType DataType { get; set; }
         IDbConnection DBcon { get; set; }
         string ParentIDColName { get; }
-        TKey ParentID {  get; set; }
+        TKey ParentID { get; set; }
         IBaseDataObj<TKey>? ParentDataObj { get; set; }
         string IdColName { get; }
         string InfoTbl { get; }
-        DateTime LockedAt { get;  }
+        DateTime LockedAt { get; }
         Guid LockerID { get; }
         string NameColName { get; }
         string S_TblName { get; }
         object SelfObjMgr { get; set; }
         string TblName { get; }
         Guid TenantCode { get; set; }
-        DateTime Update_at { get;  }
-        string W_TblName { get;  }
-        string Ws_TblName { get;  }
+        DateTime Update_at { get; }
+        string W_TblName { get; }
+        string Ws_TblName { get; }
         NxLocationKind LocationKind { get; }
+
         void CreateWorkingMemory(Dictionary<string, object?> workingRaw);
         void CreateWorkingDetailTables(List<List<Dictionary<string, object?>>> workingSubList);
-        Task<LockStatus> DataOpenAsync();
-        Task<LockStatus> DataCloseAsync();
+
         string TblToJson();
+
         string TblToJson(TKey id, IDbTransaction tran);
+
         Task<bool> JsonToTblAsync(string json, IDbTransaction tran);
-        Task<bool> ReNameAsync(string newName);
-        Task<bool> SaveAsync(
-                        Dictionary<string, object?> workingRaw,
-                        List<List<Dictionary<string, object?>>>? subTables = null);
 
-        NxValidationResult _Validate(OperationType op, object? arg = null);
+        // ★ ここから NxOperationResult に統一
+        Task<NxOperationResult<TKey>> DataOpenAsync();
+        Task<NxOperationResult<TKey>> DataCloseAsync();
+        Task<NxOperationResult<TKey>> ReNameAsync(string newName);
+        Task<NxOperationResult<TKey>> SaveAsync(
+            Dictionary<string, object?> workingRaw,
+            List<List<Dictionary<string, object?>>>? subTables = null);
 
-
+        NxOperationResult<TKey> _Validate(OperationType op, object? arg = null);
     }
+
 
     public interface ISharedDataObj<TKey> {
         Task<bool> _DeleteQueryExecAsync(IDbTransaction transaction, bool softDelete);
     }
 
-        // -----------------------------------------------------------------
-        // BaseDataObj　クライアントとサーバーで直接DBにaccessするオブジェクト
-        // 同期機能の拡張用にSyncラッパークラスを使用するため本来protectedと
-        // すべきメソッドもパブリックになっているが、その様なメソッドはアンダーバー
-        // が名前の先頭にあるためラッパークラス以外からはアクセスしない事
-        // -----------------------------------------------------------------
-        public abstract class BaseDataObj<TKey> : IBaseDataObj<TKey>, ISharedDataObj<TKey> {
+
+    // -----------------------------------------------------------------
+    // BaseDataObj　クライアントとサーバーで直接DBにaccessするオブジェクト
+    // 同期機能の拡張用にSyncラッパークラスを使用するため本来protectedと
+    // すべきメソッドもパブリックになっているが、その様なメソッドはアンダーバー
+    // が名前の先頭にあるためラッパークラス以外からはアクセスしない事
+    // -----------------------------------------------------------------
+    public abstract class BaseDataObj<TKey> : IBaseDataObj<TKey>, ISharedDataObj<TKey> {
         // -------------------------------------------------------------
         // コンストラクタ
         // ここで固定のテーブル名やNameカラム名などのプロパティを設定する
@@ -296,17 +302,12 @@ namespace NxRebuild.shared {
         ///     正本・ローカル・同期の各世界線で同じ規則が発火する。
         ///
         /// 【設計思想】
-        ///   - 規則違反時は例外を投げず、NxValidationResult を返すことで
+        ///   - 規則違反時は例外を投げず、NxOperationResult を返すことで
         ///     世界線の外へ例外を漏らさずに因果を閉じる。
-        ///   - NxValidationResult は ErrorCode と ErrorMessage を持ち、
+        ///   - NxOperationResult は ValidationErrorCode と OperationErrorCode を持ち、
         ///     UI・API・Sync のどの世界線でも同じ形式で扱える。
         ///   - BaseDataObj は抽象核であり、規則の中身は NxValidator に委譲する。
         ///     これにより循環依存を避け、抽象構造を汚さない。
-        ///
-        /// 【具象側の書き方例】
-        ///     var result = _Validate(OperationType.Delete);
-        ///     if (!result.IsValid)
-        ///         return result;   // 規則違反を呼び出し元へ返す
         ///
         /// 【発火ポイント】
         ///   - Save / Delete / Rename / Import / Sync など、
@@ -319,18 +320,15 @@ namespace NxRebuild.shared {
         /// 【結果】
         ///   - 正本の整合性は NxValidator によって一元的に保証され、
         ///     クライアント側は高速なローカル編集に専念できる。
-        ///   - すべての世界線（Base / Sync / API / UI）が同じ NxValidationResult を共有し、
+        ///   - すべての世界線（Base / Sync / API / UI）が同じ NxOperationResult を共有し、
         ///     規則が漏れず、二重発火せず、整合性が保たれる。
         /// </summary>
-        public virtual NxValidationResult _Validate(OperationType op, object? arg = null)
-        {
+        public virtual NxOperationResult<TKey> _Validate(OperationType op, object? arg = null) {
             // ★ BaseDataObj の値をコピーした Validator を生成（循環依存なし）
             var validator = new NxValidator<TKey>(this, _rawData);
 
-            try
-            {
-                return op switch
-                {
+            try {
+                NxOperationResult<TKey> v = op switch {
                     OperationType.Save =>
                         validator.ValidateSave(),
 
@@ -340,9 +338,10 @@ namespace NxRebuild.shared {
                     OperationType.Rename =>
                         arg is string newName
                             ? validator.ValidateRename(newName)
-                            : NxValidationResult.Fail(
-                                NxValidationErrorCode.Unknown,
-                                "Rename の引数が不正です"),
+                            : new NxOperationResult<TKey> {
+                                ValidationErrorCode = NxValidationErrorCode.Unknown,
+                                Message = "Rename の引数が不正です"
+                            },
 
                     OperationType.Sync =>
                         validator.ValidateSync(),
@@ -354,24 +353,23 @@ namespace NxRebuild.shared {
                         validator.ValidateLocalEdit(),
 
                     _ =>
-                        NxValidationResult.Fail(
-                            NxValidationErrorCode.Unknown,
-                            $"未定義の OperationType: {op}")
+                        new NxOperationResult<TKey> {
+                            ValidationErrorCode = NxValidationErrorCode.Unknown,
+                            Message = $"未定義の OperationType: {op}"
+                        }
+                };
+
+                return v;
+            } catch (Exception ex) {
+                // ★ BaseDataObj 側では例外を外に漏らさず NxOperationResult に変換
+                return new NxOperationResult<TKey> {
+                    ValidationErrorCode = NxValidationErrorCode.Unknown,
+                    Message = $"Validate 内部例外: {ex.Message}"
                 };
             }
-            catch (Exception ex)
-            {
-                // ★ BaseDataObj 側では例外を外に漏らさず NxValidationResult に変換
-                return NxValidationResult.Fail(
-                    NxValidationErrorCode.Unknown,
-                    $"Validate 内部例外: {ex.Message}");
-            }
         }
-        //public async Task<bool> ApplySync() {
-        //    
-        //    // SyncQueryExec は具象側
-        //    return await SyncQueryExec();
-        //}
+
+
 
         public virtual void SetAsRoot(string RootName, NxDataType DataType = NxDataType.root) {
             _SetProperties(new Dictionary<string, object> { [_nameColName] = RootName });
@@ -469,40 +467,37 @@ namespace NxRebuild.shared {
         //}
 
         public virtual async Task<bool> JsonToTblAsync(string json, IDbTransaction tran) {
-
             this._Validate(OperationType.Import);
 
             var tables = JsonSerializer.Deserialize<List<TableJson>>(json);
 
             // ★ まず既存のレコードを削除する（物理削除）
             var result = await _HardDeleteQueryExecAsync(tran);
-            if (!result) return false;
+            if (!result)
+                throw new Exception("ERROR: HardDelete failed");
 
-            try {
-                foreach (var table in tables) {
-                    foreach (var row in table.Rows) {
-                        var normalized = NxTypeMapper.ConvertRow(table.Table, row);
+            foreach (var table in tables) {
+                foreach (var row in table.Rows) {
+                    var normalized = NxTypeMapper.ConvertRow(table.Table, row);
 
+                    var columns = string.Join(", ", normalized.Keys.Select(k => $@"""{k}"""));
+                    var values = string.Join(", ", normalized.Keys.Select(k => $@"@{k}"));
 
-                        var columns = string.Join(", ", normalized.Keys.Select(k => $@"""{k}"""));
-                        var values = string.Join(", ", normalized.Keys.Select(k => $@"@{k}"));
+                    var rowsAffected = DBcon.Execute(
+                        $@"INSERT INTO ""{table.Table}"" ({columns}) VALUES ({values})",
+                        normalized,
+                        tran
+                    );
 
-                        DBcon.Execute(
-                            $@"INSERT INTO ""{table.Table}"" ({columns}) VALUES ({values})",
-                            normalized,
-                            tran
-                        );
-
-
-                    }
+                    // ★ 整合性チェック
+                    if (rowsAffected != 1)
+                        throw new Exception($"BROKEN: Insert failed or inserted {rowsAffected} rows");
                 }
-
-
-                return true;
-            } catch {
-                return false;
             }
+
+            return true;
         }
+
 
 
         // ---------------------------------------------------------
@@ -511,13 +506,24 @@ namespace NxRebuild.shared {
         //だから DataOpenAsync / DataCloseAsync は null を返せばいい。
         //Sync や API の世界線では LockStatus をちゃんと返すようにしてある。
         // ---------------------------------------------------------
-        public virtual Task<LockStatus> DataOpenAsync() {
+        public virtual async Task<NxOperationResult<TKey>> DataOpenAsync() {
 
+            try {
+                // ローカル専用世界線ではロック機能を使わない
+                Opened = true;
 
-            Opened = true;//編集中フラグをON
-
-            return Task.FromResult<LockStatus?>(null);
+                return new NxOperationResult<TKey> {
+                    Message = "Local DataOpen",
+                    LockStatus = null
+                };
+            } catch (Exception ex) {
+                return new NxOperationResult<TKey> {
+                    OperationErrorCode = NxOperationErrorCode.ServerException,
+                    Message = $"DataOpenAsync failed: {ex.Message}"
+                };
+            }
         }
+
 
         // ---------------------------------------------------------
         // DataCloseAsync(編集終了）
@@ -527,11 +533,25 @@ namespace NxRebuild.shared {
         // DataOpenAsync / DataCloseAsync は null を返せばいい。
         // Sync や API の世界線では LockStatus をちゃんと返す様にしてある。
         // ---------------------------------------------------------
-        public virtual async Task<LockStatus> DataCloseAsync() {
-            Opened = false; //編集中フラグをOFF
-            return await _ReWriteLockInfoAsync(null, null, null); //ロック情報をクリアする
-           
+        public virtual async Task<NxOperationResult<TKey>> DataCloseAsync() {
+
+            try {
+                Opened = false; //編集中フラグをOFF
+
+                var lockst = await _ReWriteLockInfoAsync(null, null, null);
+
+                return new NxOperationResult<TKey> {
+                    LockStatus = lockst,
+                    Message = "Local DataClose"
+                };
+            } catch (Exception ex) {
+                return new NxOperationResult<TKey> {
+                    OperationErrorCode = NxOperationErrorCode.ServerException,
+                    Message = $"DataCloseAsync failed: {ex.Message}"
+                };
+            }
         }
+
 
         // ---------------------------------------------------------
         // 削除クエリを実行する。
@@ -569,29 +589,29 @@ namespace NxRebuild.shared {
 
             return primaryDeleted && detailDeleted;
         }
-          
-        protected virtual async Task<bool> _DeletePrimaryQueryExecAsync(IDbTransaction transaction)
-        {
-            try
-            {
-                string sql = $@"
-                    DELETE FROM ""{_tblName}""
-                    WHERE ""{_idColName}"" = @DataID
-                      AND ""tenant_code"" = @TenantCode;
-                ";
 
-                await DBcon.ExecuteAsync(sql, new {
-                    DataID = this.DataID,
-                    TenantCode = this.TenantCode
-                }, transaction);
+        protected virtual async Task<bool> _DeletePrimaryQueryExecAsync(IDbTransaction transaction) {
+            string sql = $@"
+                            DELETE FROM ""{_tblName}""
+                            WHERE ""{_idColName}"" = @DataID
+                              AND ""tenant_code"" = @TenantCode;
+                        ";
 
-                return true;
-            }
-            catch
-            {
-                return false;
-            }
+            var rows = await DBcon.ExecuteAsync(sql, new {
+                DataID = this.DataID,
+                TenantCode = this.TenantCode
+            }, transaction);
+
+            // ★ 整合性チェック
+            if (rows == 0)
+                throw new Exception("ERROR: Primary delete failed (no row deleted)");
+
+            if (rows > 1)
+                throw new Exception($"BROKEN: {rows} rows deleted");
+
+            return true;
         }
+
         // softデリートメソッド ※ API 層からの削除についてプライマリテーブルに対しては必ずこれを実行する。
         // 論理削除を実装する：
         //   - TblName テーブルのレコードを「削除済み」と扱える状態にする
@@ -601,128 +621,140 @@ namespace NxRebuild.shared {
         //   -
         // クライアント側 では、この論理削除状態を参照して「削除済みデータ」を判定する。
         // 実装時は挙動に注意すること。
-        protected virtual async Task<bool> _SoftDeletePrimaryQueryExecAsync(IDbTransaction transaction)
-        {
-            try
-            {
-                string sql = $@"
-                    UPDATE ""{_tblName}""
-                    SET ""deleted"" = 1,
-                        ""Update_at"" = @UpdateAt,
-                        ""Locked_at"" = @LockedAt
-                    WHERE ""{_idColName}"" = @DataID
-                      AND ""tenant_code"" = @TenantCode;
-                ";
+        protected virtual async Task<bool> _SoftDeletePrimaryQueryExecAsync(IDbTransaction transaction) {
+            string sql = $@"
+                                UPDATE ""{_tblName}""
+                                SET ""deleted"" = 1,
+                                    ""Update_at"" = @UpdateAt,
+                                    ""Locked_at"" = @LockedAt
+                                WHERE ""{_idColName}"" = @DataID
+                                  AND ""tenant_code"" = @TenantCode;
+                            ";
 
-                await DBcon.ExecuteAsync(sql, new {
-                    DataID = this.DataID,
-                    TenantCode = this.TenantCode,
-                    UpdateAt = DateTime.MaxValue,
-                    LockedAt = DateTime.MinValue
-                }, transaction);
+            var rows = await DBcon.ExecuteAsync(sql, new {
+                DataID = this.DataID,
+                TenantCode = this.TenantCode,
+                UpdateAt = DateTime.MaxValue,
+                LockedAt = DateTime.MinValue
+            }, transaction);
 
-                return true;
-            }
-            catch
-            {
-                return false;
-            }
-        }        
+            // ★ 整合性チェック
+            if (rows == 0)
+                throw new Exception("ERROR: SoftDelete failed (no row updated)");
+
+            if (rows > 1)
+                throw new Exception($"BROKEN: {rows} rows soft-deleted");
+
+            return true;
+        }
+
 
         //ディティールテーブル(サブテーブル)の物理削除。
         //保存ロジックは物理削除→インサートの順で実行されるため、
         //ディテールテーブルの削除を行わないっ設計であっても派生先で必ず実装すること
         protected virtual async Task<bool> _DeleteDetailQueryExecAsync(IDbTransaction transaction)
         {
-            try
-            {
-                return true;
-            }
-            catch
-            {
-                return false;
-            }
+            return true; // デフォルトでは何もしない。派生先で実装すること
         }
 
         // 名前変更の検証メソッド
         // 必要に応じて派生クラスでオーバーライドできるように virtual にしておく
-        public virtual async Task<bool> ReNameAsync(string newName) {
+        public virtual async Task<NxOperationResult<TKey>> ReNameAsync(string newName) {
 
             // 1. バリデーション
             if (string.IsNullOrWhiteSpace(newName) || newName.Length > 20) {
-                return false;
+                return new NxOperationResult<TKey> {
+                    ValidationErrorCode = NxValidationErrorCode.RenameEmpty,
+                    Message = "名前が空、または長すぎます"
+                };
             }
 
             IDbTransaction transaction = DBcon.BeginTransaction();
-            if (await ReNameQueryExecAsync(newName, transaction)) {
-                transaction.Commit();
-                await _UpdatePropertiesFromTblAsync();
-                return true;
+
+            try {
+                if (await _ReNameQueryExecAsync(newName, transaction)) {
+                    transaction.Commit();
+                    await _UpdatePropertiesFromTblAsync();
+
+                    return new NxOperationResult<TKey> {
+                        Message = "Rename completed",
+                        RawData = _rawData
+                    };
+                }
+
+                transaction.Rollback();
+
+                return new NxOperationResult<TKey> {
+                    ValidationErrorCode = NxValidationErrorCode.CannotRename,
+                    Message = "Rename failed"
+                };
+            } catch (Exception ex) {
+                transaction.Rollback();
+                return new NxOperationResult<TKey> {
+                    OperationErrorCode = NxOperationErrorCode.ServerException,
+                    Message = $"Rename exception: {ex.Message}"
+                };
             }
-            transaction.Rollback();
-            return false;
         }
+
 
         //DBへのデータ名変更を試みる。成功した場合プロパティの値も書き換える
-        public virtual async Task<bool> ReNameQueryExecAsync(string newName, IDbTransaction dbTransaction) {
-            try {
-                // サーバー側でマイクロ秒精度の UTC を生成
-                var updateAt = DateTime.UtcNow;
+        public virtual async Task<bool> _ReNameQueryExecAsync(string newName, IDbTransaction dbTransaction) {
+            var updateAt = DateTime.UtcNow;
 
-                string sql = $@"
-                                UPDATE ""{_tblName}""
-                                SET ""{_nameColName}"" = @name,
-                                    ""Update_at"" = @update_at
-                                WHERE ""{_idColName}"" = @id
-                                  AND ""tenant_code"" = @tenantCode;
-                            ";
+            string sql = $@"
+                            UPDATE ""{_tblName}""
+                            SET ""{_nameColName}"" = @name,
+                                ""Update_at"" = @update_at
+                            WHERE ""{_idColName}"" = @id
+                              AND ""tenant_code"" = @tenantCode;
+                        ";
 
-                return await DBcon.ExecuteAsync(sql,
-                    new {
-                        name = newName,
-                        id = DataID,
-                        update_at = updateAt,
-                        tenantCode = TenantCode
-                    },
-                    dbTransaction) > 0;
+            var rows = await DBcon.ExecuteAsync(sql,
+                new {
+                    name = newName,
+                    id = DataID,
+                    update_at = updateAt,
+                    tenantCode = TenantCode
+                },
+                dbTransaction);
 
-            } catch (Exception ex) {
-                Console.WriteLine($"RenameQueryExec Error: {ex.Message}");
-                return false;
-            }
+            // ★ 世界線整合性チェック
+            if (rows == 0)
+                throw new Exception("ERROR: Rename failed (no row updated)");
+
+            if (rows > 1)
+                throw new Exception($"BROKEN: {rows} rows updated");
+
+            return true;
         }
+
 
         // データベースから最新のプロパティを取得して _rawData に反映する
         public virtual async Task _UpdatePropertiesFromTblAsync() {
-            try {
-                string sql = $@"
-                                SELECT *
-                                FROM ""{_tblName}""
-                                WHERE ""{_idColName}"" = @DataID
-                                  AND ""tenant_code"" = @TenantCode;
-                            ";
+            string sql = $@"
+                            SELECT *
+                            FROM ""{_tblName}""
+                            WHERE ""{_idColName}"" = @DataID
+                              AND ""tenant_code"" = @TenantCode;
+                        ";
 
-                var record = await DBcon.QueryFirstOrDefaultAsync<dynamic>(sql, new {
-                    DataID = this.DataID,
-                    TenantCode = this.TenantCode
-                });
+            var record = await DBcon.QueryFirstOrDefaultAsync<dynamic>(sql, new {
+                DataID = this.DataID,
+                TenantCode = this.TenantCode
+            });
 
+            if (record == null)
+                throw new Exception($"ERROR: No record found in {_tblName} (DataID={DataID})");
 
-                if (record != null) {
-                    var dict = ((IDictionary<string, object>)record)
-                        .ToDictionary(k => k.Key, v => v.Value);
+            var dict = ((IDictionary<string, object>)record)
+                .ToDictionary(k => k.Key, v => v.Value);
 
-                    var normalized = NxTypeMapper.ConvertRow(_tblName, dict);
+            var normalized = NxTypeMapper.ConvertRow(_tblName, dict);
 
-                    _SetProperties(normalized);
-                } else {
-                    Console.WriteLine($"[Nx] Updateproperties: レコードなし {_tblName} DataID={DataID}");
-                }
-            } catch (Exception ex) {
-                Console.WriteLine($"[Nx] Updateproperties Error: {ex.Message}");
-                Console.WriteLine(ex.StackTrace);
-            }
+            _SetProperties(normalized);
         }
+
 
         // =======================================================
         // 保存の時にDataIDを確定させる場合はここにその処理を記述(ZmstEntity参照)
@@ -734,16 +766,12 @@ namespace NxRebuild.shared {
         // =======================================================
         // 保存のローカル実装
         // =======================================================
-
-        public virtual async Task<bool> SaveAsync(
-            Dictionary<string, object?> workingRaw,
-            List<List<Dictionary<string, object?>>>? subTables = null)
-        {
-
+        public virtual async Task<NxOperationResult<TKey>> SaveAsync(
+                                    Dictionary<string, object?> workingRaw,
+                                    List<List<Dictionary<string, object?>>>? subTables = null) {
             using var tran = DBcon.BeginTransaction();
 
-            try
-            {
+            try {
                 // =======================================================
                 // NxではDelete → Insertで保存処理を行います。
                 //
@@ -762,48 +790,46 @@ namespace NxRebuild.shared {
                 // よって Nx では UPSERT に寄せる必要はなく、
                 // Delete → Insert は安全に成立します。
                 // =======================================================
-
-                if (!await _HardDeleteQueryExecAsync(tran))
-                {
+                // ★ 既存行の HardDelete（ローカル側のデータ初期化）
+                if (!await _HardDeleteQueryExecAsync(tran)) {
                     tran.Rollback();
-                    return false;
+                    return new NxOperationResult<TKey> {
+                        OperationErrorCode = NxOperationErrorCode.DbError,
+                        Message = "ローカル初期化に失敗しました"
+                    };
                 }
 
-
+                // ★ 新規ならローカル側で仮ID採番
                 workingRaw[IdColName] = EnsureIDForSave(tran);
-        
-      
+
                 // ★ Working 全体保存（メイン＋サブ）
-                if (!await SaveWorkingAsync(workingRaw, subTables, tran))
-                {
+                if (!await SaveWorkingAsync(workingRaw, subTables, tran)) {
                     tran.Rollback();
-                    return false;
+                    return new NxOperationResult<TKey> {
+                        OperationErrorCode = NxOperationErrorCode.DbError,
+                        Message = "ローカル保存に失敗しました"
+                    };
                 }
 
-                // ★ 継承先で追加の確定処理
-                if (!await SaveQueryExec(tran))
-                {
-                    tran.Rollback();
-                    return false;
-                }
-
-                // ★ コミット
                 tran.Commit();
 
-                // ★ 正本 Raw に反映
                 ApplyWorkingToRaw(workingRaw);
+                await _UpdatePropertiesFromTblAsync();
 
-                return true;
-            } 
-            catch (Exception ex) 
-            {
-                        Console.WriteLine("BaseDataObj.SaveAsync ERROR:");
-                        Console.WriteLine(ex.Message);
-                        Console.WriteLine(ex.StackTrace);
-                        tran.Rollback();
-                return false;
+                return new NxOperationResult<TKey> {
+                    RawData = _rawData,
+                    Message = "Local Save completed"
+                };
+            } catch (Exception ex) {
+                tran.Rollback();
+                return new NxOperationResult<TKey> {
+                    OperationErrorCode = NxOperationErrorCode.ServerException,
+                    Message = $"SaveAsync failed: {ex.Message}"
+                };
             }
         }
+
+
 
         public virtual async Task<bool> SaveWorkingAsync(
             Dictionary<string, object?> workingRaw,

@@ -53,35 +53,36 @@ namespace NxRebuild.Api.Controllers {
         
             await Task.CompletedTask;
         }
-        
+
         [HttpPost("Visible/{dataId}/{newVal}")]
-        public async Task<IActionResult> VisibleChg(int dataId, bool newVal)
-        {
-            var q = new RecordQuery();
-            q.TargetIds = new List<object> { dataId };
-            await CreateObjMgrAsync(q);
+        public async Task<IActionResult> VisibleChg(int dataId, bool newVal) {
+            // ObjMgr 初期化
+            await CreateObjMgrAsync(new RecordQuery { TargetIds = { dataId } });
 
             var mgr = _dataObjMgr as NutritionPropertiesMgr;
-        
-            var target = (mgr.Get(  dataId) as NutritionProperty);
-            if (target == null)
-                return BadRequest("Data not found");
+            var target = mgr?.Get(dataId) as NutritionProperty;
 
-            Dictionary<string, object> WorkingRaw = new Dictionary<string, object?>();
-            target.CreateWorkingMemory(WorkingRaw);
+            if (target == null) {
+                return Ok(new NxOperationResult<int> {
+                    ValidationErrorCode = NxValidationErrorCode.Unknown,
+                    Message = "Data not found"
+                });
+            }
 
-            // ① オブジェクトの状態を変える
-            WorkingRaw["Visible"] = newVal;
-        
-            // ② SaveAsync（内部で SaveQueryExec + トランザクション）
-            var ok = await target.SaveAsync(WorkingRaw);
-            if (!ok)
-                return StatusCode(500, "Update failed");
-        
-            // ③ 正本世界線の JSON を返す
-            var json = target.TblToJson();
-            return Ok(json);
+            // WorkingRaw 作成
+            var raw = new Dictionary<string, object?>();
+            target.CreateWorkingMemory(raw);
+
+            // Visible を変更
+            raw["Visible"] = newVal;
+
+            // SaveAsync（NxOperationResult を返す）
+            var result = await target.SaveAsync(raw);
+
+            // API 世界線の出口は IActionResult → JSON にするだけ
+            return Ok(result);
         }
+
 
         [HttpGet("sync")]
         public async Task<IActionResult> SyncAll() {

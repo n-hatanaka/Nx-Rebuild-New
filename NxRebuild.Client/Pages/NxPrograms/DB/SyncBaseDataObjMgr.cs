@@ -124,7 +124,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         // そのためネットワーク例外・タイムアウト・APIエラーが発生しても、
         // ローカル側の整合性が崩れることはありません。次回の同期で解決されます。
         // =======================================================
-        public virtual async Task<bool> SyncData() {
+        public virtual async Task<NxOperationResult<TKey>> SyncData() {
             DateTime refreshed_at = _baseDataObjMgr.Refreshed_at;
 
             var url = $"{ApiRoute}/sync/{refreshed_at:O}";
@@ -134,110 +134,162 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             try {
                 // --- 通信ハンドリング（世界線は通信失敗で壊れない） ---
                 response = await _http.GetAsync(url);
-            } catch {
+            } catch (Exception ex) {
                 // ネットワーク例外時は世界線が進まないだけなので false を返す
-                return false;
+                return new NxOperationResult<TKey> {
+                    OperationErrorCode = NxOperationErrorCode.NetworkError,
+                    Message = $"通信エラー: {ex.Message}"
+                };
             }
 
-            if (!response.IsSuccessStatusCode)
-                return false;
+            if (!response.IsSuccessStatusCode) {
+                return new NxOperationResult<TKey> {
+                    OperationErrorCode = NxOperationErrorCode.HttpError,
+                    Message = $"HTTPエラー: {response.StatusCode}"
+                };
+            }
 
             var tran = DBcon.BeginTransaction();
 
-            var json = await response.Content.ReadAsStringAsync();
-            var syncResult = JsonSerializer.Deserialize<SyncAllResult>(json);
+            SyncAllResult? syncResult = null;
 
-            if (syncResult?.Items == null)
-                return false;
-
-            foreach (var item in syncResult.Items) {
-
-                var dataId = item.Key;
-                var dataJson = item.Data;
-
-                var target = _baseDataObjMgr.Get(dataId);
-
-                if (target != null) {
-                    await target.JsonToTblAsync(dataJson, tran);
-                } else {
-                    target = CreateNewDataObj(default(TKey));
-                    target.DataID = dataId;
-                    await target.JsonToTblAsync(dataJson, tran);
-                    _baseDataObjMgr._dataList.Add(target);
-                }
-
-                // =======================================================
-                // 削除済みデータの扱い
-                // Nxでは削除は「正史のスナップショットに存在しない」ことで表現されます。
-                // Update_at = MaxValue かつ LockedAt = MinValue の組み合わせは
-                // 「サーバーで削除済み」を意味します。
-                //
-                // 独自の削除フラグを持つ場合は、このメソッドを修正せずに
-                // InitializeAsync 側でリストに入れないように具象側を調整してください。
-                // =======================================================
-                if (target.Update_at == DateTime.MaxValue
-                    && target.LockedAt == DateTime.MinValue) {
-
-                    await _baseDataObjMgr._DeleteDataObjFromListAsync(target.DataID);
-                }
+            try {
+                var json = await response.Content.ReadAsStringAsync();
+                syncResult = JsonSerializer.Deserialize<SyncAllResult>(json);
+            } catch (Exception ex) {
+                return new NxOperationResult<TKey> {
+                    OperationErrorCode = NxOperationErrorCode.ResponseParseError,
+                    Message = $"レスポンス解析エラー: {ex.Message}"
+                };
             }
 
-            tran.Commit();
+            if (syncResult?.Items == null) {
+                return new NxOperationResult<TKey> {
+                    OperationErrorCode = NxOperationErrorCode.Unknown,
+                    Message = "同期データが空です"
+                };
+            }
+
+            try {
+                foreach (var item in syncResult.Items) {
+
+                    var dataId = item.Key;
+                    var dataJson = item.Data;
+
+                    var target = _baseDataObjMgr.Get(dataId);
+
+                    if (target != null) {
+                        await target.JsonToTblAsync(dataJson, tran);
+                    } else {
+                        target = CreateNewDataObj(default(TKey));
+                        target.DataID = dataId;
+                        await target.JsonToTblAsync(dataJson, tran);
+                        _baseDataObjMgr._dataList.Add(target);
+                    }
+
+                    // =======================================================
+                    // 削除済みデータの扱い
+                    // Nxでは削除は「正史のスナップショットに存在しない」ことで表現されます。
+                    // Update_at = MaxValue かつ LockedAt = MinValue の組み合わせは
+                    // 「サーバーで削除済み」を意味します。
+                    // =======================================================
+                    if (target.Update_at == DateTime.MaxValue
+                        && target.LockedAt == DateTime.MinValue) {
+
+                        await _baseDataObjMgr._DeleteDataObjFromListAsync(target.DataID);
+                    }
+                }
+
+                tran.Commit();
+            } catch (Exception ex) {
+                tran.Rollback();
+                return new NxOperationResult<TKey> {
+                    OperationErrorCode = NxOperationErrorCode.ServerException,
+                    Message = $"同期処理中に例外が発生しました: {ex.Message}"
+                };
+            }
 
             // =======================================================
             // 親子関係の再構築
-            // サーバーから届く正史スナップショットは階層順ではないため、
-            // 全オブジェクトに対して SetParent を再実行して世界線を整えます。
             // =======================================================
+
             foreach (var obj in DataList) {
                 SetParent(obj);
             }
 
-            return true;
+
+            // ★ 正常終了
+            return new NxOperationResult<TKey> {
+                Message = "Sync completed",
+                // SyncItems はサーバー側の SyncAll が返すのでここでは不要
+            };
         }
 
-
-        public virtual async Task<List<TKey>> DeleteDataAsync(IEnumerable<TKey> dataIDs, bool softDelete = false) {
-
+        public virtual async Task<NxOperationResult<TKey>> DeleteDataAsync(IEnumerable<TKey> dataIDs, bool softDelete = false) {
             var url = $"{ApiRoute}/Delete";
 
             HttpResponseMessage response;
 
             try {
+                // ★ サーバーへ送信
                 response = await _http.PostAsJsonAsync(url, dataIDs);
             } catch (Exception ex) {
                 Console.WriteLine("DeleteData ERROR: HTTP通信失敗");
                 Console.WriteLine(ex.Message);
-                return dataIDs.ToList(); // 全件失敗扱い
+
+                return new NxOperationResult<TKey> {
+                    OperationErrorCode = NxOperationErrorCode.NetworkError,
+                    Message = $"通信エラー: {ex.Message}",
+                    FailedIds = dataIDs.ToList() // 全件失敗扱い
+                };
             }
 
             if (!response.IsSuccessStatusCode) {
                 Console.WriteLine($"DeleteData ERROR: APIステータス異常 ({response.StatusCode})");
-                return dataIDs.ToList();
+
+                return new NxOperationResult<TKey> {
+                    OperationErrorCode = NxOperationErrorCode.HttpError,
+                    Message = $"HTTPエラー: {response.StatusCode}",
+                    FailedIds = dataIDs.ToList()
+                };
             }
 
-            List<string>? failedStrLst = null;
+            NxOperationResult<TKey>? op;
 
             try {
-                // API の JSON をそのまま取り出す
-                failedStrLst = await response.Content.ReadFromJsonAsync<List<string>>();
+                // ★ API の NxOperationResult をそのまま取り出す
+                op = await response.Content.ReadFromJsonAsync<NxOperationResult<TKey>>();
             } catch (Exception ex) {
                 Console.WriteLine("DeleteData ERROR: JSONパース失敗");
                 Console.WriteLine(ex.Message);
-                return dataIDs.ToList(); // 全件失敗扱い
+
+                return new NxOperationResult<TKey> {
+                    OperationErrorCode = NxOperationErrorCode.ResponseParseError,
+                    Message = $"レスポンス解析エラー: {ex.Message}",
+                    FailedIds = dataIDs.ToList()
+                };
             }
 
-            // 失敗IDが返ってきた場合
-            var failedLst = failedStrLst
-                .Select(x => (TKey)Convert.ChangeType(x, typeof(TKey)))
-                .ToList();
+            if (op == null) {
+                return new NxOperationResult<TKey> {
+                    OperationErrorCode = NxOperationErrorCode.Unknown,
+                    Message = "Delete結果が返されませんでした",
+                    FailedIds = dataIDs.ToList()
+                };
+            }
 
-            //  成功したIDを抽出する
+            // ★ API 側で失敗している場合はローカル削除は行わない
+            if (!op.Success) {
+                return op;
+            }
+
+            // ★ 成功したIDだけローカルオブジェクト削除
+            var failedLst = op.FailedIds ?? new List<TKey>();
+
             var successIds = dataIDs
                 .Where(id => !failedLst.Contains(id))
                 .ToList();
 
-            // 成功したIDだけローカルオブジェクト削除 ★
             foreach (var id in successIds) {
                 try {
                     await _DeleteDataObjFromListAsync(id, softDelete);
@@ -250,8 +302,13 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                 }
             }
 
-            // 最終的に「失敗したIDだけ」返す（API仕様と一致）
-            return failedLst;
+            // ★ NxOperationResult を返す（APIの結果＋ローカル削除結果）
+            return new NxOperationResult<TKey> {
+                FailedIds = failedLst,
+                Message = failedLst.Count == 0
+                    ? "Delete completed"
+                    : "Some items failed"
+            };
         }
 
 

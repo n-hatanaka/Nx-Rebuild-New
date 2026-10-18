@@ -9,22 +9,44 @@
 
 <h3>ログイン</h3>
 
-<div>
-    <label>Email</label>
-    <input @bind="Email" />
-</div>
+<div class="login-container">
 
-<div>
-    <label>Password</label>
-    <input type="password" @bind="Password" />
-</div>
+    <div class="preset-users">
+        <button @onclick="() => SetPresetUser(1)">ユーザー①</button>
+        <button @onclick="() => SetPresetUser(2)">ユーザー②</button>
+    </div>
 
-<button @onclick="DoLogin">ログイン</button>
+    <div class="input-group">
+        <label>Email</label>
+        <input @bind="Email" />
+    </div>
+
+    <div class="input-group">
+        <label>Password</label>
+        <input type="password" @bind="Password" />
+    </div>
+
+    <button class="login-button" @onclick="DoLogin">ログイン</button>
+</div>
 
 @code {
     string Email = "";
     string Password = "";
     private string? ErrorMessage;
+    
+    void SetPresetUser(int n)
+    {
+        if (n == 1)
+        {
+            Email = "test@example.com";
+            Password = "Test123!";
+        }
+        else if (n == 2)
+        {
+            Email = "test2@example2.com";
+            Password = "Test223!";
+        }
+    }
 
     private async Task DoLogin()
     {

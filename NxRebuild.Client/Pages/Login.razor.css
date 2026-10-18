@@ -1,0 +1,52 @@
+﻿namespace NxRebuild.Client.Pages {
+    .login-container {
+        width: 320px;
+        margin: 60px auto; 
+        padding: 20px;
+        background: #ffffff;
+        border-radius: 10px;
+        box-shadow: 0 0 12px rgba(0,0,0,0.15);
+    }
+
+    .input-group {
+        margin-bottom: 15px;
+    }
+
+        .input-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+
+        .input-group input {
+            width: 100%;
+            padding: 8px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+        }
+
+    .preset-users {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 20px;
+    }
+
+        .preset-users button {
+            width: 48%;
+            padding: 8px;
+            border-radius: 5px;
+            border: none;
+            background: #ddd;
+            cursor: pointer;
+        }
+
+    .login-button {
+        width: 100%;
+        padding: 10px;
+        background: #0078d4;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+    }
+}

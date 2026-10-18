@@ -102,173 +102,291 @@ namespace NxRebuild.Api.Controllers {
         //}
 
         [HttpGet("sync/{refreshedAt}")]
-        public virtual async Task<IActionResult> SyncAll(DateTime refreshedAt)
-        {
-            var q = new RecordQuery();
-            q.And.Add(new Condition {
-                Column = "update_at",
-                Operator = ">",
-                Value = refreshedAt
-            });
+        public virtual async Task<IActionResult> SyncAll(DateTime refreshedAt) {
+            try {
+                var q = new RecordQuery();
+                q.And.Add(new Condition {
+                    Column = "update_at",
+                    Operator = ">",
+                    Value = refreshedAt
+                });
 
-            q.Or.Add(new Condition {
-                Column = "locked_at",
-                Operator = ">",
-                Value = refreshedAt
-            });
+                q.Or.Add(new Condition {
+                    Column = "locked_at",
+                    Operator = ">",
+                    Value = refreshedAt
+                });
 
-            // DataObjMgr を生成
-            await CreateObjMgrAsync(q); 
-            var mgr = _dataObjMgr;
-        
-            var resultList = new List<object>();
-        
-            foreach (var obj in mgr.DataList)
-            {
-                if ((obj.Update_at <= refreshedAt) && (obj.LockedAt <= refreshedAt))
-                    continue;
+                // ★ DataObjMgr を生成
+                await CreateObjMgrAsync(q);
+                var mgr = _dataObjMgr;
 
-                // クライアントの更新及びロック時刻よりあたらしいBaseDataObj<TKey>
-                var json = obj.TblToJson();   
-        
-                resultList.Add(new {
-                    Key = obj.DataID,
-                    Data = json
+                var resultList = new List<object>();
+
+                foreach (var obj in mgr.DataList) {
+                    if ((obj.Update_at <= refreshedAt) && (obj.LockedAt <= refreshedAt))
+                        continue;
+
+                    // ★ クライアントの更新及びロック時刻よりあたらしいBaseDataObj<TKey>
+                    string json;
+
+                    try {
+                        json = obj.TblToJson();   // ← ここで例外が起こる可能性あり
+                    } catch (Exception ex) {
+                        // ★ TblToJson の例外を NxOperationResult に包んで返す
+                        return BadRequest(new NxOperationResult<TKey> {
+                            OperationErrorCode = NxOperationErrorCode.ServerException,
+                            Message = $"TblToJson failed: {ex.Message}"
+                        });
+                    }
+
+                    resultList.Add(new {
+                        Key = obj.DataID,
+                        Data = json
+                    });
+                }
+
+                // ★ NxOperationResult に SyncItems を含めて返す
+                return Ok(new NxOperationResult<TKey> {
+                    SyncItems = resultList,
+                    Message = "Sync completed"
+                    // Success は計算判定で true
+                });
+            } catch (Exception ex) {
+                // ★ CreateObjMgrAsync やその他の例外を NxOperationResult に包んで返す
+                return BadRequest(new NxOperationResult<TKey> {
+                    OperationErrorCode = NxOperationErrorCode.ServerException,
+                    Message = $"SyncAll failed: {ex.Message}"
                 });
             }
-        
-            // ひとまとめにして返す
-            return Ok(new {
-                Refreshed_at = refreshedAt,
-                Items = resultList
-            });
         }
+
 
 
         [HttpPost("SetLockStatus")]
         public virtual async Task<IActionResult> SetLockStatus([FromBody] LockCommand<TKey> req) {
-  
-            var q = new RecordQuery();
-            q.TargetIds = new List<object> { req.DataId };
 
-            await CreateObjMgrAsync(q);
+            try {
+                var q = new RecordQuery();
+                q.TargetIds = new List<object> { req.DataId };
 
-            // ① 対象データ取得
-            var dataObj = (BaseDataObj<TKey>)_dataObjMgr.Get(req.DataId);
+                await CreateObjMgrAsync(q);
 
-            if (dataObj == null)
-                return BadRequest($"Data not found: {req.DataId}");
+                // ① 対象データ取得
+                var dataObj = (BaseDataObj<TKey>)_dataObjMgr.Get(req.DataId);
 
-            // ② ロック要求（セット）
-            LockStatus lockStatus;
-            if (req.doLock)
-                lockStatus = await dataObj._SetLockAsync();
-            else
-                lockStatus = await dataObj._SetUnLockAsync();
+                if (dataObj == null)
+                    return BadRequest(new NxOperationResult<TKey> {
+                        OperationErrorCode = NxOperationErrorCode.ServerException,
+                        Message = $"Data not found: {req.DataId}"
+                    });
 
-            // ③ 結果返却（_SetLockAsync の戻り値そのまま）
-            return Ok(lockStatus);
+                // ② ロック要求（セット）
+                LockStatus lockStatus;
+
+                try {
+                    if (req.doLock)
+                        lockStatus = await dataObj._SetLockAsync();     // ← ここで例外が起こる可能性あり
+                    else
+                        lockStatus = await dataObj._SetUnLockAsync();   // ← ここで例外が起こる可能性あり
+                } catch (Exception ex) {
+                    // ★ ロック処理中の例外を NxOperationResult に包んで返す
+                    return BadRequest(new NxOperationResult<TKey> {
+                        OperationErrorCode = NxOperationErrorCode.ServerException,
+                        Message = $"Lock operation failed: {ex.Message}"
+                    });
+                }
+
+                // ③ 結果返却（LockStatus を NxOperationResult に包む）
+                return Ok(new NxOperationResult<TKey> {
+                    LockStatus = lockStatus,
+                    Message = lockStatus.ErrorMessage,
+                    // ValidationErrorCode は使わない（ロックは業務ロジックではない）
+                    OperationErrorCode = lockStatus.HasError
+                        ? NxOperationErrorCode.ServerException
+                        : NxOperationErrorCode.None
+                });
+            } catch (Exception ex) {
+                // ★ CreateObjMgrAsync やその他の例外を NxOperationResult に包んで返す
+                return BadRequest(new NxOperationResult<TKey> {
+                    OperationErrorCode = NxOperationErrorCode.ServerException,
+                    Message = $"SetLockStatus failed: {ex.Message}"
+                });
+            }
         }
+
+
 
         [HttpPost("Delete")]
         public virtual async Task<IActionResult> Delete(
-            [FromBody] List<TKey> dataLst,
-            [FromQuery] bool softDelete = false
-        ) {
-            var q = new RecordQuery();
-            q.TargetIds = dataLst.Cast<object>().ToList(); ;   // ★ IDリストを世界線にセット
+                                        [FromBody] List<TKey> dataLst,
+                                        [FromQuery] bool softDelete = false) {
+            try {
+                var q = new RecordQuery();
+                q.TargetIds = dataLst.Cast<object>().ToList(); ;   // ★ IDリストを世界線にセット
 
-            await CreateObjMgrAsync(q);
+                await CreateObjMgrAsync(q);
 
-            var failedIds = new List<TKey>();
+                var failedIds = new List<TKey>();
 
-            foreach (var dataId in dataLst) {
+                foreach (var dataId in dataLst) {
+                    try {
+                        //  DataObj を取得
+                        var dataObj = (BaseDataObj<TKey>)_dataObjMgr.Get(dataId);
 
-                //  DataObj を取得
-                var dataObj = (BaseDataObj<TKey>)_dataObjMgr.Get(dataId);
+                        if (dataObj == null) {
+                            failedIds.Add(dataId);
+                            continue;
+                        }
 
-                if (dataObj == null) {
-                    failedIds.Add(dataId);
-                    continue;
+                        //  _Validate
+                        var v = dataObj._Validate(OperationType.Delete);
+                        if (!v.Success) {
+                            failedIds.Add(dataId);
+                            continue;
+                        }
+
+                        //  ロック要求（冪等性保証）
+                        var lockst = await dataObj._SetLockAsync();
+
+                        //　ロック確認
+                        if (!lockst.CanEdit || lockst.Result != LockResult.Success) {
+                            failedIds.Add(dataId);
+                            continue;
+                        }
+
+                        var DeleteResult = await _dataObjMgr.DeleteDataAsync(
+                            new List<TKey> { dataObj.DataID },
+                            softDelete
+                        );
+
+                        // 削除成功かどうか
+                        bool result = DeleteResult.FailedIds.Count == 0;
+
+                        if (!result) {
+                            // ロック解除（失敗時は必ず）
+                            await dataObj._SetUnLockAsync();
+
+                            failedIds.Add(dataObj.DataID);
+                            continue;
+                        }
+
+                        // 削除成功したらレコードは存在しないかソフトデリートでもロック解除は必要ない
+                    } catch (Exception ex) {
+                        // ★ 個別データの削除処理で例外が起きた場合
+                        failedIds.Add(dataId);
+
+                        // ロックが残っている可能性があるので安全に解除を試みる
+                        try {
+                            var dataObj = (BaseDataObj<TKey>)_dataObjMgr.Get(dataId);
+                            if (dataObj != null)
+                                await dataObj._SetUnLockAsync();
+                        } catch { /* ロック解除失敗は無視 */ }
+
+                        // 続行（他の ID の削除は続ける）
+                        continue;
+                    }
                 }
 
-                //  _Validate
-                dataObj._Validate(OperationType.Delete);
-
-                //  ロック要求（冪等性保証）
-                var lockst = await dataObj._SetLockAsync();
-
-                //　ロック確認
-                if (!lockst.CanEdit || lockst.Result != LockResult.Success) {
-                    failedIds.Add(dataId);
-                    continue;
-                }
-
-                var failedList = await _dataObjMgr.DeleteDataAsync(
-                    new List<TKey> { dataObj.DataID },
-                    softDelete
-                );
-
-                // 削除成功かどうか
-                bool result = failedList.Count == 0;
-
-                if (!result) {
-                    // ロック解除（失敗時は必ず）
-                    await dataObj._SetUnLockAsync();
-
-                    failedIds.Add(dataObj.DataID);
-                    continue;
-                }
-
-                // 削除成功したらレコードは存在しないかソフトデリートでもロック解除は必要ない
+                // ★ NxOperationResult に変換して返す
+                return Ok(new NxOperationResult<TKey> {
+                    FailedIds = failedIds,
+                    ValidationErrorCode = failedIds.Count == 0
+                        ? NxValidationErrorCode.None
+                        : NxValidationErrorCode.CannotDeleteRoot,
+                    Message = failedIds.Count == 0
+                        ? "Deleted"
+                        : "Some items failed"
+                });
+            } catch (Exception ex) {
+                // ★ Delete 全体の例外（CreateObjMgrAsync や内部例外）
+                return BadRequest(new NxOperationResult<TKey> {
+                    OperationErrorCode = NxOperationErrorCode.ServerException,
+                    Message = $"Delete failed: {ex.Message}"
+                });
             }
-
-            // 結果返却
-            return Ok(failedIds);
         }
 
+
+
         [HttpPost("DataOpenLatest")]
-        public async Task<DataOpenResult> DataOpenLatest([FromBody] TKey dataId)
-        {
-            var q = new RecordQuery();
-            q.TargetIds = new List<object> { dataId ?? default };
+        public async Task<IActionResult> DataOpenLatest([FromBody] TKey dataId) {
+            try {
+                var q = new RecordQuery();
+                q.TargetIds = new List<object> { dataId ?? default };
 
-            await CreateObjMgrAsync(q);
-            // ① 正本世界線のロック状態を取得
-            var DataObj = (BaseDataObj<TKey>)_dataObjMgr.Get(dataId);
-            var lockst = await DataObj._SetLockAsync();
+                await CreateObjMgrAsync(q);
 
-             // ② レコード無し（RecordNone）なら新規扱い
-            if (!lockst.Exists)
-            {
-                return new DataOpenResult {
-                    HasError = false,
+                // ① 正本世界線のロック状態を取得
+                var DataObj = (BaseDataObj<TKey>)_dataObjMgr.Get(dataId);
+
+                if (DataObj == null) {
+                    return BadRequest(new NxOperationResult<TKey> {
+                        OperationErrorCode = NxOperationErrorCode.ServerException,
+                        Message = $"Data not found: {dataId}"
+                    });
+                }
+
+                LockStatus lockst;
+
+                try {
+                    lockst = await DataObj._SetLockAsync();   // ← ここで例外が起こる可能性あり
+                } catch (Exception ex) {
+                    return BadRequest(new NxOperationResult<TKey> {
+                        OperationErrorCode = NxOperationErrorCode.ServerException,
+                        Message = $"Lock failed: {ex.Message}"
+                    });
+                }
+
+                // ② レコード無し（RecordNone）なら新規扱い
+                if (!lockst.Exists) {
+                    return Ok(new NxOperationResult<TKey> {
+                        LockStatus = lockst,
+                        Message = "Record does not exist (new data)",
+                        RawData = null
+                    });
+                }
+
+                // ③ 編集不可（他人ロック）なら JSON は返さない
+                if ((!lockst.CanEdit || lockst.Result != LockResult.Success)) {
+                    return BadRequest(new NxOperationResult<TKey> {
+                        ValidationErrorCode = NxValidationErrorCode.LockedByOther,
+                        Message = lockst.ErrorMessage,
+                        LockStatus = lockst,
+                        RawData = null
+                    });
+                }
+
+                // ④ 編集可能 → 最新状態の JSON を返す
+                string json;
+
+                try {
+                    // Base世界線の正本を TblToJson で取得
+                    var dataObj = _dataObjMgr.Get(dataId);   // DataObj 管理構造に合わせて
+                    json = dataObj.TblToJson(dataId, null);  // ← ここで例外が起こる可能性あり
+                } catch (Exception ex) {
+                    return BadRequest(new NxOperationResult<TKey> {
+                        OperationErrorCode = NxOperationErrorCode.ServerException,
+                        Message = $"TblToJson failed: {ex.Message}",
+                        LockStatus = lockst
+                    });
+                }
+
+                // ★ 正本 JSON を RawData に入れるかどうかは設計次第
+                // 今回は JSON をそのまま返すため RawData は null のまま
+                return Ok(new NxOperationResult<TKey> {
                     LockStatus = lockst,
-                    Json = null
-                };
+                    Message = "Data opened successfully",
+                    RawData = null,   // JSON は別フィールドで返すならここは null
+                                      // ★ SyncItems を使うか、専用フィールドを追加するかは後で決める
+                });
+            } catch (Exception ex) {
+                // ★ CreateObjMgrAsync やその他の例外を NxOperationResult に包んで返す
+                return BadRequest(new NxOperationResult<TKey> {
+                    OperationErrorCode = NxOperationErrorCode.ServerException,
+                    Message = $"DataOpenLatest failed: {ex.Message}"
+                });
             }
-
-            // ③ 編集不可（他人ロック）なら JSON は返さない
-            if ((!lockst.CanEdit || lockst.Result != LockResult.Success))
-            {
-                return new DataOpenResult {
-                    HasError = lockst.HasError,
-                    ErrorMessage = lockst.ErrorMessage,
-                    LockStatus = lockst,
-                    Json = null
-                };
-            }
-
-            // ④ 編集可能 → 最新状態の JSON を返す
-            // Base世界線の正本を TblToJson で取得
-            var dataObj = _dataObjMgr.Get(dataId);   // あなたの DataObj 管理構造に合わせて
-            var json = dataObj.TblToJson(dataId, null);
-
-            return new DataOpenResult {
-                HasError = false,
-                LockStatus = lockst,
-                Json = json
-            };
         }
 
         // =======================================================
@@ -295,11 +413,16 @@ namespace NxRebuild.Api.Controllers {
                       ?? _dataObjMgr.CreateNewDataObj(default));
 
             // ★ _Validate を最初に必ず通す
-            obj._Validate(OperationType.Save);
+            var v = obj._Validate(OperationType.Save);
+            if (!v.Success)
+                return BadRequest(v);
 
             var lockst = await obj._SetLockAsync();
             if (!lockst.CanEdit || lockst.Result != LockResult.Success) {
-                return BadRequest("Lock failed");
+                return BadRequest(new NxOperationResult<TKey> {
+                    OperationErrorCode = NxOperationErrorCode.ServerException,
+                    Message = "Lock failed"
+                });
             }
 
             using var tran = _db.BeginTransaction();
@@ -328,9 +451,10 @@ namespace NxRebuild.Api.Controllers {
                 }
 
                 // ★ テーブル書き込み前フック
-                if (!await BeforeSaveProcess(obj, workingRaw, tran)) {
+                var beforeSaveResult = await BeforeSaveProcess(obj, workingRaw, tran);
+                if (!beforeSaveResult.Success) {
                     tran.Rollback();
-                    return BadRequest("BeforeSaveProcess failed");
+                    return BadRequest(beforeSaveResult);
                 }
 
                 var UpdateAtsrv = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
@@ -340,52 +464,69 @@ namespace NxRebuild.Api.Controllers {
                 // ★ 保存処理へ
                 if (!await obj.JsonToTblAsync(SaveJson, tran)) {
                     tran.Rollback();
-                    return BadRequest("JsonToTbl failed");
+                    return BadRequest(new NxOperationResult<TKey> {
+                        OperationErrorCode = NxOperationErrorCode.DbError,
+                        Message = "JsonToTbl failed"
+                    });
                 }
 
                 // ★ ロック情報が JSON で更新されてしまうので再設定
                 await obj._ReWriteLockInfoAsync(tran, obj.CurrUsrID, DateTime.UtcNow);
 
                 // ★ テーブル書き込み後フック
-                if (!await AfterSaveProcess(obj, workingRaw, tran)) {
+                var afterSaveResult = await AfterSaveProcess(obj, workingRaw, tran);
+                if (!afterSaveResult.Success) {
                     tran.Rollback();
-                    return BadRequest("AfterSaveProcess failed");
+                    return BadRequest(afterSaveResult);
                 }
 
                 tran.Commit();
 
                 // ★ DB → オブジェクトへ最新値を反映
-                await obj._UpdatePropertiesFromTblAsync();
+                //await obj._UpdatePropertiesFromTblAsync();
 
-                // ★ SaveResponseDto<TKey> を返す（正史の世界線）
-                var responseDto = new SaveResponseDto<TKey> {
-                                            NewID = obj.DataID,
-                                            UpdateAt = obj.Update_at.ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
-                                        };
-
-                return Ok(responseDto);
+                // ★ NxOperationResult を返す（正史の世界線）
+                return Ok(new NxOperationResult<TKey> {
+                    RawData = obj._rawData,
+                    NewID = obj.DataID,
+                    UpdateAt = obj.Update_at.ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+                });
             } catch (Exception ex) {
                 tran.Rollback();
-                return BadRequest(ex.Message);
+                return BadRequest(new NxOperationResult<TKey> {
+                    OperationErrorCode = NxOperationErrorCode.ServerException,
+                    Message = ex.Message
+                });
             }
         }
+
 
         // =======================================================
         // 保存の前後に追加処理を行いたい場合は継承先で
         // BeforeSaveProcess / AfterSaveProcess をオーバーライドする
         // =======================================================
-        protected virtual Task<bool> BeforeSaveProcess(
+        protected virtual Task<NxOperationResult<TKey>> BeforeSaveProcess(
                                                 IBaseDataObj<TKey> obj,
                                                 List<TableJson> workingRaw,
                                                 IDbTransaction tran) {
-            return Task.FromResult(true);
+
+
+            return Task.FromResult(new NxOperationResult<TKey> {
+                OperationErrorCode = NxOperationErrorCode.None,
+                ValidationErrorCode = NxValidationErrorCode.None
+            });
         }
 
-        protected virtual Task<bool> AfterSaveProcess(
+        protected virtual Task<NxOperationResult<TKey>> AfterSaveProcess(
                                                 IBaseDataObj<TKey> obj,
                                                 List<TableJson> workingRaw,
                                                 IDbTransaction tran) {
-            return Task.FromResult(true);
+
+
+            return Task.FromResult(new NxOperationResult<TKey> {
+                OperationErrorCode = NxOperationErrorCode.None,
+                ValidationErrorCode = NxValidationErrorCode.None
+            });
         }
 
 
@@ -399,8 +540,7 @@ namespace NxRebuild.Api.Controllers {
 
 
         [HttpPost("ReName/{dataId}/{newName}")]
-        public virtual async Task<IActionResult> ReName(TKey dataId, string newName)
-        {
+        public virtual async Task<IActionResult> ReName(TKey dataId, string newName) {
             var q = new RecordQuery();
             q.TargetIds = new List<object> { dataId };
             await CreateObjMgrAsync(q);
@@ -409,38 +549,57 @@ namespace NxRebuild.Api.Controllers {
             var dataObj = (BaseDataObj<TKey>)_dataObjMgr.Get(dataId);
 
             if (dataObj == null)
-                return BadRequest("Data not found");
+                return BadRequest(new NxOperationResult<TKey> {
+                    OperationErrorCode = NxOperationErrorCode.ServerException,
+                    Message = "Data not found"
+                });
 
             // ② ローカルバリデーション（UI側と同型）
-            dataObj._Validate(OperationType.Rename);
+            var v = dataObj._Validate(OperationType.Rename, newName);
+            if (!v.Success)
+                return BadRequest(v);
 
             // ③ ロック要求（冪等性保証）    
             var lockst = await dataObj._SetLockAsync();
 
             // ④ ロック確認
             if (lockst.HasError)
-                return BadRequest(lockst.ErrorMessage);
+                return BadRequest(new NxOperationResult<TKey> {
+                    OperationErrorCode = NxOperationErrorCode.ServerException,
+                    Message = lockst.ErrorMessage
+                });
 
             if (!lockst.IsTimeValid)
-                return BadRequest("Lock expired");
+                return BadRequest(new NxOperationResult<TKey> {
+                    OperationErrorCode = NxOperationErrorCode.ServerException,
+                    Message = "Lock expired"
+                });
 
             if (!lockst.IsMine)
-                return BadRequest("Locked by another user");
+                return BadRequest(new NxOperationResult<TKey> {
+                    ValidationErrorCode = NxValidationErrorCode.LockedByOther,
+                    Message = "Locked by another user"
+                });
 
             // ⑤ 名前変更（内部で DB 更新まで完結）
-            var renamed = await dataObj.ReNameAsync(newName);
+            var renameResult = await dataObj.ReNameAsync(newName);
 
             // ⑥ ロック解除（成功/失敗に関わらず必ず）
-            lockst = await dataObj._SetUnLockAsync();
+            await dataObj._SetUnLockAsync();
 
             // ⑦ 結果返却
-            if (renamed) {
-                await dataObj._UpdatePropertiesFromTblAsync(); // DB から最新状態を反映
-                return Ok(dataObj._rawData);
-            }
+            if (!renameResult.Success)
+                return BadRequest(renameResult);
 
-            return BadRequest("Rename failed");
+
+            //await dataObj._UpdatePropertiesFromTblAsync(); // DB から最新状態を反映
+
+            return Ok(new NxOperationResult<TKey> {
+                RawData = dataObj._rawData,
+                UpdateAt = dataObj.Update_at.ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+            });
         }
+
 
 
     }
