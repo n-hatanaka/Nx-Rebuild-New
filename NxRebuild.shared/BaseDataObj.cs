@@ -133,6 +133,8 @@ namespace NxRebuild.shared {
             _w_tblName = meta.WorkPriTable;
             _ws_tblName = meta.WorkDtlTable;
             _datatype = meta.DataType;
+
+            InitializeDetailPrimaryKeys();
         }
 
         // レコード内容をJSON（辞書）として保持するメンバ
@@ -175,17 +177,22 @@ namespace NxRebuild.shared {
         {
             get
             {
-                // DB 接続文字列を取得（Nx の基盤ならここで取れる）
                 var conn = DBcon.ConnectionString;
-
-                if (string.IsNullOrEmpty(conn))
-                    return NxLocationKind.Client; // WASM / MAUI の in-memory はここに来る
-
-                // memory が含まれていればクライアント世界線
-                if (conn.Contains("memory", StringComparison.OrdinalIgnoreCase))
+                // WASM / MAUI / WPF の in-memory をすべて拾う
+                if (string.IsNullOrWhiteSpace(conn))
                     return NxLocationKind.Client;
 
-                // それ以外はサーバー世界線
+                // SQLite の in-memory 全パターン
+                if (conn.Contains(":memory:", StringComparison.OrdinalIgnoreCase))
+                    return NxLocationKind.Client;
+
+                if (conn.Contains("mode=memory", StringComparison.OrdinalIgnoreCase))
+                    return NxLocationKind.Client;
+
+                if (conn.Contains("cache=shared", StringComparison.OrdinalIgnoreCase))
+                    return NxLocationKind.Client;
+
+                // それ以外はサーバー
                 return NxLocationKind.Server;
             }
         }
@@ -471,11 +478,6 @@ namespace NxRebuild.shared {
 
             var tables = JsonSerializer.Deserialize<List<TableJson>>(json);
 
-            // ★ まず既存のレコードを削除する（物理削除）
-            var result = await _HardDeleteQueryExecAsync(tran);
-            if (!result)
-                throw new Exception("ERROR: HardDelete failed");
-
             foreach (var table in tables) {
                 foreach (var row in table.Rows) {
                     var normalized = NxTypeMapper.ConvertRow(table.Table, row);
@@ -483,19 +485,88 @@ namespace NxRebuild.shared {
                     var columns = string.Join(", ", normalized.Keys.Select(k => $@"""{k}"""));
                     var values = string.Join(", ", normalized.Keys.Select(k => $@"@{k}"));
 
-                    var rowsAffected = DBcon.Execute(
-                        $@"INSERT INTO ""{table.Table}"" ({columns}) VALUES ({values})",
-                        normalized,
-                        tran
+                    var updates = string.Join(", ",
+                        normalized.Keys
+                            .Where(k => k != IdColName && k != "update_at")
+                            .Select(k => $@"""{k}"" = EXCLUDED.""{k}""")
                     );
 
-                    // ★ 整合性チェック
+                    string sql;
+
+                    if (DetailPrimaryKeys.TryGetValue(table.Table, out var pkCols)) {
+                        // Detail 用 UPSERT
+                        sql = BuildJtTDetailUpsertSql(
+                            table.Table,
+                            columns,
+                            values,
+                            updates,
+                            pkCols
+                        );
+                    } else {
+                        // Primary 用 UPSERT
+                        sql = BuildJtTPrimaryUpsertSql(
+                            table.Table,
+                            columns,
+                            values,
+                            updates,
+                            IdColName
+                        );
+                    }
+
+                    var rowsAffected = await DBcon.ExecuteAsync(sql, normalized, tran);
+
                     if (rowsAffected != 1)
-                        throw new Exception($"BROKEN: Insert failed or inserted {rowsAffected} rows");
+                        throw new Exception($"BROKEN: Upsert failed or affected {rowsAffected} rows");
                 }
             }
 
             return true;
+        }
+        protected Dictionary<string, string[]> DetailPrimaryKeys { get; }
+                                                 = new Dictionary<string, string[]>();
+
+        protected virtual void InitializeDetailPrimaryKeys() {
+            // Base は空。具象側で埋める。
+        }
+
+
+        protected string BuildJtTPrimaryUpsertSql(
+            string tableName,
+            string columns,
+            string values,
+            string updates,
+            string idColName) 
+        {
+            return $@"
+                        INSERT INTO ""{tableName}""
+                        ({columns})
+                        VALUES ({values})
+                        ON CONFLICT (""{idColName}"", ""tenant_code"")
+                        DO UPDATE SET
+                            {updates};
+                    ";
+        }
+
+
+        protected string BuildJtTDetailUpsertSql(
+            string tableName,
+            string columns,
+            string values,
+            string updates,
+            IEnumerable<string> pkCols) {
+            if (pkCols == null || !pkCols.Any())
+                throw new Exception($"Detail table {tableName} has no primary key defined.");
+
+            var pkClause = string.Join(", ", pkCols.Select(c => $@"""{c}"""));
+
+            return $@"
+                        INSERT INTO ""{tableName}""
+                        ({columns})
+                        VALUES ({values})
+                        ON CONFLICT ({pkClause})
+                        DO UPDATE SET
+                            {updates};
+                    ";
         }
 
 
@@ -579,12 +650,18 @@ namespace NxRebuild.shared {
         }
 
 
-        // 保存処理ではこのメソッドを呼び出す事。
         // データベースからエンティティを物理削除する。
         // 派生先では TblName テーブルおよび関連するサブテーブル（s_tblName など）を完全削除すること
-        public virtual async Task<bool> _HardDeleteQueryExecAsync(IDbTransaction transaction)
-        {
-            bool detailDeleted  = await _DeleteDetailQueryExecAsync(transaction);
+        //public virtual async Task<bool> _HardDeleteQueryExecAsync(IDbTransaction transaction)
+        //{
+        //    bool detailDeleted  = await _DeleteDetailQueryExecAsync(transaction);
+        //    bool primaryDeleted = await _DeletePrimaryQueryExecAsync(transaction);
+
+        //    return primaryDeleted && detailDeleted;
+        //}
+
+        public virtual async Task<bool> _UpsertQueryExecAsync(IDbTransaction transaction) {
+            bool detailDeleted = await _DeleteDetailQueryExecAsync(transaction);
             bool primaryDeleted = await _DeletePrimaryQueryExecAsync(transaction);
 
             return primaryDeleted && detailDeleted;
@@ -772,32 +849,6 @@ namespace NxRebuild.shared {
             using var tran = DBcon.BeginTransaction();
 
             try {
-                // =======================================================
-                // NxではDelete → Insertで保存処理を行います。
-                //
-                // Delete → Insert は危険とされる場合がありますが、それは複数
-                // ユーザーが同一データを同時に編集するケース（サーバー絶対・MVCC・差分同期）
-                // が前提のためです。
-                // そのケースでは Delete と Insert の間に他ユーザーが割り込み、
-                // FK 整合性が壊れる可能性があります。
-                //
-                // Nx は単一ユーザーによる Create/Update/Deleteで動作するため、
-                // 同時編集・割り込み・競合が因果として存在しません。
-                // また同期取り込みは必ず 1 トランザクション内で完結するため、
-                // Delete → Insert の間に整合性が崩れることはありません。
-                // FK チェックは tran.Commit() 時に一括で評価されるため安全です。
-                //
-                // よって Nx では UPSERT に寄せる必要はなく、
-                // Delete → Insert は安全に成立します。
-                // =======================================================
-                // ★ 既存行の HardDelete（ローカル側のデータ初期化）
-                if (!await _HardDeleteQueryExecAsync(tran)) {
-                    tran.Rollback();
-                    return new NxOperationResult<TKey> {
-                        OperationErrorCode = NxOperationErrorCode.DbError,
-                        Message = "ローカル初期化に失敗しました"
-                    };
-                }
 
                 // ★ 新規ならローカル側で仮ID採番
                 workingRaw[IdColName] = EnsureIDForSave(tran);
@@ -852,31 +903,41 @@ namespace NxRebuild.shared {
 
         public virtual async Task<bool> SaveWorkingPrimaryAsync(
             Dictionary<string, object?> workingRaw,
-            IDbTransaction tran)
-        {
-
-            //ローカル書き込み用なのでとりあえずPC時間で
+            IDbTransaction tran) {
+            // ローカル書き込み用なのでとりあえずPC時間で
             workingRaw["Update_at"] = DateTime.UtcNow;
 
-            // ★ 次に INSERT（WorkingRaw をそのまま書き込む）
-                    var cols = new List<string>();
+            // ★ カラム名とパラメータ名を生成
+            var cols = new List<string>();
             var vals = new List<string>();
+            var updates = new List<string>();
 
-            foreach (var kv in workingRaw)
-            {
+            foreach (var kv in workingRaw) {
                 cols.Add($@"""{kv.Key}""");
                 vals.Add($@"@{kv.Key}");
+
+                // 主キーは UPDATE しない
+                if (kv.Key != IdColName) {
+                    updates.Add($@"""{kv.Key}"" = EXCLUDED.""{kv.Key}""");
+                }
             }
 
-            string insSql = $@"
-                INSERT INTO ""{_w_tblName}""
-                ({string.Join(", ", cols)})
-                VALUES ({string.Join(", ", vals)});
-            ";
+            // ★ UPSERT（INSERT → 衝突時 UPDATE）
+            string sql = $@"
+                        INSERT INTO ""{_w_tblName}""
+                        ({string.Join(", ", cols)})
+                        VALUES ({string.Join(", ", vals)})
+                        ON CONFLICT (""{IdColName}"", ""tenant_code"")
+                        DO UPDATE SET
+                            {string.Join(", ", updates)};
+                    ";
 
-            var rows = await DBcon.ExecuteAsync(insSql, workingRaw, tran);
+            var rows = await DBcon.ExecuteAsync(sql, workingRaw, tran);
+
+            // UPSERT は rows = 1 になる（INSERT でも UPDATE でも）
             return rows == 1;
         }
+
 
 
         // =======================================================
@@ -1058,10 +1119,10 @@ namespace NxRebuild.shared {
                 // ② doLock == false → ロック解除要求
                 // ============================================================
                 string sqlUnlock = $@"
-                                    UPDATE ""{{TblName}}""
+                                    UPDATE ""{TblName}""
                                     SET ""locked_by"" = NULL,
                                         ""locked_at"" = NULL
-                                    WHERE ""{{IdColName}}"" = @dataID
+                                    WHERE ""{IdColName}"" = @dataID
                                       AND ""tenant_code"" = @tenantCode
                                       AND ""locked_by"" = @userId;
                                     ";//他ユーザーがロックしているのに誤って解除する事故防止のためユーザーIDでも確認する

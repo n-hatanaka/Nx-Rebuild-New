@@ -209,6 +209,10 @@ namespace NxRebuild.shared {
             return result;
         }
 
+        protected override void InitializeDetailPrimaryKeys() {
+            DetailPrimaryKeys["tan_m"] = new[] { "tenant_code", "LocalCode", "tan_cd" };
+            DetailPrimaryKeys["Zmst"] = new[] { "LocalCode", "tenant_code" };
+        }
 
 
         // ---------------------------------------------------------
@@ -362,30 +366,42 @@ namespace NxRebuild.shared {
             if (w_DetailTblList == null)
                 return true;
 
-            // w_DetailTblList = 詳細テーブルごとの行リスト
             foreach (var detailTableRows in w_DetailTblList) {
-                // detailTableRows = 1つの詳細テーブルの行一覧
                 foreach (var row in detailTableRows) {
-                    //新規レコードには未確定のコードがあり編集時書き込まれないためここで設定する
+                    // ★ 新規レコードに必要なコードを補完
                     row["tenant_code"] = this.TenantCode;
-                    row["LocalCode"] = MainWorkingRaw["LocalCode"];
+                    row[IdColName] = MainWorkingRaw[IdColName];
                     row["Z_Code"] = MainWorkingRaw["Z_code"];
 
+                    // ★ カラム名と値
                     var cols = new List<string>();
                     var vals = new List<string>();
+                    var updates = new List<string>();
 
                     foreach (var kv in row) {
                         cols.Add($@"""{kv.Key}""");
                         vals.Add($@"@{kv.Key}");
+
+                        // ★ 主キーと update_at は UPDATE しない
+                        if (kv.Key != "tenant_code" &&
+                            kv.Key != IdColName &&
+                            kv.Key != "tan_cd" &&
+                            kv.Key != "update_at") {
+                            updates.Add($@"""{kv.Key}"" = EXCLUDED.""{kv.Key}""");
+                        }
                     }
 
-                    string insSql = $@"
-                                        INSERT INTO ""tan_m""
-                                        ({string.Join(", ", cols)})
-                                        VALUES ({string.Join(", ", vals)});
-                                    ";
+                    // ★ UPSERT（SQLite 正式対応）
+                    string sql = $@"
+                                    INSERT INTO ""tan_m""
+                                    ({string.Join(", ", cols)})
+                                    VALUES ({string.Join(", ", vals)})
+                                    ON CONFLICT(""tenant_code"", ""{IdColName}"", ""tan_cd"")
+                                    DO UPDATE SET
+                                        {string.Join(", ", updates)};
+                                ";
 
-                    var affected = await DBcon.ExecuteAsync(insSql, row, tran);
+                    var affected = await DBcon.ExecuteAsync(sql, row, tran);
                     if (affected != 1)
                         return false;
                 }
@@ -393,7 +409,6 @@ namespace NxRebuild.shared {
 
             return true;
         }
-
 
     }
 }

@@ -82,7 +82,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             using (var transaction = DBcon.BeginTransaction()) {
                 try {
                     // サーバーからメタデータを受け取りクライアントのテーブルを更新
-                    if (UpdateRawDataToTbl(updatedRaw, transaction)) {
+                    if (await UpdateRawDataToTbl(updatedRaw, transaction)) {
                         // 保持しているプロパティも更新
                         _SetProperties(updatedRaw);
                     } else {

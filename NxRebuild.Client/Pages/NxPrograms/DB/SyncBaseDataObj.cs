@@ -121,14 +121,13 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
         // --- SaveAsync（同期保存） ---
         // ===============================================================
-        // SyncBase の Save は「ローカル先行 → サーバー反映」が正しい理由
+        // SyncBase の Save は「ローカル先行 → サーバー反映」理由
         // ===============================================================
         //
         // 【1. SyncBase は単一ユーザーであり、編集中はローカルDBが正史である】
         //   - SyncBase は他ユーザーとデータを共有しない。
         //   - よってローカルDBが唯一の正史（canonical timeline）となる。
         //   - サーバー側は正史のバックアップ／同期先に過ぎない。
-        //   - そのため、正史は必ずローカル側で先に確定させる必要がある。
         //
         // 【2. サーバーへ送る JSON は「ローカル正史の写像」である】
         //   - サーバーへ送信する JSON はローカルDBに書き込まれた内容を
@@ -144,7 +143,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         // 【4. サーバー側の保存は「正史の投影更新」に過ぎない】
         //   - サーバー側はローカル正史の写像（projection timeline）。
         //   - サーバー保存が失敗した場合はローカル正史をロールバックすればよい。
-        //   - 正史はローカルにあるため、サーバー失敗は致命傷にならない。
+        //   - 正史はローカルにあるため、サーバー失敗は致命傷にならない。（サーバー側が守られる
         //   - 次の同期でサーバー側を再構築できるため、データの整合性が保たれる。
         //
         // 【5. 結論：SyncBase の Save はローカル先行が唯一の正解】
@@ -159,17 +158,10 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             using var tran = DBcon.BeginTransaction();
 
             try {
-                // ★ 既存行の HardDelete（ローカル側のデータ初期化）
-                if (!await _dataObj._HardDeleteQueryExecAsync(tran)) {
-                    tran.Rollback();
-                    return new NxOperationResult<TKey> {
-                        OperationErrorCode = NxOperationErrorCode.DbError,
-                        Message = "ローカル初期化に失敗しました"
-                    };
-                }
 
                 // ★ 新規ならローカル側で仮ID採番（サーバー側で上書きされる可能性あり）
-                workingRaw[IdColName] = _dataObj.EnsureIDForSave(tran);
+                var newID = _dataObj.EnsureIDForSave(tran);
+                workingRaw[IdColName] = newID;
 
                 // ★ Working 全体保存（メイン＋サブ）
                 if (!await _dataObj.SaveWorkingAsync(workingRaw, subTables, tran)) {
@@ -180,9 +172,9 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                     };
                 }
 
-                // ★ サーバーへ送る JSON を生成
-                var postJson = _dataObj.TblToJson(this.DataID, tran);
-                var url = $"{ApiRoute}/Save/{DataID}";
+                // ★ サーバーへ送る JSON を生成(
+                var postJson = _dataObj.TblToJson(newID, tran);
+                var url = $"{ApiRoute}/Save/{newID}";
 
                 HttpResponseMessage response;
 
@@ -241,15 +233,19 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                     return op;
                 }
 
-                // ★ コミット（ローカル世界線の確定）
-                tran.Commit();
+
 
                 // ★ Working → Raw 反映（ローカル正史）
                 ApplyWorkingToRaw(workingRaw);
 
                 // ★ サーバー正史の RawData をローカルへ反映
-                if (op.RawData != null)
-                    UpdateRawDataToTbl(op.RawData, null);
+                if (op.RawData != null) {
+                    await UpdateDetailIDExec(newID, op.NewID);
+                    await UpdateRawDataToTbl(op.RawData, tran);
+                }
+
+                // ★ コミット（ローカル世界線の確定）
+                tran.Commit();
 
                 // ★ サーバー正史のプロパティをオブジェクトに反映
                 await _dataObj._UpdatePropertiesFromTblAsync();
@@ -273,6 +269,22 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             }
         }
 
+        // 子テーブルの親IDを更新する。DELETEしないのでFKが壊れない。
+        // 抽象化は子テーブルが1つの場合のみまで、それ以上はオーバーライドして
+        // 子テーブルのアップデートを実装する
+        protected virtual async Task UpdateDetailIDExec(TKey oldID, TKey newID) {
+            if (!EqualityComparer<TKey>.Default.Equals(oldID, newID)) {
+                // 親IDが変わったときだけ子テーブルを更新
+                string sql = $@"
+                                UPDATE ""{S_TblName}""
+                                SET ""{IdColName}"" = @NewID
+                                WHERE ""{IdColName}"" = @OldID
+                                  AND ""tenant_code"" = @TenantCode;
+                            ";
+
+                await DBcon.ExecuteAsync(sql, new { NewID = newID, OldID = oldID, TenantCode });
+            }
+        }
 
 
 
@@ -332,7 +344,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             // ③ UI 側のローカル状態を更新
             if (op.LockStatus != null) {
                 try {
-                    if (!UpdateRawDataToTbl(new Dictionary<string, object> {
+                    if (!await UpdateRawDataToTbl(new Dictionary<string, object> {
                                     { "locked_at", op.LockStatus.Locked_at },
                                     { "locked_by", op.LockStatus.LockedByUserId }
                                     }, null)) {
@@ -413,7 +425,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             // ③ UI 側のローカル状態を更新
             if (op.LockStatus != null) {
                 try {
-                    if (!UpdateRawDataToTbl(new Dictionary<string, object> {
+                    if (!await UpdateRawDataToTbl(new Dictionary<string, object> {
                                     { "locked_at", op.LockStatus.Locked_at },
                                     { "locked_by", op.LockStatus.LockedByUserId }
                                     }, null)) {
@@ -677,7 +689,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             // 6. 正本を Baseに反映
             if (op.RawData != null) {
                 try {
-                    if (!UpdateRawDataToTbl(op.RawData, null)) {
+                    if (!await UpdateRawDataToTbl(op.RawData, null)) {
                         return new NxOperationResult<TKey> {
                             OperationErrorCode = NxOperationErrorCode.DbError,
                             Message = "ReNameAsync:UpdateRawDataToTbl ERROR:ローカルDBの更新に失敗しました"
@@ -701,20 +713,33 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
         //何かしらの更新をした時にサーバーから返ってきたメタデータ（TblName）を更新する際に使用する。
         //例えばRenameとか
-        protected bool UpdateRawDataToTbl(Dictionary<string, object> raw, IDbTransaction transaction) {
-            string sql = "";
-     
+        protected async Task<bool> UpdateRawDataToTbl(Dictionary<string, object> raw, IDbTransaction transaction) {
             raw = NxTypeMapper.ConvertRow(TblName, raw);
 
-            // 1. SET に使うカラムを抽出（主キーと tenant_code は除外）
-            var columns = raw.Keys.Where(k => k != IdColName && k != "tenant_code");
-            var setClause = string.Join(", ", columns.Select(c => $"{c} = @{c}"));
+            // ★ UPSERT 用のカラム構築
+            var cols = new List<string>();
+            var vals = new List<string>();
+            var updates = new List<string>();
 
-            // 2. SQL を生成
-            sql =
-                $"UPDATE {TblName} SET {setClause} " +
-                $"WHERE {IdColName} = @DataID AND tenant_code = @TenantCode";
+            foreach (var kv in raw) {
+                cols.Add($@"""{kv.Key}""");
+                vals.Add($@"@{kv.Key}");
 
+                // 主キーは UPDATE しない
+                if (kv.Key != IdColName) {
+                    updates.Add($@"""{kv.Key}"" = EXCLUDED.""{kv.Key}""");
+                }
+            }
+
+            // ★ UPSERT SQL（DELETE を使わないので FK が壊れない）
+            string sql = $@"
+                                INSERT INTO ""{TblName}""
+                                ({string.Join(", ", cols)})
+                                VALUES ({string.Join(", ", vals)})
+                                ON CONFLICT (""{IdColName}"", ""tenant_code"")
+                                DO UPDATE SET
+                                    {string.Join(", ", updates)};
+                            ";
             // 3. DynamicParameters に変換（Dapper が確実に扱える形）
             // DynamicParameters は Dapper が最も確実に扱えるパラメータ形式。
             // 内部的には：
@@ -726,29 +751,17 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             // 次のようにすることで確実にSQLを実行できるようになる。
             var param = new DynamicParameters();
 
-            // raw の全キーをパラメータとして追加
-            foreach (var kv in raw) {
+            foreach (var kv in raw)
                 param.Add(kv.Key, kv.Value);
-            }
 
-            // WHERE 用のパラメータを追加
-            param.Add("DataID", raw[IdColName]);
-            param.Add("TenantCode", raw["tenant_code"]);
+            var rows = await DBcon.ExecuteAsync(sql, param, transaction);
 
-            // 4. UPDATE 実行
-            var rows = DBcon.Execute(sql, param, transaction);
-
-            if (rows == 0) {
-                Console.WriteLine($"UpdateRawDataToTbl: NO ROW UPDATED (DataID={raw[IdColName]})");
+            if (rows != 1) {
+                Console.WriteLine($"BROKEN: UPSERT affected {rows} rows");
                 return false;
             }
 
-            if (rows > 1) {
-                Console.WriteLine($"WORLDLINE BROKEN: {rows} rows updated!");
-                return false; // or throw
-            }
-
-            // 5. UI の世界線を更新
+            // ★ UI の世界線を更新
             _SetProperties(raw);
 
             return true;

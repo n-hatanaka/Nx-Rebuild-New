@@ -412,13 +412,13 @@ namespace NxRebuild.Api.Controllers {
             var obj = (BaseDataObj<TKey>)(_dataObjMgr.Get(dataId)
                       ?? _dataObjMgr.CreateNewDataObj(default));
 
-            // ★ _Validate を最初に必ず通す
-            var v = obj._Validate(OperationType.Save);
-            if (!v.Success)
-                return BadRequest(v);
+            // ★ _Validate を最初に必ず通す(！！！！！！！！！工事中！！！！！！
+            //var v = obj._Validate(OperationType.Save);
+            //if (!v.Success)
+            //    return BadRequest(v);
 
             var lockst = await obj._SetLockAsync();
-            if (!lockst.CanEdit || lockst.Result != LockResult.Success) {
+            if (!lockst.CanSave) {
                 return BadRequest(new NxOperationResult<TKey> {
                     OperationErrorCode = NxOperationErrorCode.ServerException,
                     Message = "Lock failed"
@@ -433,9 +433,9 @@ namespace NxRebuild.Api.Controllers {
             var workingRaw = JsonSerializer.Deserialize<List<TableJson>>(SaveJson);
 
             var Table = workingRaw.First(t => t.Table == this._tblName);
-            var Row = Table.Rows.First();
 
             try {
+                var Row = Table.Rows.First();
                 // ★ 新規なら ID 採番
                 if (EqualityComparer<TKey>.Default.Equals(dataId, default)) {
                     var realID = EnsureIDForSave(obj, tran);
@@ -599,8 +599,5 @@ namespace NxRebuild.Api.Controllers {
                 UpdateAt = dataObj.Update_at.ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
             });
         }
-
-
-
     }
 }
