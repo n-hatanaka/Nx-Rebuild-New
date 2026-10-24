@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.Data;
 using System.Data.Common;
 using System.Net.Http;
+using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 
@@ -55,12 +56,11 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                 };
             }
 
-            // ② JSON を受け取る
-            SyncAllResult? syncResult = null;
+            // ② NxOperationResult として受け取る（API の返却形と同じ）
+            NxOperationResult<int>? syncResult;
 
             try {
-                var json = await response.Content.ReadAsStringAsync();
-                syncResult = JsonSerializer.Deserialize<SyncAllResult>(json);
+                syncResult = await response.Content.ReadFromJsonAsync<NxOperationResult<int>>();
             } catch (Exception ex) {
                 return new NxOperationResult<int> {
                     OperationErrorCode = NxOperationErrorCode.ResponseParseError,
@@ -68,17 +68,21 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                 };
             }
 
-            if (syncResult?.Items == null) {
+            if (syncResult == null) {
                 return new NxOperationResult<int> {
                     OperationErrorCode = NxOperationErrorCode.Unknown,
-                    Message = "同期データが空です"
+                    Message = "同期結果が取得できませんでした"
                 };
             }
 
-            // ③ 世界線反映（削除判定なし）
-            foreach (var item in syncResult.Items) {
+            // サーバーがエラーコード付きで返してきた場合はそのまま返す
+            if (!syncResult.Success)
+                return syncResult;
 
-                var dataId = item.Key;
+            // ③ 反映（削除判定なし）。更新ゼロ件は SyncItems が空なだけで正常
+            foreach (var item in syncResult.SyncItems) {
+
+                var dataId = item.DataId;
                 var dataJson = item.Data;
 
                 var tran = DBcon.BeginTransaction();
@@ -122,7 +126,8 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             }
 
             return new NxOperationResult<int> {
-                Message = "Sync completed"
+                Message = "Sync completed",
+                RefreshedAt = syncResult.RefreshedAt
             };
         }
 

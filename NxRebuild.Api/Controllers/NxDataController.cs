@@ -32,7 +32,7 @@ namespace NxRebuild.Api.Controllers {
         protected ApplicationUser _user;
         protected Guid? _userID;
         protected string _usertenant_code;
-        protected IsrvBaseDataObjMgr<T,TKey> _dataObjMgr;     
+        protected IsrvBaseDataObjMgr<T, TKey> _dataObjMgr;
         protected readonly IDatabaseSchemaProvider _schemaProvider;
         public NxDataController(IConfiguration config,
                                 UserManager<ApplicationUser> userManager,
@@ -48,7 +48,7 @@ namespace NxRebuild.Api.Controllers {
             _tblName = meta.PrimaryTable;
             _nameColName = meta.NameCol;
             _idColName = meta.IdCol;
-            
+
 
         }
 
@@ -104,6 +104,8 @@ namespace NxRebuild.Api.Controllers {
         [HttpGet("sync/{refreshedAt}")]
         public virtual async Task<IActionResult> SyncAll(DateTime refreshedAt) {
             try {
+                var syncedAt = DateTime.UtcNow;   // ★ 問い合わせ開始時点を基準時刻にする
+
                 var q = new RecordQuery();
                 q.And.Add(new Condition {
                     Column = "update_at",
@@ -121,7 +123,7 @@ namespace NxRebuild.Api.Controllers {
                 await CreateObjMgrAsync(q);
                 var mgr = _dataObjMgr;
 
-                var resultList = new List<object>();
+                var items = new List<SyncItem<TKey>>();
 
                 foreach (var obj in mgr.DataList) {
                     if ((obj.Update_at <= refreshedAt) && (obj.LockedAt <= refreshedAt))
@@ -140,15 +142,16 @@ namespace NxRebuild.Api.Controllers {
                         });
                     }
 
-                    resultList.Add(new {
-                        Key = obj.DataID,
+                    items.Add(new SyncItem<TKey> {
+                        DataId = obj.DataID,
                         Data = json
                     });
                 }
 
                 // ★ NxOperationResult に SyncItems を含めて返す
                 return Ok(new NxOperationResult<TKey> {
-                    SyncItems = resultList,
+                    SyncItems = items,
+                    RefreshedAt = syncedAt,
                     Message = "Sync completed"
                     // Success は計算判定で true
                 });
@@ -348,8 +351,9 @@ namespace NxRebuild.Api.Controllers {
                 }
 
                 // ③ 編集不可（他人ロック）なら JSON は返さない
+                //    業務上の失敗なので Ok + エラーコードで返す（クライアントが LockStatus を読めるように）
                 if ((!lockst.CanEdit || lockst.Result != LockResult.Success)) {
-                    return BadRequest(new NxOperationResult<TKey> {
+                    return Ok(new NxOperationResult<TKey> {
                         ValidationErrorCode = NxValidationErrorCode.LockedByOther,
                         Message = lockst.ErrorMessage,
                         LockStatus = lockst,
@@ -372,13 +376,13 @@ namespace NxRebuild.Api.Controllers {
                     });
                 }
 
-                // ★ 正本 JSON を RawData に入れるかどうかは設計次第
-                // 今回は JSON をそのまま返すため RawData は null のまま
+                // ★ 正本 JSON は SyncItems（1件）で返す。一括同期と同じ形
                 return Ok(new NxOperationResult<TKey> {
                     LockStatus = lockst,
                     Message = "Data opened successfully",
-                    RawData = null,   // JSON は別フィールドで返すならここは null
-                                      // ★ SyncItems を使うか、専用フィールドを追加するかは後で決める
+                    SyncItems = new List<SyncItem<TKey>> {
+                        new SyncItem<TKey> { DataId = dataId, Data = json }
+                    }
                 });
             } catch (Exception ex) {
                 // ★ CreateObjMgrAsync やその他の例外を NxOperationResult に包んで返す
@@ -606,7 +610,7 @@ namespace NxRebuild.Api.Controllers {
                 return BadRequest(renameResult);
 
 
-            //await dataObj._UpdatePropertiesFromTblAsync(); // DB から最新状態を反映
+            await dataObj._UpdatePropertiesFromTblAsync(); // DB から最新状態を反映(これやっとかないとクライアントに反映されない
 
             return Ok(new NxOperationResult<TKey> {
                 RawData = dataObj._rawData,

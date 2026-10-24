@@ -42,12 +42,12 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         public IDbConnection DBcon { get => _baseDataObjMgr.DBcon; set => _baseDataObjMgr.DBcon = value; }
 
         public IEnumerable<IBaseDataObj<TKey>> DataList {
-            get => _baseDataObjMgr._dataList.Cast<IBaseDataObj<TKey>>();            
+            get => _baseDataObjMgr._dataList.Cast<IBaseDataObj<TKey>>();
         }
-        public Dictionary<string, object?> PrimaryPKDict { 
-                                    get => _baseDataObjMgr.PrimaryPKDict; 
-                                    set => _baseDataObjMgr.PrimaryPKDict = value; 
-        } 
+        public Dictionary<string, object?> PrimaryPKDict {
+            get => _baseDataObjMgr.PrimaryPKDict;
+            set => _baseDataObjMgr.PrimaryPKDict = value;
+        }
 
         public SyncBaseDataObjMgr(IDbConnection db, HttpClient http, CustomAuthStateProvider auth,
                                   Guid tenantCode, Guid currentUserId) {
@@ -133,8 +133,8 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         // ローカル側の整合性が崩れることはありません。次回の同期で解決されます。
         // =======================================================
         public virtual async Task<NxOperationResult<TKey>> SyncData() {
-            DateTime refreshed_at = _baseDataObjMgr.Refreshed_at;
 
+            DateTime refreshed_at = _baseDataObjMgr.Refreshed_at;
             var url = $"{ApiRoute}/sync/{refreshed_at:O}";
 
             HttpResponseMessage response;
@@ -157,13 +157,10 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                 };
             }
 
-            var tran = DBcon.BeginTransaction();
-
-            SyncAllResult? syncResult = null;
+            NxOperationResult<TKey>? syncResult;
 
             try {
-                var json = await response.Content.ReadAsStringAsync();
-                syncResult = JsonSerializer.Deserialize<SyncAllResult>(json);
+                syncResult = await response.Content.ReadFromJsonAsync<NxOperationResult<TKey>>();
             } catch (Exception ex) {
                 return new NxOperationResult<TKey> {
                     OperationErrorCode = NxOperationErrorCode.ResponseParseError,
@@ -171,17 +168,24 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                 };
             }
 
-            if (syncResult?.Items == null) {
+            if (syncResult == null) {
                 return new NxOperationResult<TKey> {
                     OperationErrorCode = NxOperationErrorCode.Unknown,
-                    Message = "同期データが空です"
+                    Message = "同期結果が取得できませんでした"
                 };
             }
 
-            try {
-                foreach (var item in syncResult.Items) {
+            // サーバーが正常系の形でエラーを返してきた場合はそのまま返す
+            if (!syncResult.Success)
+                return syncResult;
 
-                    var dataId = item.Key;
+            // ★ 検証が終わってからトランザクションを開始する（早期 return での開きっぱなしを防ぐ）
+            var tran = DBcon.BeginTransaction();
+
+            try {
+                foreach (var item in syncResult.SyncItems) {
+
+                    var dataId = item.DataId;
                     var dataJson = item.Data;
 
                     var target = _baseDataObjMgr.Get(dataId);
@@ -192,7 +196,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                         target = CreateNewDataObj(default(TKey));
                         target.DataID = dataId;
                         await target.JsonToTblAsync(dataJson, tran);
-                        _baseDataObjMgr._dataList.Add(target);
+                        
                     }
 
                     // =======================================================
@@ -229,7 +233,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             // ★ 正常終了
             return new NxOperationResult<TKey> {
                 Message = "Sync completed",
-                // SyncItems はサーバー側の SyncAll が返すのでここでは不要
+                RefreshedAt = syncResult.RefreshedAt
             };
         }
 
@@ -323,16 +327,6 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
         protected virtual async Task<bool> _DeleteDataObjFromListAsync(TKey dataID, bool softDelete = false) {
             return await _baseDataObjMgr._DeleteDataObjFromListAsync(dataID, softDelete);
-        }
-
-        protected class SyncAllResult {
-            public DateTime Refreshed_at { get; set; }
-            public List<SyncItem> Items { get; set; }
-        }
-
-        protected class SyncItem {
-            public TKey Key { get; set; }
-            public string Data { get; set; }
         }
 
         public virtual string LoadMultipleDataAsJson(List<TKey> idList)

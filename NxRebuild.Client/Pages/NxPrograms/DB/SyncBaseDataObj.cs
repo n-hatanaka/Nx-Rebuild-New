@@ -13,10 +13,10 @@ using System.Text.Json;
 
 namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
-    public interface ISyncBaseDataObj<TKey>: IBaseDataObj<TKey> {
+    public interface ISyncBaseDataObj<TKey> : IBaseDataObj<TKey> {
         HttpClient Http { get; set; }
         CustomAuthStateProvider Auth { get; set; }
-        
+
     }
 
 
@@ -27,25 +27,31 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
     public abstract class SyncBaseDataObj<TKey> : ISyncBaseDataObj<TKey>, ISharedDataObj<TKey> {
         public BaseDataObj<TKey> _dataObj;
 
-        protected BaseDataObj<TKey> DataObj { get => _dataObj;}
+        protected BaseDataObj<TKey> DataObj { get => _dataObj; }
 
         public HttpClient Http { get; set; }
-        public CustomAuthStateProvider Auth {  get; set; }
+        public CustomAuthStateProvider Auth { get; set; }
         public abstract string ApiRoute { get; } //←派生先で設定する事。
-        public Guid CurrUsrID{ get => _dataObj.CurrUsrID; 
-                                set => _dataObj.CurrUsrID = value; }
+        public Guid CurrUsrID {
+            get => _dataObj.CurrUsrID;
+            set => _dataObj.CurrUsrID = value;
+        }
 
         public string ParentIDColName { get => _dataObj.ParentIDColName; }
-        public TKey ParentID { get => _dataObj.ParentID; 
-                        set => _dataObj.ParentID = value; }
+        public TKey ParentID {
+            get => _dataObj.ParentID;
+            set => _dataObj.ParentID = value;
+        }
 
 
-        public IBaseDataObj<TKey>? ParentDataObj { get => _dataObj.ParentDataObj; 
-                                            set => _dataObj.ParentDataObj = value; }
+        public IBaseDataObj<TKey>? ParentDataObj {
+            get => _dataObj.ParentDataObj;
+            set => _dataObj.ParentDataObj = value;
+        }
 
         public List<(string, List<Dictionary<string, object?>>)> SubTables {
             get => _dataObj.SubTables;
-            set => _dataObj.SubTables = value;     
+            set => _dataObj.SubTables = value;
         }
         protected void _Validate(OperationType operationType) => _dataObj._Validate(operationType);
 
@@ -58,7 +64,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             set => _dataObj.DBcon = value;
         }
 
-        public object SelfObjMgr { 
+        public object SelfObjMgr {
             get => _dataObj.SelfObjMgr;
             set => _dataObj.SelfObjMgr = value;
         }
@@ -69,7 +75,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         public void CreateWorkingMemory(Dictionary<string, object?> wirkingRaw)
                         => _dataObj.CreateWorkingMemory(wirkingRaw);
         public void CreateWorkingDetailTables(
-                        List<(string, List<Dictionary<string, object?>>)> workingSubList) 
+                        List<(string, List<Dictionary<string, object?>>)> workingSubList)
                                         => _dataObj.CreateWorkingDetailTables(workingSubList);
         public string TblToJson() => _dataObj.TblToJson();
 
@@ -200,7 +206,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
                 // ★ 新規ならローカル側で仮ID採番（サーバー側で上書きされる可能性あり）
                 var newID = _dataObj.EnsureIDForSave(tran);
-                _dataObj.DataID = newID; 
+                _dataObj.DataID = newID;
                 workingRaw[IdColName] = newID;
 
                 // ★ 子テーブル（subTables）にも newID を反映
@@ -426,7 +432,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         //保存時にロック情報を更新する。サーバー側の正本のロック情報を取得して、UI側のローカルに反映する。
         protected async Task<LockStatus> _ReWriteLockInfoAsync(IDbTransaction tran,
                                                         Guid? Locked_by,
-                                                        DateTime? Locked_at) 
+                                                        DateTime? Locked_at)
                                         => await _dataObj._ReWriteLockInfoAsync(tran, Locked_by, Locked_at);
 
         public async Task<NxOperationResult<TKey>> SetUnLockAsync() {
@@ -574,9 +580,21 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                 };
 
             // ⑤ 正本 JSON → DB へ反映（JsonToTbl）
-            if (openResult.RawData != null && openResult.RawData.TryGetValue("json", out var jsonObj)
-                && jsonObj is string jsonStr && !string.IsNullOrEmpty(jsonStr)) {
-                await _dataObj.JsonToTblAsync(jsonStr, null);
+            //    明細の削除後に失敗するとローカルの明細が空になるため、トランザクションで囲む
+            var syncItem = openResult.SyncItems.FirstOrDefault();
+            if (syncItem != null && !string.IsNullOrEmpty(syncItem.Data)) {
+                using var tran = DBcon.BeginTransaction();
+                try {
+                    await _dataObj.JsonToTblAsync(syncItem.Data, tran);
+                    tran.Commit();
+                } catch (Exception ex) {
+                    tran.Rollback();
+                    return new NxOperationResult<TKey> {
+                        OperationErrorCode = NxOperationErrorCode.DbError,
+                        Message = $"最新データの反映に失敗しました: {ex.Message}",
+                        LockStatus = lockStatus
+                    };
+                }
             }
 
             // ⑥ 編集モードへ（DataOpen）
@@ -693,8 +711,8 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             if (!v.Success)
                 return v;
 
-                // Sync世界線 → API呼び出し
-                var url = $"{ApiRoute}/ReName/{DataID}/{newName}";
+            // Sync世界線 → API呼び出し
+            var url = $"{ApiRoute}/ReName/{DataID}/{newName}";
             HttpResponseMessage response;
 
             try {
@@ -826,13 +844,13 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         protected virtual async Task _UpdatePropertiesFromTblAsync()
                                     => await _dataObj._UpdatePropertiesFromTblAsync();
 
-        public void _SetProperties(IDictionary<string, object> record) 
-                                    => _dataObj._SetProperties(record);       
+        public void _SetProperties(IDictionary<string, object> record)
+                                    => _dataObj._SetProperties(record);
 
         public virtual NxOperationResult<TKey> _Validate(OperationType op, object? arg = null)
                                                 => _dataObj._Validate(op, arg);
 
-        public virtual async Task<bool> _DeleteQueryExecAsync(IDbTransaction transaction, bool softDelete) 
+        public virtual async Task<bool> _DeleteQueryExecAsync(IDbTransaction transaction, bool softDelete)
                                                 => await _dataObj._DeleteQueryExecAsync(transaction, softDelete);
 
 

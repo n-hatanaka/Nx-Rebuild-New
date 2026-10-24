@@ -90,17 +90,6 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
         public async Task HandleClick(MyDataObj<TKey> item, MouseEventArgs e) {
             var now = DateTime.Now;
 
-            // ★ ダブルクリック判定：300ms 以内に同じアイテムが再クリックされたらダブルクリック扱い
-            if (item == _lastClickedItem && (now - _lastClickTime).TotalMilliseconds < 300) {
-                _lastClickTime = DateTime.MinValue; // 最終クリック時間をリセット
-                _lastClickedItem = null;
-
-                if (OnRowDoubleClicked.HasDelegate) {
-                    await OnRowDoubleClicked.InvokeAsync(item); // ダブルクリックイベントを呼び出す
-                }
-                return;
-            }
-
             _lastClickTime = now; // 最終クリック時間を更新
             _lastClickedItem = item; // 最後にクリックされたアイテムを保存
 
@@ -121,13 +110,17 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
         }
 
         public async Task HandleDoubleClick(MyDataObj<TKey> item) {
-            _isDoubleClicking = true; // ダブルクリック処理中に設定
+            // ★ 保留中のシングルクリック処理(選択/リネーム開始)を無効化
+            _lastClickedItem = null;
+            _lastClickTime = DateTime.MinValue;
 
-            if (OnRowDoubleClicked.HasDelegate) {
-                await OnRowDoubleClicked.InvokeAsync(item); // ダブルクリックイベントを呼び出す
+            _isDoubleClicking = true;
+            try {
+                if (OnRowDoubleClicked.HasDelegate)
+                    await OnRowDoubleClicked.InvokeAsync(item);
+            } finally {
+                _isDoubleClicking = false;
             }
-
-            _isDoubleClicking = false;
         }
 
         public async Task HandleListEditKey(KeyboardEventArgs e, MyDataObj<TKey> item) {

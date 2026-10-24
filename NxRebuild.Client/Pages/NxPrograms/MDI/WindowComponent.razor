@@ -1,5 +1,6 @@
 @using Microsoft.AspNetCore.Components
 @inject IJSRuntime JS
+@implements IDisposable
 
 <style>
     .mdi-window {
@@ -11,7 +12,8 @@
         display: flex;
         flex-direction: column;
         overflow: hidden;
-        will-change: transform; /* ★ transform 最適化のために追加 */
+        box-sizing: border-box; /* ★ 枠線分で毎回2pxずつ大きくならないように */
+        will-change: transform;
     }
 
     .mdi-titlebar {
@@ -50,6 +52,12 @@
     .resize-handle {
         position: absolute;
         background: transparent;
+        z-index: 10;
+        touch-action: none;
+    }
+
+    .resize-nw, .resize-ne, .resize-sw, .resize-se {
+        z-index: 11; /* 角は辺より前面 */
     }
 
     .resize-nw {
@@ -161,22 +169,34 @@
     private ElementReference windowRef;
     private const double NavbarHeight = 48;
 
+    private DotNetObjectReference<WindowComponent>? _dotNetRef;
+    private bool _jsReady;
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!Info.IsMinimized)
+        if (Info.IsMinimized)
         {
-            var dotNetRef = DotNetObjectReference.Create(this);
-            await JS.InvokeVoidAsync("mdi.initDrag", windowRef, dotNetRef);
-            await JS.InvokeVoidAsync("mdi.initResizeMulti", windowRef, dotNetRef);
+            // 最小化中は DOM 要素が無い → 復元されたら再初期化する
+            _jsReady = false;
+            return;
         }
+
+        // ★ 初期化は要素ごとに1回だけ(再レンダリングのたびに呼ばない)
+        if (_jsReady) return;
+        _jsReady = true;
+
+        _dotNetRef ??= DotNetObjectReference.Create(this);
+        await JS.InvokeVoidAsync("mdi.initDrag", windowRef, _dotNetRef);
+        await JS.InvokeVoidAsync("mdi.initResizeMulti", windowRef, _dotNetRef);
     }
 
+    // ★ JS 側ですでに DOM を更新済みなので、ここでは再描画しない
+    //   (再描画すると中の DynamicComponent = ツリー/グリッドまで再描画されて重い)
     [JSInvokable]
     public void UpdatePosition(double x, double y)
     {
         Info.X = x;
         Info.Y = y;
-        Manager.NotifyWindowsChanged();
     }
 
     [JSInvokable]
@@ -184,7 +204,20 @@
     {
         Info.Width = w;
         Info.Height = h;
-        Manager.NotifyWindowsChanged();
+    }
+
+    [JSInvokable]
+    public void UpdateBounds(double x, double y, double w, double h)
+    {
+        Info.X = x;
+        Info.Y = y;
+        Info.Width = w;
+        Info.Height = h;
+    }
+
+    public void Dispose()
+    {
+        _dotNetRef?.Dispose();
     }
 
     private void ToggleMaximize()

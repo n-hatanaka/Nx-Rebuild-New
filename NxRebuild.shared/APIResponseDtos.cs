@@ -22,6 +22,12 @@ namespace NxRebuild.shared {
         Unknown
     }
 
+    // 同期1件分: DataId と、そのデータの TblToJson の結果
+    public class SyncItem<TKey> {
+        public TKey DataId { get; set; } = default!;
+        public string Data { get; set; } = "";
+    }
+
     public class NxOperationResult<TKey> {
         // Validation
         public NxValidationErrorCode ValidationErrorCode { get; set; }
@@ -52,9 +58,8 @@ namespace NxRebuild.shared {
         // 正本データ
         public Dictionary<string, object> RawData { get; set; } = new();
 
-        // SyncAll
-        public List<object> SyncItems { get; set; } = new();
+        // SyncAll / DataOpenLatest
+        public DateTime RefreshedAt { get; set; }
+        public List<SyncItem<TKey>> SyncItems { get; set; } = new();
     }
-
-
 }

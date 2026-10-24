@@ -1,217 +1,183 @@
 window.mdi = window.mdi || {};
 
 /* ============================================================
-   Drag (transform + rAF)
+   Drag (titlebar)  ※ transform + rAF(動いている間だけ予約)
    ============================================================ */
 window.mdi.initDrag = (element, dotNetHelper) => {
-
-    let dragging = false;
-    let startX = 0, startY = 0;
-    let baseX = 0, baseY = 0;
-    let dx = 0, dy = 0;
-
-    const onDown = (e) => {
-        dragging = true;
-
-        startX = e.clientX;
-        startY = e.clientY;
-
-        const rect = element.getBoundingClientRect();
-        baseX = rect.left;
-        baseY = rect.top;
-
-        window.addEventListener("pointermove", onMove);
-        window.addEventListener("pointerup", onUp);
-    };
-
-    const onMove = (e) => {
-        if (!dragging) return;
-        dx = e.clientX - startX;
-        dy = e.clientY - startY;
-    };
-
-    const onUp = () => {
-        if (!dragging) return;
-        dragging = false;
-
-        window.removeEventListener("pointermove", onMove);
-        window.removeEventListener("pointerup", onUp);
-
-        const finalX = baseX + dx;
-        const finalY = baseY + dy;
-
-        // transform を確定位置に戻す
-        element.style.transform = `translate(0px, 0px)`;
-        element.style.left = `${finalX}px`;
-        element.style.top = `${finalY}px`;
-
-        dotNetHelper.invokeMethodAsync("UpdatePosition", finalX, finalY);
-    };
-
-    // rAF で DOM 更新を集約
-    const renderLoop = () => {
-        if (dragging) {
-            element.style.transform = `translate(${dx}px, ${dy}px)`;
-        }
-        requestAnimationFrame(renderLoop);
-    };
-    renderLoop();
+    if (element.__mdiDragDispose) element.__mdiDragDispose();
 
     const titleBar = element.querySelector(".mdi-titlebar");
-    titleBar.addEventListener("pointerdown", onDown);
-};
+    if (!titleBar) return;
 
-/* ============================================================
-   Simple Resize (transform + rAF)
-   ============================================================ */
-window.mdi.initResize = (element, dotNetHelper) => {
+    let dragging = false;
+    let startX = 0, startY = 0, baseX = 0, baseY = 0, dx = 0, dy = 0, rafId = 0;
 
-    const resizer = document.createElement("div");
-    resizer.classList.add("mdi-resizer");
-    element.appendChild(resizer);
-
-    let resizing = false;
-    let startX = 0, startY = 0;
-    let startW = 0, startH = 0;
+    const apply = () => {
+        rafId = 0;
+        if (dragging) element.style.transform = `translate(${dx}px, ${dy}px)`;
+    };
 
     const onDown = (e) => {
-        resizing = true;
+        if (e.button !== 0) return;
+        if (element.classList.contains("mdi-maximized")) return;
+        // 最小化/最大化/閉じるボタンの操作を奪わない
+        if (e.target.closest(".mdi-buttons")) return;
 
-        startX = e.clientX;
-        startY = e.clientY;
-
-        startW = element.offsetWidth;
-        startH = element.offsetHeight;
-
-        window.addEventListener("pointermove", onMove);
-        window.addEventListener("pointerup", onUp);
+        dragging = true;
+        dx = dy = 0;
+        startX = e.clientX; startY = e.clientY;
+        const r = element.getBoundingClientRect();
+        baseX = r.left; baseY = r.top;
+        titleBar.setPointerCapture(e.pointerId);
     };
-
-    let dx = 0, dy = 0;
 
     const onMove = (e) => {
-        if (!resizing) return;
+        if (!dragging) return;
         dx = e.clientX - startX;
         dy = e.clientY - startY;
+        if (!rafId) rafId = requestAnimationFrame(apply);
     };
 
-    const renderLoop = () => {
-        if (resizing) {
-            element.style.width = `${startW + dx}px`;
-            element.style.height = `${startH + dy}px`;
-        }
-        requestAnimationFrame(renderLoop);
-    };
-    renderLoop();
+    const onUp = (e) => {
+        if (!dragging) return;
+        dragging = false;
+        if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
+        if (titleBar.hasPointerCapture?.(e.pointerId)) titleBar.releasePointerCapture(e.pointerId);
 
-    const onUp = () => {
-        if (!resizing) return;
-        resizing = false;
+        const x = baseX + dx, y = baseY + dy;
+        element.style.transform = "";
+        element.style.left = `${x}px`;
+        element.style.top = `${y}px`;
 
-        window.removeEventListener("pointermove", onMove);
-        window.removeEventListener("pointerup", onUp);
-
-        dotNetHelper.invokeMethodAsync("UpdateSize",
-            element.offsetWidth,
-            element.offsetHeight);
+        if (dx !== 0 || dy !== 0)
+            dotNetHelper.invokeMethodAsync("UpdatePosition", x, y);
     };
 
-    resizer.addEventListener("pointerdown", onDown);
+    titleBar.addEventListener("pointerdown", onDown);
+    titleBar.addEventListener("pointermove", onMove);
+    titleBar.addEventListener("pointerup", onUp);
+    titleBar.addEventListener("pointercancel", onUp);
+
+    element.__mdiDragDispose = () => {
+        titleBar.removeEventListener("pointerdown", onDown);
+        titleBar.removeEventListener("pointermove", onMove);
+        titleBar.removeEventListener("pointerup", onUp);
+        titleBar.removeEventListener("pointercancel", onUp);
+        if (rafId) cancelAnimationFrame(rafId);
+        delete element.__mdiDragDispose;
+    };
 };
 
 /* ============================================================
-   Multi Resize (8方向) transform + rAF
+   Multi Resize (8方向: n s e w ne nw se sw)
    ============================================================ */
 window.mdi.initResizeMulti = (element, dotNetHelper) => {
 
-    if (element.classList.contains("mdi-maximized")) return;
+    // 二重初期化防止(再 init されたら前のリスナーを破棄)
+    if (element.__mdiResizeDispose) element.__mdiResizeDispose();
 
+    const MIN_W = 200, MIN_H = 120;
     const handles = element.querySelectorAll(".resize-handle");
+    const cleanups = [];
 
-    let resizing = false;
-    let startX = 0, startY = 0;
-    let startW = 0, startH = 0;
-    let startLeft = 0, startTop = 0;
+    // クラス名から方向を取り出す: resize-se → "se", resize-n → "n"
+    const getDir = (h) => {
+        for (const c of h.classList) {
+            const m = /^resize-(n|s|e|w|ne|nw|se|sw)$/.exec(c);
+            if (m) return m[1];
+        }
+        return "";
+    };
+
+    let active = null;
+    let rafId = 0;
     let dx = 0, dy = 0;
-    let dir = null;
+
+    const apply = () => {
+        rafId = 0;
+        if (!active) return;
+        const { dir, startW, startH, startL, startT } = active;
+
+        let w = startW, h = startH;
+        if (dir.includes("e")) w = startW + dx;
+        if (dir.includes("s")) h = startH + dy;
+        if (dir.includes("w")) w = startW - dx;
+        if (dir.includes("n")) h = startH - dy;
+
+        w = Math.max(MIN_W, w);
+        h = Math.max(MIN_H, h);
+
+        // 左/上を動かす場合は「右端/下端を固定」するよう位置を逆算
+        const l = dir.includes("w") ? startL + startW - w : startL;
+        const t = dir.includes("n") ? startT + startH - h : startT;
+
+        element.style.width = `${w}px`;
+        element.style.height = `${h}px`;
+        element.style.left = `${l}px`;
+        element.style.top = `${t}px`;
+    };
 
     handles.forEach(handle => {
+        const dir = getDir(handle);
+        if (!dir) return;
 
-        handle.addEventListener("pointerdown", (e) => {
+        const onDown = (e) => {
+            if (e.button !== 0) return;
+            if (element.classList.contains("mdi-maximized")) return;
             e.preventDefault();
-
-            resizing = true;
+            e.stopPropagation();
 
             const rect = element.getBoundingClientRect();
-            startX = e.clientX;
-            startY = e.clientY;
-
-            startW = rect.width;
-            startH = rect.height;
-            startLeft = rect.left;
-            startTop = rect.top;
-
+            active = {
+                dir,
+                startX: e.clientX, startY: e.clientY,
+                startW: rect.width, startH: rect.height,
+                startL: rect.left, startT: rect.top
+            };
             dx = dy = 0;
-            dir = handle.classList;
+            handle.setPointerCapture(e.pointerId);
+        };
 
-            window.addEventListener("pointermove", onMove);
-            window.addEventListener("pointerup", onUp);
+        const onMove = (e) => {
+            if (!active) return;
+            dx = e.clientX - active.startX;
+            dy = e.clientY - active.startY;
+            if (!rafId) rafId = requestAnimationFrame(apply);
+        };
+
+        const onUp = (e) => {
+            if (!active) return;
+            if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
+            apply();                       // 最終位置を確定
+            active = null;
+            if (handle.hasPointerCapture?.(e.pointerId)) handle.releasePointerCapture(e.pointerId);
+
+            const r = element.getBoundingClientRect();
+            // ★ C# 呼び出しは1回だけ
+            dotNetHelper.invokeMethodAsync("UpdateBounds", r.left, r.top, r.width, r.height);
+        };
+
+        handle.addEventListener("pointerdown", onDown);
+        handle.addEventListener("pointermove", onMove);
+        handle.addEventListener("pointerup", onUp);
+        handle.addEventListener("pointercancel", onUp);
+        cleanups.push(() => {
+            handle.removeEventListener("pointerdown", onDown);
+            handle.removeEventListener("pointermove", onMove);
+            handle.removeEventListener("pointerup", onUp);
+            handle.removeEventListener("pointercancel", onUp);
         });
     });
 
-    const onMove = (e) => {
-        if (!resizing) return;
-        dx = e.clientX - startX;
-        dy = e.clientY - startY;
-    };
-
-    const renderLoop = () => {
-        if (resizing) {
-
-            let newW = startW;
-            let newH = startH;
-            let newLeft = startLeft;
-            let newTop = startTop;
-
-            if (dir.contains("resize-e")) newW = startW + dx;
-            if (dir.contains("resize-s")) newH = startH + dy;
-
-            if (dir.contains("resize-w")) {
-                newW = startW - dx;
-                newLeft = startLeft + dx;
-            }
-
-            if (dir.contains("resize-n")) {
-                newH = startH - dy;
-                newTop = startTop + dy;
-            }
-
-            element.style.width = `${newW}px`;
-            element.style.height = `${newH}px`;
-            element.style.transform = `translate(${newLeft - startLeft}px, ${newTop - startTop}px)`;
-        }
-
-        requestAnimationFrame(renderLoop);
-    };
-    renderLoop();
-
-    const onUp = () => {
-        if (!resizing) return;
-        resizing = false;
-
-        window.removeEventListener("pointermove", onMove);
-        window.removeEventListener("pointerup", onUp);
-
-        const rect = element.getBoundingClientRect();
-
-        element.style.transform = `translate(0px, 0px)`;
-        element.style.left = `${rect.left}px`;
-        element.style.top = `${rect.top}px`;
-
-        dotNetHelper.invokeMethodAsync("UpdatePosition", rect.left, rect.top);
-        dotNetHelper.invokeMethodAsync("UpdateSize", rect.width, rect.height);
+    element.__mdiResizeDispose = () => {
+        cleanups.forEach(f => f());
+        if (rafId) cancelAnimationFrame(rafId);
+        delete element.__mdiResizeDispose;
     };
 };
+
+window.mdi.disposeResizeMulti = (element) => element?.__mdiResizeDispose?.();
+window.mdi.disposeDrag = (element) => element?.__mdiDragDispose?.();
 
 /* ============================================================
    Screen Size

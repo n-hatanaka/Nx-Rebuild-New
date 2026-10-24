@@ -94,6 +94,9 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI {
 
 
         public void BringToFront(WindowInfo win) {
+            // ★ すでに最前面なら何もしない(クリックのたびに全ウィンドウが再描画されるのを防ぐ)
+            if (win.Z == _zCounter) return;
+
             win.Z = ++_zCounter;
 
             if (!IsDragging)
