@@ -77,17 +77,10 @@ namespace NxRebuild.shared {
         // ---------------------------------------------------------
         public virtual NxOperationResult<TKey> ValidateSave() {
             try {
-                if (string.IsNullOrWhiteSpace(DataName))
-                    return new NxOperationResult<TKey> {
-                        ValidationErrorCode = NxValidationErrorCode.EmptyName,
-                        Message = "名前が空です"
-                    };
+                var result = ValidateRename(DataName);
+                if (!result.Success)
+                    return result;
 
-                if (ParentID == null)
-                    return new NxOperationResult<TKey> {
-                        ValidationErrorCode = NxValidationErrorCode.InvalidParent,
-                        Message = "親IDが不正です"
-                    };
 
                 return new NxOperationResult<TKey>(); // Success
             } catch (Exception ex) {
@@ -129,12 +122,6 @@ namespace NxRebuild.shared {
                         Message = "名前が空です"
                     };
 
-                if (newName.Length > 20)
-                    return new NxOperationResult<TKey> {
-                        ValidationErrorCode = NxValidationErrorCode.RenameTooLong,
-                        Message = "名前が長すぎます"
-                    };
-
                 return new NxOperationResult<TKey>();
             } catch (Exception ex) {
                 return new NxOperationResult<TKey> {
@@ -149,13 +136,9 @@ namespace NxRebuild.shared {
         // ---------------------------------------------------------
         public virtual NxOperationResult<TKey> ValidateSync() {
             try {
-                if (LockerID != CurrUsrID)
-                    return new NxOperationResult<TKey> {
-                        ValidationErrorCode = NxValidationErrorCode.LockedByOther,
-                        Message = "他人がロック中です"
-                    };
 
                 return new NxOperationResult<TKey>();
+
             } catch (Exception ex) {
                 return new NxOperationResult<TKey> {
                     ValidationErrorCode = NxValidationErrorCode.Unknown,
@@ -169,13 +152,9 @@ namespace NxRebuild.shared {
         // ---------------------------------------------------------
         public virtual NxOperationResult<TKey> ValidateImport() {
             try {
-                if (Update_at < DateTime.UtcNow.AddYears(-10))
-                    return new NxOperationResult<TKey> {
-                        ValidationErrorCode = NxValidationErrorCode.TooOldData,
-                        Message = "古すぎるデータです"
-                    };
 
                 return new NxOperationResult<TKey>();
+
             } catch (Exception ex) {
                 return new NxOperationResult<TKey> {
                     ValidationErrorCode = NxValidationErrorCode.Unknown,

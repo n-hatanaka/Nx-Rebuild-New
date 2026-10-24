@@ -226,57 +226,10 @@ namespace NxRebuild.shared {
             }
         }
 
-
-        //public override async Task<bool> SaveWorkingDetailsAsync(
-        //    List<List<Dictionary<string, object?>>>? w_DetailTblList,
-        //    Dictionary<string, object?> MainWorkingRaw,
-        //    IDbTransaction tran) {
-        //    if (w_DetailTblList == null)
-        //        return true;
-
-        //    foreach (var detailTableRows in w_DetailTblList) {
-        //        foreach (var row in detailTableRows) {
-        //            // ★ 新規レコードに必要なコードを補完
-        //            row["tenant_code"] = this.TenantCode;
-        //            row[IdColName] = MainWorkingRaw[IdColName];
-        //            row["Z_Code"] = MainWorkingRaw["Z_code"];
-
-        //            // ★ カラム名と値
-        //            var cols = new List<string>();
-        //            var vals = new List<string>();
-        //            var updates = new List<string>();
-
-        //            foreach (var kv in row) {
-        //                cols.Add($@"""{kv.Key}""");
-        //                vals.Add($@"@{kv.Key}");
-
-        //                // ★ 主キーと update_at は UPDATE しない
-        //                if (kv.Key != "tenant_code" &&
-        //                    kv.Key != IdColName &&
-        //                    kv.Key != "tan_cd" &&
-        //                    kv.Key != "update_at") {
-        //                    updates.Add($@"""{kv.Key}"" = EXCLUDED.""{kv.Key}""");
-        //                }
-        //            }
-
-        //            // ★ UPSERT（SQLite 正式対応）
-        //            string sql = $@"
-        //                            INSERT INTO ""tan_m""
-        //                            ({string.Join(", ", cols)})
-        //                            VALUES ({string.Join(", ", vals)})
-        //                            ON CONFLICT(""tenant_code"", ""{IdColName}"", ""tan_cd"")
-        //                            DO UPDATE SET
-        //                                {string.Join(", ", updates)};
-        //                        ";
-
-        //            var affected = await DBcon.ExecuteAsync(sql, row, tran);
-        //            if (affected != 1)
-        //                return false;
-        //        }
-        //    }
-
-        //    return true;
-        //}
+        //材料マスタ専用のバリデータ
+        protected override NxValidator<int> CreateValidator(IBaseDataObj<int> IBaseDataObj, Dictionary<string, object> ValidData) {
+            return new ZmstValidator(this, _rawData);
+        }
 
     }
 }

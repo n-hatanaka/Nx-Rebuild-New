@@ -402,7 +402,7 @@ namespace NxRebuild.Api.Controllers {
         // この中でトランザクションを使用する場合は、引数の tran を使用してください。
         // =======================================================
         [HttpPost("Save/{dataId}")]
-        public virtual async Task<IActionResult> Save(TKey? dataId, [FromBody] string ReceiveJson) {
+        public virtual async Task<IActionResult> SaveAsync(TKey? dataId, [FromBody] string ReceiveJson) {
             var q = new RecordQuery();
             q.TargetIds = new List<object> { dataId ?? default };
 
@@ -412,10 +412,10 @@ namespace NxRebuild.Api.Controllers {
             var obj = (BaseDataObj<TKey>)(_dataObjMgr.Get(dataId)
                       ?? _dataObjMgr.CreateNewDataObj(default));
 
-            // ★ _Validate を最初に必ず通す(！！！！！！！！！工事中！！！！！！
-            //var v = obj._Validate(OperationType.Save);
-            //if (!v.Success)
-            //    return BadRequest(v);
+            // ★ _Validate を通す
+            var v = obj._Validate(OperationType.Save);
+            if (!v.Success)
+                return BadRequest(v);
 
             var lockst = await obj._SetLockAsync();
             if (!lockst.CanSave) {

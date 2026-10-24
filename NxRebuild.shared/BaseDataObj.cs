@@ -386,9 +386,12 @@ namespace NxRebuild.shared {
         ///   - すべての世界線（Base / Sync / API / UI）が同じ NxOperationResult を共有し、
         ///     規則が漏れず、二重発火せず、整合性が保たれる。
         /// </summary>
+        protected virtual NxValidator<TKey> CreateValidator(IBaseDataObj<TKey> IBaseDataObj, Dictionary<string, object> ValidData) {
+            return new NxValidator<TKey>(this, _rawData);
+        }
         public virtual NxOperationResult<TKey> _Validate(OperationType op, object? arg = null) {
             // ★ BaseDataObj の値をコピーした Validator を生成（循環依存なし）
-            var validator = new NxValidator<TKey>(this, _rawData);
+            var validator = CreateValidator(this, _rawData);
 
             try {
                 NxOperationResult<TKey> v = op switch {
@@ -922,12 +925,9 @@ namespace NxRebuild.shared {
         public virtual async Task<NxOperationResult<TKey>> ReNameAsync(string newName) {
 
             // 1. バリデーション
-            if (string.IsNullOrWhiteSpace(newName) || newName.Length > 20) {
-                return new NxOperationResult<TKey> {
-                    ValidationErrorCode = NxValidationErrorCode.RenameEmpty,
-                    Message = "名前が空、または長すぎます"
-                };
-            }
+            var v = _Validate(OperationType.Rename, newName);
+            if (!v.Success)
+                return v;
 
             IDbTransaction transaction = DBcon.BeginTransaction();
 
@@ -942,7 +942,6 @@ namespace NxRebuild.shared {
                     };
                 }
 
-                transaction.Rollback();
 
                 return new NxOperationResult<TKey> {
                     ValidationErrorCode = NxValidationErrorCode.CannotRename,

@@ -765,22 +765,47 @@ namespace NxRebuild.shared {
         // 指定したID群を順次削除し、削除に失敗したIDを返す。
         // 返り値のリストが空なら全件成功。
         // UIはこの返り値を観測して成功／部分失敗を判断する。
-        public virtual async Task<NxOperationResult<TKey>> DeleteDataAsync(IEnumerable<TKey> dataIDs, bool softDelete = false) {
-            var failedLst = new List<TKey>();
+        public virtual async Task<NxOperationResult<TKey>> DeleteDataAsync(
+            IEnumerable<TKey> dataIDs,
+            bool softDelete = false) {
+            var opResult = new NxOperationResult<TKey>();
 
             foreach (var id in dataIDs) {
                 try {
-                    if (!await _DeleteDataObjFromListAsync(id, softDelete))
-                        failedLst.Add(id);
+                    var obj = Get(id);
+
+                    // Validation
+                    var validResult = obj._Validate(OperationType.Delete);
+
+                    if (!validResult.Success) {
+                        opResult.FailedIds.Add(id);
+
+                        opResult.Message +=
+                            $"[{obj.DataName}] {validResult.Message}{Environment.NewLine}";
+
+                        continue;
+                    }
+
+                    // Delete
+                    if (!await _DeleteDataObjFromListAsync(id, softDelete)) {
+                        opResult.FailedIds.Add(id);
+
+                        opResult.Message +=
+                            $"[{obj.DataName}] 削除に失敗しました{Environment.NewLine}";
+                    }
                 } catch (Exception ex) {
-                    failedLst.Add(id);
+                    opResult.FailedIds.Add(id);
+
+                    opResult.Message +=
+                        $"[ID:{id}] 例外: {ex.Message}{Environment.NewLine}";
                 }
             }
 
-            return new NxOperationResult<TKey> {
-                FailedIds = failedLst,
-                Message = failedLst.Count == 0 ? "Delete completed" : "Some items failed"
-            };
+            if (opResult.FailedIds.Count == 0) 
+                opResult.Message = "Delete completed";
+             
+
+            return opResult;
         }
 
 

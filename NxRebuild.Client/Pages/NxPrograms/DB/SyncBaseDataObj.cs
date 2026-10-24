@@ -1,6 +1,7 @@
 using Dapper;
 using Microsoft.AspNetCore.Components.Authorization;
 using NxRebuild.Client.Pages.Auth;
+using NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View;
 using NxRebuild.shared;
 using System;
 using System.Collections;
@@ -201,6 +202,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                 var newID = _dataObj.EnsureIDForSave(tran);
                 _dataObj.DataID = newID; 
                 workingRaw[IdColName] = newID;
+
                 // ★ 子テーブル（subTables）にも newID を反映
                 if (subTables != null) {
                     foreach (var (tblName, rows) in subTables) {
@@ -687,15 +689,12 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
         public virtual async Task<NxOperationResult<TKey>> ReNameAsync(string newName) {
             // 1. バリデーション
-            if (string.IsNullOrWhiteSpace(newName) || newName.Length > 20) {
-                return new NxOperationResult<TKey> {
-                    ValidationErrorCode = NxValidationErrorCode.RenameEmpty,
-                    Message = "名前が空、または長すぎます"
-                };
-            }
+            var v = _Validate(OperationType.Rename, newName);
+            if (!v.Success)
+                return v;
 
-            // Sync世界線 → API呼び出し
-            var url = $"{ApiRoute}/ReName/{DataID}/{newName}";
+                // Sync世界線 → API呼び出し
+                var url = $"{ApiRoute}/ReName/{DataID}/{newName}";
             HttpResponseMessage response;
 
             try {

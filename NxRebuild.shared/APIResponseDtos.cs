@@ -23,35 +23,38 @@ namespace NxRebuild.shared {
     }
 
     public class NxOperationResult<TKey> {
-        // ★ Validation（業務ロジック）エラー
-        public NxValidationErrorCode ValidationErrorCode { get; set; } = NxValidationErrorCode.None;
+        // Validation
+        public NxValidationErrorCode ValidationErrorCode { get; set; }
+            = NxValidationErrorCode.None;
 
-        // ★ Operation（通常処理）エラー
-        public NxOperationErrorCode OperationErrorCode { get; set; } = NxOperationErrorCode.None;
+        // Operation
+        public NxOperationErrorCode OperationErrorCode { get; set; }
+            = NxOperationErrorCode.None;
 
-        // ★ 成功判定（計算）
+        // 成功判定
         public bool Success =>
             ValidationErrorCode == NxValidationErrorCode.None &&
             OperationErrorCode == NxOperationErrorCode.None;
 
-        // ★ 共通メッセージ（UI が表示する）
-        public string? Message { get; set; }
+        // UI表示用
+        public string Message { get; set; } = string.Empty;
 
-        // Save / Rename 共通
+        // Save / Rename
         public TKey? NewID { get; set; }
-        public string? UpdateAt { get; set; }
+        public string UpdateAt { get; set; } = string.Empty;
 
-        // Delete 用
-        public List<TKey>? FailedIds { get; set; }
+        // Delete
+        public List<TKey> FailedIds { get; set; } = new();
 
-        // Sync / Lock 用
+        // Sync / Lock
         public LockStatus? LockStatus { get; set; }
 
-        // ★ 正本の全カラム（成功時のみ）
-        public Dictionary<string, object>? RawData { get; set; }
+        // 正本データ
+        public Dictionary<string, object> RawData { get; set; } = new();
 
-        // ★ SyncAll 専用の Items
-        public List<object>? SyncItems { get; set; }
+        // SyncAll
+        public List<object> SyncItems { get; set; } = new();
     }
+
 
 }
