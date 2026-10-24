@@ -616,10 +616,10 @@ namespace NxRebuild.shared {
 
 
 
-
-
-
         public virtual async Task<bool> JsonToTblAsync(string json, IDbTransaction tran) {
+            if (!await _DeleteDetailQueryExecAsync(tran))
+                throw new Exception($"JsonToTblAsync ERROR: _DeleteDetailQueryExecAsync failed");
+
             this._Validate(OperationType.Import);
 
             var tables = JsonSerializer.Deserialize<List<TableJson>>(json);
@@ -874,7 +874,7 @@ namespace NxRebuild.shared {
         //ディティールテーブル(サブテーブル)の物理削除。
         //保存ロジックは物理削除→インサートの順で実行されるため、
         //ディテールテーブルの削除を行わないっ設計であっても派生先で必ず実装すること
-        protected virtual async Task<bool> _DeleteDetailQueryExecAsync(IDbTransaction transaction) {
+        public virtual async Task<bool> _DeleteDetailQueryExecAsync(IDbTransaction transaction) {
             // ★ Detail が存在しないなら即終了
             if (_detailTableList == null || _detailTableList.Length == 0)
                 return true;
@@ -1060,7 +1060,17 @@ namespace NxRebuild.shared {
             try {
 
                 // ★ 新規ならローカル側で仮ID採番
-                workingRaw[IdColName] = EnsureIDForSave(tran);
+                var newID = EnsureIDForSave(tran);
+                DataID = newID;
+                workingRaw[IdColName] = newID;
+
+                if (!await _DeleteDetailQueryExecAsync(tran)) {
+                    tran.Rollback();
+                    return new NxOperationResult<TKey> {
+                        OperationErrorCode = NxOperationErrorCode.DbError,
+                        Message = "既存データの削除に失敗しました"
+                    };
+                }
 
                 // ★ Working 全体保存（メイン＋サブ）
                 if (!await SaveWorkingAsync(workingRaw, subTables, tran)) {

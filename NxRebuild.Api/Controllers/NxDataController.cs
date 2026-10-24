@@ -427,6 +427,14 @@ namespace NxRebuild.Api.Controllers {
 
             using var tran = _db.BeginTransaction();
 
+            if (!await obj._DeleteDetailQueryExecAsync(tran)) {
+                tran.Rollback();
+                return BadRequest(new NxOperationResult<TKey> {
+                    OperationErrorCode = NxOperationErrorCode.DbError,
+                    Message = "既存データの削除に失敗しました"
+                });
+            }
+
             var SaveJson = ReceiveJson;
 
             // ★ JSON を Dictionary に変換
@@ -437,11 +445,17 @@ namespace NxRebuild.Api.Controllers {
             try {
                 var Row = Table.Rows.First();
                 // ★ 新規なら ID 採番
-                if (EqualityComparer<TKey>.Default.Equals(dataId, default)) {
+                if (EqualityComparer<TKey>.Default.Equals(obj.DataID, default)) {
+
                     var realID = EnsureIDForSave(obj, tran);
+
+                    // ★ rawData の PK を更新（必須）
+                    obj.DataID = realID;
+
+                    // ★ 親（Zmst）
                     Row[obj.IdColName] = realID;
 
-                    // サブテーブルも書き換え
+                    // ★ 子（tan_m）
                     foreach (var tbl in workingRaw.Where(t => t.Table != this._tblName)) {
                         foreach (var row in tbl.Rows) {
                             row[obj.IdColName] = realID;
@@ -457,7 +471,7 @@ namespace NxRebuild.Api.Controllers {
                     return BadRequest(beforeSaveResult);
                 }
 
-                var UpdateAtsrv = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
+                var UpdateAtsrv = DateTime.UtcNow;//.ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
                 Row["Update_at"] = UpdateAtsrv;
                 SaveJson = JsonSerializer.Serialize(workingRaw);
 
@@ -483,7 +497,7 @@ namespace NxRebuild.Api.Controllers {
                 tran.Commit();
 
                 // ★ DB → オブジェクトへ最新値を反映
-                //await obj._UpdatePropertiesFromTblAsync();
+                await obj._UpdatePropertiesFromTblAsync();
 
                 // ★ NxOperationResult を返す（正史の世界線）
                 return Ok(new NxOperationResult<TKey> {

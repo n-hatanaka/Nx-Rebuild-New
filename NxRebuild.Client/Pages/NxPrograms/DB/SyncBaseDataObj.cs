@@ -98,14 +98,19 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                 if (value == null)
                     throw new Exception("PrimaryPKDict SET ERROR: value is null.");
 
-                // PK が全部揃っているかチェック
+                // ★ 部分更新を許可する
+                var record = new Dictionary<string, object>();
+
                 foreach (var pk in _dataObj._primaryTblPKList) {
-                    if (!value.ContainsKey(pk))
-                        throw new Exception($"PrimaryPKDict SET ERROR: key '{pk}' is missing.");
+                    if (value.ContainsKey(pk)) {
+                        record[pk] = value[pk]!;
+                    }
+                    // value に無い PK は rawData の既存値を維持する
                 }
 
-                _dataObj.PrimaryPKDict = value;
+                _dataObj._SetProperties(record);
             }
+
         }
 
 
@@ -189,9 +194,29 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
             try {
 
+                //仮ID採番の前に現在のID（新規なら最小値になっている）を取得しておく
+                var SendID = _dataObj.DataID;
+
                 // ★ 新規ならローカル側で仮ID採番（サーバー側で上書きされる可能性あり）
                 var newID = _dataObj.EnsureIDForSave(tran);
+                _dataObj.DataID = newID; 
                 workingRaw[IdColName] = newID;
+                // ★ 子テーブル（subTables）にも newID を反映
+                if (subTables != null) {
+                    foreach (var (tblName, rows) in subTables) {
+                        foreach (var row in rows) {
+                            // 子テーブルの FK カラム名は親と同じ IdColName で OK（Zmst.LocalCode）
+                            row[IdColName] = newID;
+                        }
+                    }
+                }
+                if (!await _dataObj._DeleteDetailQueryExecAsync(tran)) {
+                    tran.Rollback();
+                    return new NxOperationResult<TKey> {
+                        OperationErrorCode = NxOperationErrorCode.DbError,
+                        Message = "既存データの削除に失敗しました"
+                    };
+                }
 
                 // ★ Working 全体保存（メイン＋サブ）
                 if (!await _dataObj.SaveWorkingAsync(workingRaw, subTables, tran)) {
@@ -204,7 +229,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
                 // ★ サーバーへ送る JSON を生成(
                 var postJson = _dataObj.TblToJson(newID, tran);
-                var url = $"{ApiRoute}/Save/{newID}";
+                var url = $"{ApiRoute}/Save/{SendID}";
 
                 HttpResponseMessage response;
 

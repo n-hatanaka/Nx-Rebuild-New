@@ -186,27 +186,30 @@ namespace NxRebuild.shared {
         public int GenerateDataID(IDbTransaction tran) {
             bool isSQLite = DBcon.ConnectionString.Contains("mode=memory", StringComparison.OrdinalIgnoreCase);
 
-            string sql;
-
-            if (!isSQLite) {
-                // PostgreSQL / MySQL / SQLServer（FOR UPDATE が使える世界線）
-                sql = $@"
-                            SELECT COALESCE(MAX(""LocalCode""), 0) + 1
-                            FROM ""{_primaryTableName}""
-                            WHERE ""tenant_code"" = @TenantCode
-                            FOR UPDATE;
-                        ";
-            } else {
-                // SQLite（FOR UPDATE が使えない世界線）
-                sql = $@"
-                            SELECT COALESCE(MAX(""LocalCode""), 0) + 1
-                            FROM ""{_primaryTableName}""
-                            WHERE ""tenant_code"" = @TenantCode;
-                        ";
+            if (isSQLite) {
+                // SQLite は FOR UPDATE が無いので MAX+1 でOK
+                string sql = $@"
+                                SELECT COALESCE(MAX(""LocalCode""), 0) + 1
+                                FROM ""{_primaryTableName}""
+                                WHERE ""tenant_code"" = @TenantCode;
+                            ";
+                return DBcon.ExecuteScalar<int>(sql, new { TenantCode }, tran);
             }
 
-            return DBcon.ExecuteScalar<int>(sql, new { TenantCode }, tran);
+            // PostgreSQL / MySQL / SQLServer
+            string sql2 = $@"
+                            SELECT ""LocalCode""
+                            FROM ""{_primaryTableName}""
+                            WHERE ""tenant_code"" = @TenantCode
+                            ORDER BY ""LocalCode"" DESC
+                            LIMIT 1
+                            FOR UPDATE;
+                        ";
+
+            int? last = DBcon.ExecuteScalar<int?>(sql2, new { TenantCode }, tran);
+            return (last ?? 0) + 1;
         }
+
 
 
         public override int EnsureIDForSave(IDbTransaction tran){
