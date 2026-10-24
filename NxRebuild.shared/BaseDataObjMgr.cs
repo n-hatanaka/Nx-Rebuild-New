@@ -19,11 +19,13 @@ namespace NxRebuild.shared {
         Guid TenantCode { get; set; }
 
         string TblName { get; }
-        string S_TblName { get; }
+        Dictionary<string, object?> PrimaryPKDict { get; set; }
+
+        string[] DetailTableList { get; }
         string InfoTbl { get;  }
 
         string W_TblName { get;  }
-        string Ws_TblName { get; }
+        string[] W_DetailTblList { get; }
 
         IBaseDataObj<TKey>? Get(TKey id);
 
@@ -50,11 +52,11 @@ namespace NxRebuild.shared {
         Guid TenantCode { get; set; }
 
         string TblName { get; }
-        string S_TblName { get; }
+        string[] DetailTableList { get; }
         string InfoTbl { get; }
 
         string W_TblName { get; }
-        string Ws_TblName { get; }
+        string[] W_DetailTblList { get; }
 
         Task<NxOperationResult<TKey>> DeleteDataAsync(IEnumerable<TKey> dataIDs, bool softDelete = false);
 
@@ -274,7 +276,7 @@ namespace NxRebuild.shared {
       protected override string BuildSql(RecordQuery q)
       {
           var sb = new StringBuilder();
-          sb.Append($"SELECT * FROM \"{_tblName}\" WHERE 1=1 ");
+          sb.Append($"SELECT * FROM \"{_primaryTableName}\" WHERE 1=1 ");
 
           // AND 条件（Base の簡易版をそのまま使う）
           foreach (var c in q.And)
@@ -381,22 +383,23 @@ namespace NxRebuild.shared {
     //DataObjを管理するクラス
     //派生先では次のように定義する事
     //public class HaseiObjMgr<T, Guid> : DataObjMgr<T, TKey> where T : HaseiObj<Guid>
-
+    // インスタンス生成後、Mgr が保持している PK（IdCol 以外の親 PK/FK）がある場合は、
+    // 生成元）が PrimaryPKDict を使って DataObj に注入する。
     public abstract class BaseDataObjMgr<T, TKey> : IBaseDataObjMgr<T, TKey> , IsrvBaseDataObjMgr<T, TKey> where T : BaseDataObj<TKey>, new() {
 
-        protected string _tblName;　
+        protected string _piymaryTableName;
         protected string _idColName;
-        protected string _s_tblName;
+        protected string[] _primaryTblPKList;
+        protected string[] _detailTableList;
         protected string _infoTbl;
-
         protected string _w_tblName;
-        protected string _ws_tblName;
-        public string TblName { get => _tblName; }//データ名等基本データが格納されるテーブル名
-        public string S_TblName { get => _s_tblName; }//明細データが格納されるサブテーブル名
+        protected string[] _w_detailTblList;
+        public string TblName { get => _piymaryTableName; }//データ名等基本データが格納されるテーブル名
+        public string[] DetailTableList { get => _detailTableList; }//明細データが格納されるサブテーブル名
         public string InfoTbl { get => _infoTbl; }//TblNameに加え栄養素などの集計結果が入っているテーブル(プロパティをビューから取得したいときはこれを使う
 
         public string W_TblName { get => _w_tblName; }
-        public string Ws_TblName { get => _ws_tblName; }
+        public string[] W_DetailTblList { get => _w_detailTblList; }
 
         protected string RootName { get; set; }//rootNodeの表示名。空の場合はInitializeメソッドでRootNodeオブジェクトは作成されない
 
@@ -414,6 +417,51 @@ namespace NxRebuild.shared {
 
         //DataObjのList：派生したDataObjも保持できる様Objectにダウンキャストする。
         public List<IBaseDataObj<TKey>> _dataList = new List<IBaseDataObj<TKey>>();
+
+        // ObjMgr が保持する PK 固定値
+        public Dictionary<string, object?> _mgrPrimaryPKDict = new();
+
+        /// <summary>
+        /// ObjMgr 用の PK 辞書（IdCol を除外）
+        /// Getter：現在の PK 辞書を返す
+        /// Setter：PK 辞書を丸ごと設定する（rawData は覗かない）
+        /// </summary>
+
+        public Dictionary<string, object?> PrimaryPKDict {
+            get {
+                var dict = new Dictionary<string, object?>();
+
+                foreach (var pk in _primaryTblPKList) {
+                    // ★ IdColName は除外
+                    if (pk == _idColName)
+                        continue;
+
+                    // ★ ObjMgr が保持する PK 値を使う
+                    if (_mgrPrimaryPKDict.TryGetValue(pk, out var v))
+                        dict[pk] = v;
+                    else
+                        dict[pk] = null;
+                }
+
+                return dict;
+            }
+
+            set {
+                if (value == null)
+                    return;
+
+                foreach (var pk in _primaryTblPKList) {
+                    if (pk == _idColName)
+                        continue;
+
+                    if (!value.ContainsKey(pk))
+                        throw new Exception($"PrimaryPKDictMgrWithoutId SET ERROR: key '{pk}' is missing.");
+
+                    _mgrPrimaryPKDict[pk] = value[pk];
+                }
+            }
+        }
+
 
         /// <summary>
         /// DataList を取得します。
@@ -462,14 +510,15 @@ namespace NxRebuild.shared {
             if (meta == null)
                 throw new Exception($"NxObjsMetaDataAttribute が {typeof(T).Name} に設定されていません。");
 
-            _tblName = meta.PrimaryTable;
+            _piymaryTableName = meta.PrimaryTable;
             //_nameColName = meta.NameCol;
             _idColName = meta.IdCol;
+            _primaryTblPKList = meta.PriTblPKColList;
             //_parentIDColName = meta.ParentIDCol;
-            _s_tblName = meta.DetailTable;
+            _detailTableList = meta.DetailTableList;
             _infoTbl = meta.InfoTable;
             _w_tblName = meta.WorkPriTable;
-            _ws_tblName = meta.WorkDtlTable;
+            _w_detailTblList = meta.WorkDtlTblList;
             //_datatype = meta.DataType;
 
             //Initialize()はインスタンス生成元が呼び出す事(この中で呼んではいけない)
@@ -516,6 +565,13 @@ namespace NxRebuild.shared {
             dataObj.SelfObjMgr = this;
             dataObj._SetProperties(GetEmptySchema());
 
+            // ★ Mgr が保持している PK を注入（IdCol は除外）
+            foreach (var kv in PrimaryPKDict) {
+                // null の場合はまだ設定されていないのでスキップ
+                if (kv.Value != null)
+                    dataObj.PrimaryPKDict[kv.Key] = kv.Value;
+            }
+
             // UI から渡された親IDだけセット
             dataObj.ParentID = parentID;
             dataObj.TenantCode = TenantCode;
@@ -548,7 +604,7 @@ namespace NxRebuild.shared {
                 throw new Exception("NxTypeMap が初期化されていません。");
         
             // 型マップに基づいて初期値辞書を生成
-            return NxTypeMapper.Current.CreateEmptyRow(_tblName);
+            return NxTypeMapper.Current.CreateEmptyRow(_piymaryTableName);
         }
 
 
@@ -560,6 +616,11 @@ namespace NxRebuild.shared {
             // パラメータをまとめる
             var param = new Dictionary<string, object>();
             param["TenantCode"] = TenantCode;
+
+            foreach (var kv in PrimaryPKDict) {
+                if (kv.Value != null)
+                    param[kv.Key] = kv.Value;
+            }
 
             if (query != null) {
                 foreach (var c in query.And)
@@ -587,7 +648,7 @@ namespace NxRebuild.shared {
             var sql = new List<string>();
 
             // SELECT
-            sql.Add($"SELECT * FROM \"{_tblName}\"");
+            sql.Add($"SELECT * FROM \"{_piymaryTableName}\"");
             sql.Add("WHERE 1=1");
 
             // 世界線境界（必ず入れる）

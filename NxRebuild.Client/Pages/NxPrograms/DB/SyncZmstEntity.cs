@@ -12,8 +12,6 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         public override string ApiRoute => "Zmst";
 
 
-        public List<List<Dictionary<string, object?>>> SubTables => Zmst.SubTables;
-
         // --- ZmstEntity へのアクセスを簡略化するためのプロパティ ---
         private ZmstEntity Zmst => (ZmstEntity)_dataObj;
 

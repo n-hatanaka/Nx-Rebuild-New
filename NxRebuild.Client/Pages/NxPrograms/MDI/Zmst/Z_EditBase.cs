@@ -55,7 +55,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
         public Dictionary<string, decimal?> NutritionValues { get; set; } = new();
 
         public Dictionary<string, object?> WorkingRaw { get; set; } = new();
-        public List<List<Dictionary<string, object?>>> WorkingSubTables { get; set; } = new();
+        public List<(string TableName,List<Dictionary<string, object?>> Rows)> WorkingSubTables { get; set; } = new();
         public List<Dictionary<string, object?>> WorkingTanList { get; set; } = new();
 
         // 単位追加用
@@ -128,9 +128,10 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
 
             // TanList は WorkingSubTables[0]
             if (WorkingSubTables.Count == 0)
-                WorkingSubTables.Add(new List<Dictionary<string, object?>>());
+                WorkingSubTables.Add(("tan_m", new List<Dictionary<string, object?>>()));
 
-            WorkingTanList = WorkingSubTables[0];
+
+            WorkingTanList = WorkingSubTables[0].Rows;
 
 
 

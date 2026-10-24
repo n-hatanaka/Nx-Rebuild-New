@@ -59,15 +59,15 @@ namespace NxRebuild.shared
        }
 
         public NutritionProperty():base() {
-            //_tblName = "ColName";
+            //_primaryTableName = "ColName";
             //_nameColName = "Name";
             //_idColName = "No";
         }
     
         protected override IEnumerable<(string tableName, string sql)> CreateJSONsql()
         {
-            yield return (_tblName, 
-                          $@"SELECT t.* FROM ""{_tblName}"" t
+            yield return (_primaryTableName, 
+                          $@"SELECT t.* FROM ""{_primaryTableName}"" t
                           WHERE t.""{_idColName}"" = @dataID AND t.""tenant_code"" = @tenantCode"
                           );
         }
@@ -106,7 +106,7 @@ namespace NxRebuild.shared
         public override async Task<bool> SaveQueryExec(IDbTransaction transaction) {
             try {
                 var sql = $@"
-                                UPDATE ""{_tblName}""
+                                UPDATE ""{_primaryTableName}""
                                 SET ""Visible"" = @Visible
                                 WHERE ""{_idColName}"" = @DataID
                                   AND ""tenant_code"" = @TenantCode;

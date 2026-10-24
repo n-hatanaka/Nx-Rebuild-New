@@ -23,7 +23,7 @@ namespace NxRebuild.Api.Controllers {
             UserManager<ApplicationUser> userManager,
             IDatabaseSchemaProvider schemaProvider)
             : base(config, userManager, schemaProvider) {
-            //_tblName = "ColName";
+            //_primaryTableName = "ColName";
             //_nameColName = "Name";
 
 

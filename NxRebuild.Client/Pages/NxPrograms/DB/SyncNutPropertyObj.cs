@@ -43,7 +43,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
         public override async Task<NxOperationResult<int>> SaveAsync(
             Dictionary<string, object?> workingRaw,
-            List<List<Dictionary<string, object?>>>? subTables = null) {
+            List<(string,List<Dictionary<string, object?>>)>? subTables = null) {
             // 保存は行わないので無効化
             return new NxOperationResult<int> {
                 ValidationErrorCode = NxValidationErrorCode.LocalEditDenied,

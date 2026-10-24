@@ -15,6 +15,8 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         where TSync : SyncBaseDataObj<TKey> {
     }
 
+    // インスタンス生成後、Mgr が保持している PK（IdCol 以外の親 PK/FK）がある場合は、
+    // 生成元）が PrimaryPKDict を使って DataObj に注入する。
     public abstract class SyncBaseDataObjMgr<TBase, TSync, TKey> : ISyncBaseDataObjMgr<TBase, TSync, TKey>
         where TBase : BaseDataObj<TKey>, new()
         where TSync : SyncBaseDataObj<TKey>, new() {
@@ -26,10 +28,10 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         public abstract string ApiRoute { get; }
 
         public string TblName => _baseDataObjMgr.TblName;
-        public string S_TblName => _baseDataObjMgr.S_TblName;
+        public string[] DetailTableList => _baseDataObjMgr.DetailTableList;
         public string InfoTbl => _baseDataObjMgr.InfoTbl;
         public string W_TblName => _baseDataObjMgr.W_TblName;
-        public string Ws_TblName => _baseDataObjMgr.Ws_TblName;
+        public string[] W_DetailTblList => _baseDataObjMgr.W_DetailTblList;
 
         public NxDataType DataType { get => _baseDataObjMgr.DataType; set => _baseDataObjMgr.DataType = value; }
         public DateTime Refreshed_at => _baseDataObjMgr.Refreshed_at;
@@ -42,6 +44,10 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         public IEnumerable<IBaseDataObj<TKey>> DataList {
             get => _baseDataObjMgr._dataList.Cast<IBaseDataObj<TKey>>();            
         }
+        public Dictionary<string, object?> PrimaryPKDict { 
+                                    get => _baseDataObjMgr.PrimaryPKDict; 
+                                    set => _baseDataObjMgr.PrimaryPKDict = value; 
+        } 
 
         public SyncBaseDataObjMgr(IDbConnection db, HttpClient http, CustomAuthStateProvider auth,
                                   Guid tenantCode, Guid currentUserId) {
@@ -49,13 +55,15 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         }
 
         public virtual IBaseDataObj<TKey>? Get(TKey id) => _baseDataObjMgr.Get(id);
+
+        //新しいデータオブジェクトを作成する。
+        //PKが複数ある場合は、オーバーライドしてPKDictで設定する。
         public virtual IBaseDataObj<TKey> CreateNewDataObj(TKey? parentID) {
             var baseObj = _baseDataObjMgr.CreateNewDataObj(parentID);
             var syncObj = new TSync();
             syncObj.Http = _http;
             syncObj.Auth = _auth;
             syncObj._dataObj = (TBase)baseObj;
-            syncObj.ParentID = parentID;
             syncObj.SelfObjMgr = this;
             syncObj.DBcon = DBcon;
             syncObj.TenantCode = TenantCode;

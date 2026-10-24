@@ -14,7 +14,7 @@ namespace NxRebuild.shared {
     // ---------------------------------------------------------
     public class CategoryEntity : ZmstEntity {
         public CategoryEntity() {
-            _tblName = "gun_m";
+            _primaryTableName = "gun_m";
             _idColName = "syou_cd";
             _nameColName = "syou_name";
             _parentIDColName = "dai_cd";
@@ -45,7 +45,7 @@ namespace NxRebuild.shared {
         // ---------------------------------------------------------
         public override async Task<NxOperationResult<int>> SaveAsync(
             Dictionary<string, object?> workingRaw,
-            List<List<Dictionary<string, object?>>>? subTables = null) {
+            List<(string, List<Dictionary<string, object?>>)>? subTables = null) {
             return new NxOperationResult<int> {
                 OperationErrorCode = NxOperationErrorCode.None,
                 ValidationErrorCode = NxValidationErrorCode.None
@@ -83,50 +83,40 @@ namespace NxRebuild.shared {
         decimal? GetNutritionValue(string col);
         void SetNutritionValue(string col, decimal? value);
 
-        Task _LoadDetailTablesFromRawAsync();
 
     }
 
 
     [NxObjsMetaData(
-        PrimaryTable = "Zmst", 
+        PrimaryTable = "Zmst",
+        PriTblPKColList = new[] { "tenant_code", "LocalCode" },
+
+        DetailTableList = new[] { "tan_m" },
+        DetailTblPKJson = @"{
+            ""tan_m"": [""tenant_code"", ""LocalCode"", ""tan_cd""]
+        }",
+
         NameCol = "Z_name",
         IdCol = "LocalCode",
         ParentIDCol = "gun_cd",
-        DetailTable = "tan_m",
-        InfoTable = "",
         WorkPriTable = "Zmst",
-        WorkDtlTable = "tan_m",
+        WorkDtlTblList = new[] { "tan_m" },
+        InfoTable = "",
         DataType = NxDataType.Zairyou,
-        RootName = "食品分類")]
+        RootName = "食品分類"
+    )]
     public class ZmstEntity : BaseDataObj<int>, IZmstEntity {
-        public ZmstEntity():base() {
-            
-            //_tblName = "Zmst";
-            //_nameColName = "Z_name";
-            //_idColName = "LocalCode";
-            //_parentIDColName = "gun_cd";
-            //_s_tblName = "tan_m";  // サブテーブル
+        public ZmstEntity() : base() { }
 
-            //_infoTbl = "";
 
-            ////Zmst,tan_mはワークテーブルを持たないので同じテーブル名を設定する。
-            //_w_tblName = "Zmst";
-            //_ws_tblName = "tan_m";
 
-            //_datatype = NxDataType.Zairyou;
-        }
-
-        // --- サブテーブル tan_m を保持する ---
-        public List<List<Dictionary<string, object?>>> SubTables { get; set; }
-                                                        = new List<List<Dictionary<string, object?>>>();
         public List<Dictionary<string, object?>> TanList {
             get {
                 // サブテーブルがまだ無い場合は作る
                 if (SubTables.Count == 0)
-                    SubTables.Add(new List<Dictionary<string, object?>>());
+                    SubTables.Add(("tan_m", new List<Dictionary<string, object?>>()));
 
-                return SubTables[0];
+                return SubTables[0].Rows;
             }
         }
 
@@ -143,62 +133,10 @@ namespace NxRebuild.shared {
 
 
 
-
         // ---------------------------------------------------------
-        // サブテーブル編集用ワーキングメモリ　
+        // Zmst固有
+        // メモリ上にサブテーブル（単位リスト）を持つためロード後、再読み込みの実装にする
         // ---------------------------------------------------------
-        public override void CreateWorkingDetailTables(
-                            List<List<Dictionary<string, object?>>> workingSubList) {
-            workingSubList.Clear();
-
-            foreach (var subRecCol in SubTables) {
-                var newSubCol = new List<Dictionary<string, object?>>();
-
-                foreach (var rec in subRecCol) {
-                    var newDict = new Dictionary<string, object?>();
-                    foreach (var kv in rec)
-                        newDict[kv.Key] = kv.Value;
-
-                    newSubCol.Add(newDict);
-                }
-
-                workingSubList.Add(newSubCol);
-            }
-        }
-
-        // ---------------------------------------------------------
-        // サブテーブルの読み込み（tan_m）
-        // ---------------------------------------------------------
-        public async Task _LoadDetailTablesFromRawAsync() {
-            SubTables.Clear(); // 一旦クリア
-
-            string sqlSub = $@"
-                                SELECT *
-                                FROM ""{_s_tblName}""
-                                WHERE ""tenant_code"" = @tc
-                                  AND ""LocalCode"" = @lc;
-                            ";
-
-            var tc = TenantCode;
-            var lc = this.DataID;
-
-            var rawTanRows = await DBcon.QueryAsync<dynamic>(
-                sqlSub,
-                new { tc, lc }
-            );
-
-            var tanRows = rawTanRows
-                .Select(r => NxTypeMapper.ConvertRow(_s_tblName, (IDictionary<string, object>)r))
-                .ToList();
-
-            var subList = new List<Dictionary<string, object?>>();
-
-            foreach (var row in tanRows)
-                subList.Add(new Dictionary<string, object?>(row));
-
-            SubTables.Add(subList);
-        }
-
         public override async Task<bool> JsonToTblAsync(string json, IDbTransaction tran) {
             var result = await base.JsonToTblAsync(json, tran);
             
@@ -209,93 +147,20 @@ namespace NxRebuild.shared {
             return result;
         }
 
-        protected override void InitializeDetailPrimaryKeys() {
-            DetailPrimaryKeys["tan_m"] = new[] { "tenant_code", "LocalCode", "tan_cd" };
-            DetailPrimaryKeys["Zmst"] = new[] { "LocalCode", "tenant_code" };
-        }
 
 
-        // ---------------------------------------------------------
-        // JSON生成 SQL（Zmst + tan_m）
-        // ---------------------------------------------------------
-        protected override IEnumerable<(string tableName, string sql)> CreateJSONsql() {
-            yield return (_tblName,
-                $@"SELECT * FROM ""{_tblName}"" 
-                    WHERE ""{_idColName}"" = @dataID AND tenant_code = @tenantCode");
-
-            yield return (_s_tblName,
-                $@"SELECT * FROM ""{_s_tblName}"" 
-                    WHERE ""LocalCode"" = @dataID AND tenant_code = @tenantCode");
-        }
-
-
-         
-        // ---------------------------------------------------------
-        // 物理削除（保存前に既存レコードを削除する為のみに使う）
-        // Zmstもtam_mも削除してはいけない
-        // ---------------------------------------------------------
-        protected override async Task<bool> _DeletePrimaryQueryExecAsync(IDbTransaction transaction)
-        {
-            try
-            {
-
-                // ★ メインテーブル zmst を削除
-                string delMainSql = $@"
-                    DELETE FROM ""{_tblName}""
-                    WHERE ""{_idColName}"" = @dataID
-                      AND ""tenant_code"" = @tenantCode;
-                ";
-
-                await DBcon.ExecuteAsync(delMainSql, new {
-                    dataID = this.DataID,
-                    tenantCode = this.TenantCode
-                }, transaction);
-
-                return true;
-            } 
-            catch (Exception ex) 
-            {
-                Console.WriteLine("DeletePrimaryQueryExec ERROR:");
-                Console.WriteLine(ex.Message);
-                Console.WriteLine(ex.StackTrace);
-
-                return false;
-            }
-        }
-
-        protected override async Task<bool> _DeleteDetailQueryExecAsync(IDbTransaction transaction) {
-            try {
-                // ★ サブテーブル tan_m を削除（Zmst 固定世界線）
-                string delSubSql = $@"
-                    DELETE FROM ""{_s_tblName}""
-                    WHERE ""{_idColName}"" = @dataID
-                      AND ""tenant_code"" = @tenantCode;
-                ";
-
-                await DBcon.ExecuteAsync(delSubSql, new {
-                    dataID = this.DataID,
-                    tenantCode = this.TenantCode
-                }, transaction);
-
-                return true;
-            } catch (Exception ex) {
-                Console.WriteLine("DeleteDetailQueryExec ERROR:");
-                Console.WriteLine(ex.Message);
-                Console.WriteLine(ex.StackTrace);
-
-                return false;
-            }
-        }
+        
 
 
         // ---------------------------------------------------------
         // ソフトデリート（Zmst のみ）単位マスタは消してはいけないので放置
+        // 材料マスタはフラグで削除（無効化）を管理する
         // ---------------------------------------------------------
         protected override async Task<bool> _SoftDeletePrimaryQueryExecAsync(IDbTransaction transaction) {
             try {               
 
                 string sql = $@"
-                    UPDATE ""{_tblName}""
+                    UPDATE ""{_primaryTableName}""
                     SET ""deleted"" = 1,
                         ""Update_at"" = @UpdateAt
                     WHERE ""{_idColName}"" = @DataID
@@ -327,7 +192,7 @@ namespace NxRebuild.shared {
                 // PostgreSQL / MySQL / SQLServer（FOR UPDATE が使える世界線）
                 sql = $@"
                             SELECT COALESCE(MAX(""LocalCode""), 0) + 1
-                            FROM ""{_tblName}""
+                            FROM ""{_primaryTableName}""
                             WHERE ""tenant_code"" = @TenantCode
                             FOR UPDATE;
                         ";
@@ -335,7 +200,7 @@ namespace NxRebuild.shared {
                 // SQLite（FOR UPDATE が使えない世界線）
                 sql = $@"
                             SELECT COALESCE(MAX(""LocalCode""), 0) + 1
-                            FROM ""{_tblName}""
+                            FROM ""{_primaryTableName}""
                             WHERE ""tenant_code"" = @TenantCode;
                         ";
             }
@@ -359,56 +224,56 @@ namespace NxRebuild.shared {
         }
 
 
-        public override async Task<bool> SaveWorkingDetailsAsync(
-            List<List<Dictionary<string, object?>>>? w_DetailTblList,
-            Dictionary<string, object?> MainWorkingRaw,
-            IDbTransaction tran) {
-            if (w_DetailTblList == null)
-                return true;
+        //public override async Task<bool> SaveWorkingDetailsAsync(
+        //    List<List<Dictionary<string, object?>>>? w_DetailTblList,
+        //    Dictionary<string, object?> MainWorkingRaw,
+        //    IDbTransaction tran) {
+        //    if (w_DetailTblList == null)
+        //        return true;
 
-            foreach (var detailTableRows in w_DetailTblList) {
-                foreach (var row in detailTableRows) {
-                    // ★ 新規レコードに必要なコードを補完
-                    row["tenant_code"] = this.TenantCode;
-                    row[IdColName] = MainWorkingRaw[IdColName];
-                    row["Z_Code"] = MainWorkingRaw["Z_code"];
+        //    foreach (var detailTableRows in w_DetailTblList) {
+        //        foreach (var row in detailTableRows) {
+        //            // ★ 新規レコードに必要なコードを補完
+        //            row["tenant_code"] = this.TenantCode;
+        //            row[IdColName] = MainWorkingRaw[IdColName];
+        //            row["Z_Code"] = MainWorkingRaw["Z_code"];
 
-                    // ★ カラム名と値
-                    var cols = new List<string>();
-                    var vals = new List<string>();
-                    var updates = new List<string>();
+        //            // ★ カラム名と値
+        //            var cols = new List<string>();
+        //            var vals = new List<string>();
+        //            var updates = new List<string>();
 
-                    foreach (var kv in row) {
-                        cols.Add($@"""{kv.Key}""");
-                        vals.Add($@"@{kv.Key}");
+        //            foreach (var kv in row) {
+        //                cols.Add($@"""{kv.Key}""");
+        //                vals.Add($@"@{kv.Key}");
 
-                        // ★ 主キーと update_at は UPDATE しない
-                        if (kv.Key != "tenant_code" &&
-                            kv.Key != IdColName &&
-                            kv.Key != "tan_cd" &&
-                            kv.Key != "update_at") {
-                            updates.Add($@"""{kv.Key}"" = EXCLUDED.""{kv.Key}""");
-                        }
-                    }
+        //                // ★ 主キーと update_at は UPDATE しない
+        //                if (kv.Key != "tenant_code" &&
+        //                    kv.Key != IdColName &&
+        //                    kv.Key != "tan_cd" &&
+        //                    kv.Key != "update_at") {
+        //                    updates.Add($@"""{kv.Key}"" = EXCLUDED.""{kv.Key}""");
+        //                }
+        //            }
 
-                    // ★ UPSERT（SQLite 正式対応）
-                    string sql = $@"
-                                    INSERT INTO ""tan_m""
-                                    ({string.Join(", ", cols)})
-                                    VALUES ({string.Join(", ", vals)})
-                                    ON CONFLICT(""tenant_code"", ""{IdColName}"", ""tan_cd"")
-                                    DO UPDATE SET
-                                        {string.Join(", ", updates)};
-                                ";
+        //            // ★ UPSERT（SQLite 正式対応）
+        //            string sql = $@"
+        //                            INSERT INTO ""tan_m""
+        //                            ({string.Join(", ", cols)})
+        //                            VALUES ({string.Join(", ", vals)})
+        //                            ON CONFLICT(""tenant_code"", ""{IdColName}"", ""tan_cd"")
+        //                            DO UPDATE SET
+        //                                {string.Join(", ", updates)};
+        //                        ";
 
-                    var affected = await DBcon.ExecuteAsync(sql, row, tran);
-                    if (affected != 1)
-                        return false;
-                }
-            }
+        //            var affected = await DBcon.ExecuteAsync(sql, row, tran);
+        //            if (affected != 1)
+        //                return false;
+        //        }
+        //    }
 
-            return true;
-        }
+        //    return true;
+        //}
 
     }
 }

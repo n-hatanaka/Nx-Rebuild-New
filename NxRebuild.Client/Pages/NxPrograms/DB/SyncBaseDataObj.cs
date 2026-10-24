@@ -42,7 +42,10 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         public IBaseDataObj<TKey>? ParentDataObj { get => _dataObj.ParentDataObj; 
                                             set => _dataObj.ParentDataObj = value; }
 
-
+        public List<(string, List<Dictionary<string, object?>>)> SubTables {
+            get => _dataObj.SubTables;
+            set => _dataObj.SubTables = value;     
+        }
         protected void _Validate(OperationType operationType) => _dataObj._Validate(operationType);
 
         public SyncBaseDataObj() {
@@ -64,8 +67,9 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         // DataObjのメソッドへのアクセスラッパー
         public void CreateWorkingMemory(Dictionary<string, object?> wirkingRaw)
                         => _dataObj.CreateWorkingMemory(wirkingRaw);
-        public void CreateWorkingDetailTables(List<List<Dictionary<string, object?>>>? subTables) 
-                        => _dataObj.CreateWorkingDetailTables(subTables);
+        public void CreateWorkingDetailTables(
+                        List<(string, List<Dictionary<string, object?>>)> workingSubList) 
+                                        => _dataObj.CreateWorkingDetailTables(workingSubList);
         public string TblToJson() => _dataObj.TblToJson();
 
         public string TblToJson(TKey dataId, IDbTransaction transaction) => _dataObj.TblToJson(dataId, transaction);
@@ -78,6 +82,32 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             get => _dataObj.DataID;
             set => _dataObj.DataID = value;
         }
+
+        public Dictionary<string, object?> PrimaryPKDict {
+            get {
+                if (_dataObj == null)
+                    throw new Exception("PrimaryPKDict GET ERROR: _dataObj is null.");
+
+                return _dataObj.PrimaryPKDict;
+            }
+
+            set {
+                if (_dataObj == null)
+                    throw new Exception("PrimaryPKDict SET ERROR: _dataObj is null.");
+
+                if (value == null)
+                    throw new Exception("PrimaryPKDict SET ERROR: value is null.");
+
+                // PK が全部揃っているかチェック
+                foreach (var pk in _dataObj._primaryTblPKList) {
+                    if (!value.ContainsKey(pk))
+                        throw new Exception($"PrimaryPKDict SET ERROR: key '{pk}' is missing.");
+                }
+
+                _dataObj.PrimaryPKDict = value;
+            }
+        }
+
 
         public string DataName {
 
@@ -111,10 +141,10 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         public string NameColName => _dataObj.NameColName;
         public string IdColName => _dataObj.IdColName;
         public string TblName => _dataObj.TblName;
-        public string S_TblName => _dataObj.S_TblName;
+        public string[] DetailTableList => _dataObj.DetailTableList;
         public string InfoTbl => _dataObj.InfoTbl;
         public string W_TblName => _dataObj.W_TblName;
-        public string Ws_TblName => _dataObj.Ws_TblName;
+        public string[] W_DetailTblList => _dataObj.W_DetailTblList;
 
         protected void ApplyWorkingToRaw(Dictionary<string, object?> workingRaw) => _dataObj.ApplyWorkingToRaw(workingRaw);
 
@@ -154,7 +184,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
         public virtual async Task<NxOperationResult<TKey>> SaveAsync(
                             Dictionary<string, object?> workingRaw,
-                            List<List<Dictionary<string, object?>>>? subTables = null) {
+                            List<(string, List<Dictionary<string, object?>>)>? subTables = null) {
             using var tran = DBcon.BeginTransaction();
 
             try {
@@ -276,7 +306,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             if (!EqualityComparer<TKey>.Default.Equals(oldID, newID)) {
                 // 親IDが変わったときだけ子テーブルを更新
                 string sql = $@"
-                                UPDATE ""{S_TblName}""
+                                UPDATE ""{DetailTableList}""
                                 SET ""{IdColName}"" = @NewID
                                 WHERE ""{IdColName}"" = @OldID
                                   AND ""tenant_code"" = @TenantCode;
