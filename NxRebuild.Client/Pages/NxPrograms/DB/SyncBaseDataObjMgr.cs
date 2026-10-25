@@ -13,6 +13,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
     public interface ISyncBaseDataObjMgr<TBase, TSync, TKey> : IBaseDataObjMgr<TBase, TKey>
         where TBase : BaseDataObj<TKey>
         where TSync : SyncBaseDataObj<TKey> {
+        Task<NxOperationResult<TKey>> SyncData();
     }
 
     // インスタンス生成後、Mgr が保持している PK（IdCol 以外の親 PK/FK）がある場合は、
@@ -196,6 +197,8 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                         target = CreateNewDataObj(default(TKey));
                         target.DataID = dataId;
                         await target.JsonToTblAsync(dataJson, tran);
+
+                        SetParent(target);
                         
                     }
 

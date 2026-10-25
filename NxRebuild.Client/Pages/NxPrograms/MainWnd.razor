@@ -139,7 +139,7 @@ else
                 initMessage = "マスタ同期中...";
                 StateHasChanged();
 
-                var masterTables = new List<string> { "Zmst", "tan_m", "ColName", "gun_m" };
+                var masterTables = new List<string> { "ColName", "gun_m" };// "Zmst", "tan_m",
                 await DbState.SyncMasterDataAsync(Http, masterTables, tenantCode);
 
                 initMessage = "栄養素プロパティ初期化中...";
@@ -160,7 +160,7 @@ else
 
                 //デバッグ差し替え用GlobalState.ZmstEntityMgr = new ZmstEntityMgr(DbState.Connection, Http, customAuth, tenantGuid, currentUserGuid);
                 GlobalState.ZmstEntityMgr = new SyncZmstEntityMgr(DbState.Connection, Http, customAuth, tenantGuid, currentUserGuid);
-
+                await ((ISyncZmstEntityMgr)GlobalState.ZmstEntityMgr).SyncData();
 
                 await GlobalState.ZmstEntityMgr.InitializeAsync(null);
             }

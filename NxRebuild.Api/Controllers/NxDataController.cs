@@ -105,19 +105,33 @@ namespace NxRebuild.Api.Controllers {
         public virtual async Task<IActionResult> SyncAll(DateTime refreshedAt) {
             try {
                 var syncedAt = DateTime.UtcNow;   // ★ 問い合わせ開始時点を基準時刻にする
+                var q = new RecordQuery() ;
 
-                var q = new RecordQuery();
-                q.And.Add(new Condition {
-                    Column = "update_at",
-                    Operator = ">",
-                    Value = refreshedAt
-                });
+                if (refreshedAt > DateTime.MinValue) {
+                    q.Or.Add(new Condition {
+                        Column = "Update_at",
+                        Operator = ">=",
+                        Value = refreshedAt
+                    });
 
-                q.Or.Add(new Condition {
-                    Column = "locked_at",
-                    Operator = ">",
-                    Value = refreshedAt
-                });
+                    q.Or.Add(new Condition {
+                        Column = "locked_at",
+                        Operator = ">=",
+                        Value = refreshedAt
+                    });
+                }
+
+                //q.Or.Add(new Condition {
+                //    Column = "Update_at",
+                //    Operator = "IS NOT NULL",
+                //    Value = null
+                //});
+
+                //q.Or.Add(new Condition {
+                //    Column = "locked_at",
+                //    Operator = "IS NOT NULL",
+                //    Value = null
+                //});
 
                 // ★ DataObjMgr を生成
                 await CreateObjMgrAsync(q);
@@ -126,7 +140,7 @@ namespace NxRebuild.Api.Controllers {
                 var items = new List<SyncItem<TKey>>();
 
                 foreach (var obj in mgr.DataList) {
-                    if ((obj.Update_at <= refreshedAt) && (obj.LockedAt <= refreshedAt))
+                    if ((obj.Update_at < refreshedAt) || (obj.LockedAt < refreshedAt))
                         continue;
 
                     // ★ クライアントの更新及びロック時刻よりあたらしいBaseDataObj<TKey>
@@ -134,6 +148,9 @@ namespace NxRebuild.Api.Controllers {
 
                     try {
                         json = obj.TblToJson();   // ← ここで例外が起こる可能性あり
+                        if (json == null)
+                            continue;
+
                     } catch (Exception ex) {
                         // ★ TblToJson の例外を NxOperationResult に包んで返す
                         return BadRequest(new NxOperationResult<TKey> {

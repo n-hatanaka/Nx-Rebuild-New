@@ -644,6 +644,8 @@ namespace NxRebuild.shared {
 
 
         //RecordQueryをもとにSQLを組み立てる
+        // RecordQueryをもとにSQLを組み立てる
+        // RecordQueryをもとにSQLを組み立てる
         public virtual string _BuildSql(RecordQuery? q) {
             var sql = new List<string>();
 
@@ -658,39 +660,54 @@ namespace NxRebuild.shared {
             if (q == null)
                 return string.Join(" ", sql);
 
-            var where = new List<string>();
-
             // TargetIds
             if (q.TargetIds.Count > 0) {
                 var idParams = q.TargetIds
                     .Select((id, idx) => $"@id{idx}")
                     .ToList();
 
-                where.Add($"\"{_idColName}\" IN ({string.Join(", ", idParams)})");
+                sql.Add($"AND \"{_idColName}\" IN ({string.Join(", ", idParams)})");
             }
 
-            // AND 条件
-            foreach (var c in q.And)
-                where.Add($"\"{c.Column}\" {c.Operator} @{c.Column}");
+            // 条件（Condition）を安全にSQL文字列に変換するヘルパー関数
+            string FormatCondition(Condition c) {
+                var op = c.Operator?.Trim().ToUpper() ?? "=";
 
-            // OR 条件
+                // "IS NULL" や "IS NOT NULL" が指定された場合、または Value が null の場合
+                if (op == "IS NULL" || op == "IS NOT NULL") {
+                    return $"\"{c.Column}\" {op}";
+                }
+                if ((op == "IS" || op == "=") && c.Value == null) {
+                    return $"\"{c.Column}\" IS NULL";
+                }
+                if ((op == "IS NOT" || op == "!=" || op == "<>") && c.Value == null) {
+                    return $"\"{c.Column}\" IS NOT NULL";
+                }
+
+                // 通常の比較演算子（=, >, >=, < など）
+                return $"\"{c.Column}\" {c.Operator} @{c.Column}";
+            }
+
+            // AND 条件の追加
+            foreach (var c in q.And) {
+                sql.Add("AND " + FormatCondition(c));
+            }
+
+            // OR 条件の追加（複数のOR条件を `OR` で結合し、括弧で括る）
             if (q.Or.Count > 0) {
-                var orList = q.Or
-                    .Select(c => $"\"{c.Column}\" {c.Operator} @{c.Column}");
-                where.Add("(" + string.Join(" OR ", orList) + ")");
+                var orList = q.Or.Select(c => FormatCondition(c)).ToList();
+                sql.Add($"AND ({string.Join(" OR ", orList)})");
             }
-
-            // AND 条件を追加
-            foreach (var w in where)
-                sql.Add("AND " + w);
 
             // ORDER
-            if (!string.IsNullOrEmpty(q.OrderBy))
+            if (!string.IsNullOrEmpty(q.OrderBy)) {
                 sql.Add($"ORDER BY \"{q.OrderBy}\" {(q.OrderDesc ? "DESC" : "ASC")}");
+            }
 
             // ページング
-            if (q.PageSize > 0)
+            if (q.PageSize > 0) {
                 sql.Add($"LIMIT {q.PageSize} OFFSET {q.PageIndex * q.PageSize}");
+            }
 
             return string.Join(" ", sql);
         }

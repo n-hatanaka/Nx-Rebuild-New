@@ -9,8 +9,12 @@ using System.Net.Http.Json;
 using System.Threading.Tasks;
 
 namespace NxRebuild.Client.Pages.NxPrograms.DB {
+    public interface ISyncZmstEntityMgr
+        : ISyncBaseDataObjMgr<ZmstEntity, SyncZmstEntity, int> {
+    }
+
     public class SyncZmstEntityMgr
-        : SyncBaseDataObjMgr<ZmstEntity, SyncZmstEntity, int>, IZmstEntityMgr {
+        : SyncBaseDataObjMgr<ZmstEntity, SyncZmstEntity, int>, IZmstEntityMgr, ISyncZmstEntityMgr {
         public override string ApiRoute => "Zmst";
 
         // --- BaseDataObjの ZmstEntityMgr を保持 ---

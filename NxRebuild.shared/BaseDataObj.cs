@@ -562,6 +562,9 @@ namespace NxRebuild.shared {
 
             foreach (var (tableName, sql) in sqlList) {
 
+                if (string.IsNullOrWhiteSpace(sql))
+                    return null;
+
                 // ★ PK を辞書からそのまま渡す
                 var param = PrimaryPKDict;
 
@@ -665,7 +668,7 @@ namespace NxRebuild.shared {
                     }
 
                     var rowsAffected = await DBcon.ExecuteAsync(sql, normalized, tran);
-
+                    await _UpdatePropertiesFromTblAsync();
                     if (rowsAffected != 1)
                         throw new Exception($"JsonToTblAsync ERROR: Upsert failed or affected {rowsAffected} rows");
                 }

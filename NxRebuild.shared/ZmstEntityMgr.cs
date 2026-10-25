@@ -8,6 +8,7 @@ using System.Data;
 using System.Linq;
 using System.Threading.Tasks;
 using Dapper;
+using System.Security.Cryptography.X509Certificates;
 
 namespace NxRebuild.shared {
     public interface IZmstEntityMgr : IBaseDataObjMgr<ZmstEntity, int> {
@@ -69,7 +70,11 @@ namespace NxRebuild.shared {
             return null;
         }
 
-
+        public override IBaseDataObj<int> CreateNewDataObj(int parentID) {
+            var obj = base.CreateNewDataObj(parentID);
+            obj.DataType = NxDataType.Zairyou;
+            return obj;
+        }
         // ---------------------------------------------------------
         // Initialize（gun_m + Zmst + tan_m を DataList に突っ込む）
         // ---------------------------------------------------------
@@ -142,6 +147,8 @@ namespace NxRebuild.shared {
 
                     _dataList.Add(cat);
                 }
+
+           
 
                 // ---------------------------------------------------------
                 // Zmst + tan_m
