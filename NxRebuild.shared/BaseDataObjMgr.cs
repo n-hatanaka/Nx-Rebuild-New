@@ -32,7 +32,7 @@ namespace NxRebuild.shared {
         IBaseDataObj<TKey> CreateNewDataObj(TKey? parentID);
         void InsertNewDataItem(IBaseDataObj<TKey> obj);
 
-        Task<NxOperationResult<TKey>> DeleteDataAsync(IEnumerable<TKey> dataIDs, bool softDelete = false);
+        Task<NxOperationResult<TKey>> DeleteDataAsync(IEnumerable<TKey> dataIDs, bool softDelete = false, IDbTransaction tran = null);
         void SetParent(IBaseDataObj<TKey> obj);
         Task DistributeJsonDataAsync(string json);
         Task InitializeAsync(RecordQuery? query);
@@ -58,7 +58,7 @@ namespace NxRebuild.shared {
         string W_TblName { get; }
         string[] W_DetailTblList { get; }
 
-        Task<NxOperationResult<TKey>> DeleteDataAsync(IEnumerable<TKey> dataIDs, bool softDelete = false);
+        Task<NxOperationResult<TKey>> DeleteDataAsync(IEnumerable<TKey> dataIDs, bool softDelete = false, IDbTransaction tran = null);
 
         IBaseDataObj<TKey>? Get(TKey id);
 
@@ -767,7 +767,8 @@ namespace NxRebuild.shared {
         // UIはこの返り値を観測して成功／部分失敗を判断する。
         public virtual async Task<NxOperationResult<TKey>> DeleteDataAsync(
             IEnumerable<TKey> dataIDs,
-            bool softDelete = false) {
+            bool softDelete = false,
+            IDbTransaction tran = null) {
             var opResult = new NxOperationResult<TKey>();
 
             foreach (var id in dataIDs) {
@@ -787,7 +788,7 @@ namespace NxRebuild.shared {
                     }
 
                     // Delete
-                    if (!await _DeleteDataObjFromListAsync(id, softDelete)) {
+                    if (!await _DeleteDataObjFromListAsync(id, softDelete, tran)) {
                         opResult.FailedIds.Add(id);
 
                         opResult.Message +=
@@ -811,16 +812,20 @@ namespace NxRebuild.shared {
 
 
         //指定したデータを削除し、_dataListからオブジェクトを削除
-        public virtual async Task<bool> _DeleteDataObjFromListAsync(TKey dataID, bool softDelete = false) {
+        public virtual async Task<bool> _DeleteDataObjFromListAsync(TKey dataID, bool softDelete = false ,IDbTransaction tran = null) {
             var target = (ISharedDataObj<TKey>)Get(dataID);
 
             if (target == null)
                 return false;
-            
 
-            var transaction = DBcon.BeginTransaction();
+            var transaction = tran;
+
+            if (tran == null) 
+                transaction = DBcon.BeginTransaction();
 
             try {
+
+
                 bool result;
                 var baseObj = target;
                 result = await baseObj._DeleteQueryExecAsync(transaction, softDelete);

@@ -258,15 +258,14 @@ namespace NxRebuild.Api.Controllers {
                             continue;
                         }
 
-                        var DeleteResult = await _dataObjMgr.DeleteDataAsync(
-                            new List<TKey> { dataObj.DataID },
-                            softDelete
-                        );
+                        NxOperationResult<TKey> deleted;
 
-                        // 削除成功かどうか
-                        bool result = DeleteResult.FailedIds.Count == 0;
+                        using (var tran = _db.BeginTransaction()) {   // 未コミットのまま抜ければ自動ロールバック
+                            deleted = await DeleteInTranAsync(dataObj, dataId, softDelete, tran);
+                            if (deleted.Success) tran.Commit();
+                        }   // ← ここでトランザクションが必ず終わる（例外でもここを通る）
 
-                        if (!result) {
+                        if (!deleted.Success) {
                             // ロック解除（失敗時は必ず）
                             await dataObj._SetUnLockAsync();
 
@@ -310,6 +309,44 @@ namespace NxRebuild.Api.Controllers {
             }
         }
 
+        protected virtual async Task<NxOperationResult<TKey>> DeleteInTranAsync(
+        BaseDataObj<TKey> dataObj, TKey dataId, bool softDelete, IDbTransaction tran) {
+
+            var before = await BeforeDeleteProcess(dataObj, tran);
+            if (!before.Success) return before;
+
+            var del = await _dataObjMgr.DeleteDataAsync(
+                new List<TKey> { dataObj.DataID }, softDelete, tran);
+            if (del.FailedIds.Count != 0) return del;
+
+            var after = await AfterDeleteProcess(dataId, tran);
+            return after;
+        }
+
+        // =======================================================
+        // 保存の前後に追加処理を行いたい場合は継承先で
+        // BeforeSaveProcess / AfterSaveProcess をオーバーライドする
+        // =======================================================
+        protected virtual Task<NxOperationResult<TKey>> BeforeDeleteProcess(
+                                                IBaseDataObj<TKey> obj,
+                                                IDbTransaction tran) {
+
+
+            return Task.FromResult(new NxOperationResult<TKey> {
+                OperationErrorCode = NxOperationErrorCode.None,
+                ValidationErrorCode = NxValidationErrorCode.None
+            });
+        }
+
+        protected virtual Task<NxOperationResult<TKey>> AfterDeleteProcess(
+                                                TKey DataID,
+                                                IDbTransaction tran) {
+
+            return Task.FromResult(new NxOperationResult<TKey> {
+                OperationErrorCode = NxOperationErrorCode.None,
+                ValidationErrorCode = NxValidationErrorCode.None
+            });
+        }
 
 
         [HttpPost("DataOpenLatest")]
@@ -416,7 +453,7 @@ namespace NxRebuild.Api.Controllers {
             var obj = (BaseDataObj<TKey>)(_dataObjMgr.Get(dataId)
                       ?? _dataObjMgr.CreateNewDataObj(default));
 
-            // ★ _Validate を通す
+            // _Validate を通す
             var v = obj._Validate(OperationType.Save);
             if (!v.Success)
                 return BadRequest(v);
@@ -448,27 +485,36 @@ namespace NxRebuild.Api.Controllers {
 
             try {
                 var Row = Table.Rows.First();
-                // ★ 新規なら ID 採番
+
+                //Guidだった場合は新規採番を行わないようにクライアントで生成されたIDを持たせる
+                if (typeof(TKey) == typeof(Guid)) {
+                    obj.DataID = (TKey)(object)Guid.Parse(Row[obj.IdColName].ToString()!);
+                }
+
+                // IDが0なら ID 採番
                 if (EqualityComparer<TKey>.Default.Equals(obj.DataID, default)) {
 
                     var realID = EnsureIDForSave(obj, tran);
 
-                    // ★ rawData の PK を更新（必須）
+                    // rawData の PK を更新（必須）
                     obj.DataID = realID;
 
-                    // ★ 親（Zmst）
+                    // 親（Zmst）
                     Row[obj.IdColName] = realID;
 
-                    // ★ 子（tan_m）
+                    // 子（tan_m）
                     foreach (var tbl in workingRaw.Where(t => t.Table != this._tblName)) {
                         foreach (var row in tbl.Rows) {
                             row[obj.IdColName] = realID;
-                            row["tenant_code"] = obj.TenantCode;
                         }
                     }
                 }
+                // テナントは認証済みの値を全テーブル・全行に強制（新規/既存、int/Guid 共通）
+                foreach (var tbl in workingRaw)
+                    foreach (var row in tbl.Rows)
+                        row["tenant_code"] = _tenantCode;
 
-                // ★ テーブル書き込み前フック
+                // テーブル書き込み前フック
                 var beforeSaveResult = await BeforeSaveProcess(obj, workingRaw, tran);
                 if (!beforeSaveResult.Success) {
                     tran.Rollback();
@@ -479,7 +525,7 @@ namespace NxRebuild.Api.Controllers {
                 Row["Update_at"] = UpdateAtsrv;
                 SaveJson = JsonSerializer.Serialize(workingRaw);
 
-                // ★ 保存処理へ
+                // 保存処理へ
                 if (!await obj.JsonToTblAsync(SaveJson, tran)) {
                     tran.Rollback();
                     return BadRequest(new NxOperationResult<TKey> {

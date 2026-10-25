@@ -53,14 +53,14 @@ namespace NxRebuild.shared {
 
 
         // 削除は行わない → 空のリストを返す
-        public override async Task<NxOperationResult<int>> DeleteDataAsync(IEnumerable<int> dataIDs, bool softDelete) {
+        public override async Task<NxOperationResult<int>> DeleteDataAsync(IEnumerable<int> dataIDs, bool softDelete, IDbTransaction tran = null) {
             return await Task.FromResult(new NxOperationResult<int> { 
                                                 OperationErrorCode = NxOperationErrorCode.None,
                                                 ValidationErrorCode = NxValidationErrorCode.None });
         }
 
         // 削除は行わない → false を返す
-        public override async Task<bool> _DeleteDataObjFromListAsync(int dataID, bool softDelete) {
+        public override async Task<bool> _DeleteDataObjFromListAsync(int dataID, bool softDelete, IDbTransaction tran = null) {
             return await Task.FromResult(false);
         }
 

@@ -237,7 +237,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             };
         }
 
-        public virtual async Task<NxOperationResult<TKey>> DeleteDataAsync(IEnumerable<TKey> dataIDs, bool softDelete = false) {
+        public virtual async Task<NxOperationResult<TKey>> DeleteDataAsync(IEnumerable<TKey> dataIDs, bool softDelete = false, IDbTransaction tran = null) {
             var url = $"{ApiRoute}/Delete";
 
             HttpResponseMessage response;
@@ -325,8 +325,8 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
 
 
-        protected virtual async Task<bool> _DeleteDataObjFromListAsync(TKey dataID, bool softDelete = false) {
-            return await _baseDataObjMgr._DeleteDataObjFromListAsync(dataID, softDelete);
+        protected virtual async Task<bool> _DeleteDataObjFromListAsync(TKey dataID, bool softDelete = false,IDbTransaction tran = null) {
+            return await _baseDataObjMgr._DeleteDataObjFromListAsync(dataID, softDelete, tran);
         }
 
         public virtual string LoadMultipleDataAsJson(List<TKey> idList)
