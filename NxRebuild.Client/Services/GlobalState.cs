@@ -15,5 +15,16 @@ namespace NxRebuild.Client.Services
         public static IZmstEntityMgr? ZmstEntityMgr { get; set; }
 
         public static SyncScheduler<int>? ZmstScheduler{ get; set; }
+
+        //MainWnd の初期化は、!DbState.IsInitialized のときだけ走ります。
+        //ログアウト→再ログインをリロードなしで行うと、初期化が丸ごとスキップされて、
+        //前のユーザー・前のテナントのオブジェクトとデータが、そのまま使われます。
+        //WASMごと作り直すのが、いちばん確実です。
+        public static void Reset() {
+            NutPropScheduler?.Dispose(); NutPropScheduler = null;
+            ZmstScheduler?.Dispose(); ZmstScheduler = null;
+            NutProperties = null;
+            ZmstEntityMgr = null;
+        }
     }
 }

@@ -23,6 +23,8 @@ builder.Services.AddScoped<CustomAuthStateProvider>();
 //    BaseAddress = new Uri("http://localhost:5296/") // API の URL
 //});
 
+builder.Services.AddSingleton<SessionEvents>();
+
 // jwt自動付与ハンドラーをDIコンテナに登録
 builder.Services.AddTransient<JwtAuthorizationMessageHandler>();
 

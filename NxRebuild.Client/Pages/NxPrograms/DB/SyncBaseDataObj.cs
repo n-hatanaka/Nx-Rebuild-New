@@ -197,6 +197,9 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         public virtual async Task<NxOperationResult<TKey>> SaveAsync(
                             Dictionary<string, object?> workingRaw,
                             List<(string, List<Dictionary<string, object?>>)>? subTables = null) {
+            //SyncDataの一時停止
+            using var _pause = await NxSyncControl.For(DBcon).PauseAsync();
+
             using var tran = DBcon.BeginTransaction();
 
             try {
@@ -352,6 +355,9 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
 
         public async Task<NxOperationResult<TKey>> SetLockAsync() {
+            //SyncDataの一時停止
+            using var _pause = await NxSyncControl.For(DBcon).PauseAsync();
+
             // ① Auth から UserID と UserName を取得
             var authState = await Auth.GetAuthenticationStateAsync();
             var userName = authState.User.Identity?.Name;
@@ -436,6 +442,9 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                                         => await _dataObj._ReWriteLockInfoAsync(tran, Locked_by, Locked_at);
 
         public async Task<NxOperationResult<TKey>> SetUnLockAsync() {
+                        //SyncDataの一時停止
+            using var _pause = await NxSyncControl.For(DBcon).PauseAsync();
+
             // ① Auth から UserID と UserName を取得
             var authState = await Auth.GetAuthenticationStateAsync();
             var userName = authState.User.Identity?.Name;
@@ -510,6 +519,9 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
 
         public async Task<NxOperationResult<TKey>> DataOpenAsync() {
+            //SyncDataの一時停止
+            using var _pause = await NxSyncControl.For(DBcon).PauseAsync();
+
             // ① ローカルバリデーション
             var v = _dataObj._Validate(OperationType.LocalEdit);
             if (!v.Success) {
@@ -617,6 +629,9 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
 
         public async Task<NxOperationResult<TKey>> DataCloseAsync() {
+            //SyncDataの一時停止
+            using var _pause = await NxSyncControl.For(DBcon).PauseAsync();
+
             // ① Auth から UserID と UserName を取得
             var authState = await Auth.GetAuthenticationStateAsync();
             var userId = authState.User.FindFirst("sub")?.Value;
@@ -706,6 +721,9 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
 
         public virtual async Task<NxOperationResult<TKey>> ReNameAsync(string newName) {
+            //SyncDataの一時停止
+            using var _pause = await NxSyncControl.For(DBcon).PauseAsync();
+
             // 1. バリデーション
             var v = _Validate(OperationType.Rename, newName);
             if (!v.Success)

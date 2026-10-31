@@ -1,11 +1,22 @@
-﻿@using Microsoft.AspNetCore.Components.Authorization
+﻿@implements IDisposable
+
+@using Microsoft.AspNetCore.Components
 @inherits LayoutComponentBase
+
+@using Microsoft.AspNetCore.Components.Authorization
 @inject IJSRuntime JS
+
 @using MudBlazor
+@using NxRebuild.Client.Pages.Auth
+@using NxRebuild.Client.Services
 @using NxRebuild.Client.Pages.NxPrograms.MDI
 @using NxRebuild.Client.Pages.NxPrograms.MDI.Zmst
 @using NxRebuild.Client.Pages.NxPrograms.DB
+@inject SessionEvents Events
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthProvider
 @inject WindowManagerBase Manager
+
 
 <MudThemeProvider />
 <MudPopoverProvider />
@@ -103,16 +114,35 @@
 </MudLayout>
 
 @code {
+
     private ElementReference _windowActivator;
     private bool _windowMenuOpen = false;
     private bool _drawerOpen = true;
 
     protected override void OnInitialized()
     {
-        Manager.OnWindowsChanged += () =>
-        {
-            InvokeAsync(StateHasChanged);
-        };
+        Manager.OnWindowsChanged += OnWindowsChangedHandler;
+        Events.Unauthorized += OnUnauthorized;
+    }
+
+    private void OnWindowsChangedHandler()
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnUnauthorized() => _ = InvokeAsync(async () =>
+    {
+        GlobalState.Reset(); // 定期同期を止める
+        await JS.InvokeVoidAsync("sessionStorage.removeItem", "authToken");
+        ((CustomAuthStateProvider)AuthProvider).NotifyUserLogout();
+        Nav.NavigateTo("/login", forceLoad: true);
+    });
+
+    public void Dispose()
+    {
+        // 登録したイベントは必ず解除する
+        Manager.OnWindowsChanged -= OnWindowsChangedHandler;
+        Events.Unauthorized -= OnUnauthorized;
     }
 
     private void OpenZmst()

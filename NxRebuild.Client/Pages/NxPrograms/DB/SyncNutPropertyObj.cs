@@ -53,6 +53,9 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
 
         public async Task<bool> NutVisibleChg(bool NewVal) {
+            //SyncDataの一時停止
+            using var _pause = await NxSyncControl.For(DBcon).PauseAsync();
+
             var url = $"{ApiRoute}/Visible/{DataID}/{NewVal}";
             HttpResponseMessage response;
             try {

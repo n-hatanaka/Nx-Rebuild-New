@@ -19,52 +19,26 @@ namespace NxRebuild.Client.Pages.Auth
             _js = js;
         }
 
-        public override async Task<AuthenticationState> GetAuthenticationStateAsync()
-        {
+        private static ClaimsPrincipal BuildUser(string token) {
+            try {
+                var jwt = new JwtSecurityTokenHandler().ReadJwtToken(token);
+                if (jwt.ValidTo <= DateTime.UtcNow)                 // 期限切れ
+                    return new ClaimsPrincipal(new ClaimsIdentity());
+                return new ClaimsPrincipal(new ClaimsIdentity(jwt.Claims, "jwt"));
+            } catch {
+                return new ClaimsPrincipal(new ClaimsIdentity());   // 壊れたトークン
+            }
+        }
+
+        public override async Task<AuthenticationState> GetAuthenticationStateAsync() {
             var token = await _js.InvokeAsync<string>("sessionStorage.getItem", "authToken");
-
-            if (string.IsNullOrEmpty(token))
-                return new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity()));
-
-            var handler = new JwtSecurityTokenHandler();
-            var jwt = handler.ReadJwtToken(token);
-
-            // JWT の claims をベースに identity を作る
-            var claims = jwt.Claims.ToList();
-
-            // tenant_code を取り出す
-            var tenantCode = jwt.Claims.FirstOrDefault(c => c.Type == "tenant_code")?.Value;
-
-            // tenant_code を Claims に追加
-            if (!string.IsNullOrEmpty(tenantCode))
-            {
-                claims.Add(new Claim("tenant_code", tenantCode));
-            }
-
-            var identity = new ClaimsIdentity(claims, "jwt");
-            var user = new ClaimsPrincipal(identity);
-
-            return new AuthenticationState(user);
+            return string.IsNullOrEmpty(token)
+                ? new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity()))
+                : new AuthenticationState(BuildUser(token));
         }
 
-        public void NotifyUserAuthentication(string token)
-        {
-            var handler = new JwtSecurityTokenHandler();
-            var jwt = handler.ReadJwtToken(token);
-
-            var claims = jwt.Claims.ToList();
-
-            var tenantCode = jwt.Claims.FirstOrDefault(c => c.Type == "tenant_code")?.Value;
-            if (!string.IsNullOrEmpty(tenantCode))
-            {
-                claims.Add(new Claim("tenant_code", tenantCode));
-            }
-
-            var identity = new ClaimsIdentity(claims, "jwt");
-            var user = new ClaimsPrincipal(identity);
-
-            NotifyAuthenticationStateChanged(Task.FromResult(new AuthenticationState(user)));
-        }
+        public void NotifyUserAuthentication(string token) =>
+            NotifyAuthenticationStateChanged(Task.FromResult(new AuthenticationState(BuildUser(token))));
 
         public void NotifyUserLogout()
         {

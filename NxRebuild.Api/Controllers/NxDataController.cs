@@ -57,9 +57,8 @@ namespace NxRebuild.Api.Controllers {
         }
 
         protected async Task InitializeNxApi() {
-            var schemas = await _schemaProvider.GetSchemasAsync();
-            var typeMap = NxTypeMapBuilder.FromSchemas(schemas);
-            NxTypeMapper.Set(typeMap);
+            var iScmp = await NxSchemaCache.GetAsync(_schemaProvider);
+            NxTypeMapper.Set(iScmp);   // 参照の差し替えだけ
         }
 
         protected async Task SetUserInfo() {
@@ -83,6 +82,7 @@ namespace NxRebuild.Api.Controllers {
             if (_db == null) {
                 _db = CreateConnection();
                 _db.Open();
+                HttpContext.Response.RegisterForDispose(_db);   // リクエスト終了時に Dispose(=プールへ返却)
             }
         }
 
@@ -101,6 +101,7 @@ namespace NxRebuild.Api.Controllers {
         public virtual async Task<IActionResult> SyncAll(DateTime refreshedAt) {
             try {
                 var syncedAt = DateTime.UtcNow;   // ★ 問い合わせ開始時点を基準時刻にする
+                
                 var q = new RecordQuery() ;
 
                 if (refreshedAt > DateTime.MinValue) {
@@ -125,8 +126,8 @@ namespace NxRebuild.Api.Controllers {
                 var items = new List<SyncItem<TKey>>();
 
                 foreach (var obj in mgr.DataList) {
-                    if (obj.Update_at <= refreshedAt &&
-                        obj.LockedAt <= refreshedAt &&
+                    if (obj.Update_at < refreshedAt &&
+                        obj.LockedAt < refreshedAt &&
                         refreshedAt != DateTime.MinValue) {
                         continue;
                     }
@@ -156,7 +157,7 @@ namespace NxRebuild.Api.Controllers {
                 // ★ NxOperationResult に SyncItems を含めて返す
                 return Ok(new NxOperationResult<TKey> {
                     SyncItems = items,
-                    RefreshedAt = syncedAt,
+                    RefreshedAt = syncedAt.AddSeconds(-10),// 保存途中の行の取りこぼし防止。再送は UPSERT なので無害
                     Message = "Sync completed"
                     // Success は計算判定で true
                 });
@@ -236,6 +237,14 @@ namespace NxRebuild.Api.Controllers {
                 await CreateObjMgrAsync(q);
 
                 var failedIds = new List<TKey>();
+                NxOperationResult<TKey>? firstFailure = null;
+
+                void Fail(TKey id, NxValidationErrorCode v, NxOperationErrorCode o, string msg) {
+                    if (v == NxValidationErrorCode.None && o == NxOperationErrorCode.None)
+                        o = NxOperationErrorCode.Unknown;           // 全件失敗のとき必ずエラーとして見えるように
+                    failedIds.Add(id);
+                    firstFailure ??= new NxOperationResult<TKey> { ValidationErrorCode = v, OperationErrorCode = o, Message = msg };
+                }
 
                 foreach (var dataId in dataLst) {
                     try {
@@ -244,14 +253,14 @@ namespace NxRebuild.Api.Controllers {
 
                         if (dataObj == null) {
                             failedIds.Add(dataId);
-                            continue;
+                            Fail(dataId, NxValidationErrorCode.None, NxOperationErrorCode.Unknown, "対象が見つかりません"); continue; ;
                         }
 
                         //  _Validate
                         var v = dataObj._Validate(OperationType.Delete);
                         if (!v.Success) {
                             failedIds.Add(dataId);
-                            continue;
+                            Fail(dataId, v.ValidationErrorCode, NxOperationErrorCode.None, v.Message); continue; ;
                         }
 
                         //  ロック要求（冪等性保証）
@@ -260,7 +269,7 @@ namespace NxRebuild.Api.Controllers {
                         //　ロック確認
                         if (!lockst.CanEdit || lockst.Result != LockResult.Success) {
                             failedIds.Add(dataId);
-                            continue;
+                            Fail(dataId, NxValidationErrorCode.LockedByOther, NxOperationErrorCode.None, "他のユーザーが編集中です"); continue; ;
                         }
 
                         NxOperationResult<TKey> deleted;
@@ -275,7 +284,8 @@ namespace NxRebuild.Api.Controllers {
                             await dataObj._SetUnLockAsync();
 
                             failedIds.Add(dataObj.DataID);
-                            continue;
+
+                            Fail(dataObj.DataID, deleted.ValidationErrorCode, deleted.OperationErrorCode, deleted.Message); continue;
                         }
 
                         // 削除成功したらレコードは存在しないかソフトデリートでもロック解除は必要ない
@@ -291,19 +301,17 @@ namespace NxRebuild.Api.Controllers {
                         } catch { /* ロック解除失敗は無視 */ }
 
                         // 続行（他の ID の削除は続ける）
-                        continue;
+                        Fail(dataId, NxValidationErrorCode.None, NxOperationErrorCode.ServerException, ex.Message); continue;
                     }
                 }
 
                 // ★ NxOperationResult に変換して返す
+                bool allFailed = failedIds.Count > 0 && failedIds.Count == dataLst.Count;
                 return Ok(new NxOperationResult<TKey> {
                     FailedIds = failedIds,
-                    ValidationErrorCode = failedIds.Count == 0
-                        ? NxValidationErrorCode.None
-                        : NxValidationErrorCode.CannotDeleteRoot,
-                    Message = failedIds.Count == 0
-                        ? "Deleted"
-                        : "Some items failed"
+                    ValidationErrorCode = allFailed ? firstFailure!.ValidationErrorCode : NxValidationErrorCode.None,
+                    OperationErrorCode = allFailed ? firstFailure!.OperationErrorCode : NxOperationErrorCode.None,
+                    Message = failedIds.Count == 0 ? "Deleted" : (firstFailure?.Message ?? "Some items failed")
                 });
             } catch (Exception ex) {
                 // ★ Delete 全体の例外（CreateObjMgrAsync や内部例外）
@@ -547,7 +555,16 @@ namespace NxRebuild.Api.Controllers {
                 }
 
                 // ★ ロック情報が JSON で更新されてしまうので再設定
-                await obj._ReWriteLockInfoAsync(tran, obj.CurrUsrID, DateTime.UtcNow);
+                lockst = await obj._ReWriteLockInfoAsync(tran, null, null);   // DBへ書いて延命
+                
+                if (lockst.HasError || lockst.IsLocked) {
+                    tran.Rollback();
+                    return BadRequest(new NxOperationResult<TKey> {
+                        ValidationErrorCode = NxValidationErrorCode.LockedByOther,
+                        LockStatus = lockst,
+                        Message = "ロックの更新に失敗しました"
+                    });
+                }
 
                 // ★ テーブル書き込み後フック
                 var afterSaveResult = await AfterSaveProcess(obj, workingRaw, tran);

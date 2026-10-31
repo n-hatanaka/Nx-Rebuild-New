@@ -11,11 +11,12 @@ namespace NxRebuild.Client.Pages.Auth
     public class JwtAuthorizationMessageHandler : DelegatingHandler
     {
         private readonly IJSRuntime _jsRuntime;
+        private readonly SessionEvents _events;
 
-        public JwtAuthorizationMessageHandler(IJSRuntime jsRuntime)
-        {
-            _jsRuntime = jsRuntime;
+        public JwtAuthorizationMessageHandler(IJSRuntime jsRuntime, SessionEvents events) {
+            _jsRuntime = jsRuntime; _events = events;
         }
+
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) {
             string token = null;
 
@@ -31,7 +32,12 @@ namespace NxRebuild.Client.Pages.Auth
             }
 
             try {
-                return await base.SendAsync(request, cancellationToken);
+                //return await base.SendAsync(request, cancellationToken);
+                var res = await base.SendAsync(request, cancellationToken);
+                if (res.StatusCode == HttpStatusCode.Unauthorized &&
+                    request.RequestUri!.AbsolutePath.EndsWith("/auth/login", StringComparison.OrdinalIgnoreCase) == false)
+                    _events.RaiseUnauthorized();      // ログイン自体の401(パスワード誤り)は対象外
+                return res;
             } catch (HttpRequestException ex) {
                 // JSInterop が未初期化の可能性があるので、ここも try/catch で包む
                 try {

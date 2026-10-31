@@ -186,8 +186,12 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
             return;
         }
 
+        protected bool _saving;
 
         public async Task SaveAsync() {
+            if (_saving) return;
+            _saving = true;
+
             try {
                 //  NutrientModel の内容を WorkingRaw に反映
                 Nut.SaveToRaw(WorkingRaw);
@@ -219,6 +223,8 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
                 Console.WriteLine($"Z_EditBase.SaveAsync:保存中にエラーが発生しました: {ex.Message}");
                 await JS.InvokeVoidAsync("aknAlert", $"例外発生: {ex.Message}");
                 throw;
+            } finally {
+                _saving = false;
             }
         }
 

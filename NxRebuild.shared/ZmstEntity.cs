@@ -184,30 +184,21 @@ namespace NxRebuild.shared {
         // 
         // ---------------------------------------------------------
         public int GenerateDataID(IDbTransaction tran) {
-            bool isSQLite = DBcon.ConnectionString.Contains("mode=memory", StringComparison.OrdinalIgnoreCase);
-
-            if (isSQLite) {
-                // SQLite は FOR UPDATE が無いので MAX+1 でOK
-                string sql = $@"
-                                SELECT COALESCE(MAX(""LocalCode""), 0) + 1
-                                FROM ""{_primaryTableName}""
-                                WHERE ""tenant_code"" = @TenantCode;
-                            ";
-                return DBcon.ExecuteScalar<int>(sql, new { TenantCode }, tran);
+            if (LocationKind == NxLocationKind.Server) {
+                // 同一テナント・同一テーブルの採番を、トランザクション終了まで直列化する。
+                // 行ロックは最終行にしか効かず、同時の新規保存で同じ番号を取れてしまうため。
+                DBcon.ExecuteScalar(
+                    "SELECT pg_advisory_xact_lock(hashtext(@key));",
+                    new { key = $"{_primaryTableName}:{TenantCode}" },
+                    tran);
             }
 
-            // PostgreSQL / MySQL / SQLServer
-            string sql2 = $@"
-                            SELECT ""LocalCode""
+            string sql = $@"
+                            SELECT COALESCE(MAX(""LocalCode""), 0) + 1
                             FROM ""{_primaryTableName}""
-                            WHERE ""tenant_code"" = @TenantCode
-                            ORDER BY ""LocalCode"" DESC
-                            LIMIT 1
-                            FOR UPDATE;
-                        ";
+                            WHERE ""tenant_code"" = @TenantCode;";
 
-            int? last = DBcon.ExecuteScalar<int?>(sql2, new { TenantCode }, tran);
-            return (last ?? 0) + 1;
+            return DBcon.ExecuteScalar<int>(sql, new { TenantCode }, tran);
         }
 
 

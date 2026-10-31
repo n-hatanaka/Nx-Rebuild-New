@@ -35,6 +35,12 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
 
         public override async Task<NxOperationResult<int>> SyncData() {
+            using var slot = NxSyncControl.For(DBcon).TryBeginSync();
+            if (slot == null)
+                return new NxOperationResult<int> { 
+                                            OperationErrorCode = NxOperationErrorCode.TransactionFailed
+                                            ,Message = "操作中のため同期をスキップしました" };
+
             // ① API に世界線同期点を渡す
             var url = $"{ApiRoute}/sync";
 

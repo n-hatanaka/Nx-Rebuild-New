@@ -645,11 +645,14 @@ namespace NxRebuild.shared {
                     var columns = string.Join(", ", normalized.Keys.Select(k => $@"""{k}"""));
                     var values = string.Join(", ", normalized.Keys.Select(k => $@"@{k}"));
 
+                    bool isServer = LocationKind == NxLocationKind.Server;
+
                     var updates = string.Join(", ",
                         normalized.Keys
                             .Where(k => k != IdColName && k != "update_at")
+                            .Where(k => !(isServer && (k == "locked_by" || k == "locked_at")))
                             .Select(k => $@"""{k}"" = EXCLUDED.""{k}""")
-                    );
+                    );                    
 
                     string sql;
 
@@ -761,7 +764,7 @@ namespace NxRebuild.shared {
             try {
                 Opened = false; //編集中フラグをOFF
 
-                var lockst = await _ReWriteLockInfoAsync(null, null, null);
+                var lockst = await _SetUnLockAsync();   // ローカル行のロック情報を解除する
 
                 return new NxOperationResult<TKey> {
                     LockStatus = lockst,

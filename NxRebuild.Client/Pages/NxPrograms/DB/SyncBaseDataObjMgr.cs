@@ -29,6 +29,10 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
         public abstract string ApiRoute { get; }
 
+
+        //DataChanged のハンドラは、SyncData の枠を持った状態で呼ばれます。
+        //ハンドラの中から、PauseAsync() を呼ぶメソッド(保存や削除など)を 
+        //await すると、デッドロックします。再描画のような軽い処理だけにしてください。
         public event Action? DataChanged;　//更新イベント
 
         public string TblName => _baseDataObjMgr.TblName;
@@ -90,6 +94,8 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
         // データベースからデータを取得する（クライアント・サーバー共用）
         public virtual async Task InitializeAsync(RecordQuery q) {
+            //SyncDataの一時停止
+            using var _pause = await NxSyncControl.For(DBcon).PauseAsync();
 
             // BaseDataObjでプロパティをロード
             await _baseDataObjMgr.InitializeAsync(q);
@@ -139,18 +145,11 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
         protected bool _syncing;
         public virtual async Task<NxOperationResult<TKey>> SyncData() {
-            if (_syncing)
-                return new NxOperationResult<TKey> {
-                    OperationErrorCode = NxOperationErrorCode.Unknown,
-                    Message = "同期処理中"
-                };
+            using var slot = NxSyncControl.For(DBcon).TryBeginSync();
+            if (slot == null)
+                return new NxOperationResult<TKey> { Message = "操作中のため同期をスキップしました" };  // エラーではない
 
-            _syncing = true;
-            try {
-                return await SyncDataCore();
-            } finally {
-                _syncing = false;      // 通信エラー・HTTPエラー・解析エラー・例外のどれでも必ず戻る
-            }
+            return await SyncDataCore();     
         }
 
         protected virtual async Task<NxOperationResult<TKey>> SyncDataCore() {
@@ -276,6 +275,9 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         }
 
         public virtual async Task<NxOperationResult<TKey>> DeleteDataAsync(IEnumerable<TKey> dataIDs, bool softDelete = false, IDbTransaction tran = null) {
+            //SyncDataの一時停止
+            using var _pause = await NxSyncControl.For(DBcon).PauseAsync();
+
             var url = $"{ApiRoute}/Delete";
 
             HttpResponseMessage response;
