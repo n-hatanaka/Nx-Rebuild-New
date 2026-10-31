@@ -3,6 +3,7 @@
 @using MudBlazor
 @using NxRebuild.Client.Services
 @using NxRebuild.shared
+@using NxRebuild.Client.Pages.NxPrograms.DB
 @using NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View
 
 <style>
@@ -138,10 +139,11 @@
 @code {
 
     private bool _initialized = false;
-    
+
     protected override async Task OnInitializedAsync()
     {
         ZmstMgr = GlobalState.ZmstEntityMgr;
+        ((ISyncZmstEntityMgr)ZmstMgr).DataChanged += SyncRefreshUI;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)

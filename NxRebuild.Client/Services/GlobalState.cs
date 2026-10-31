@@ -9,7 +9,11 @@ namespace NxRebuild.Client.Services
     {
         public static SyncNutPropertyObjMgr? NutProperties { get; set; }
 
+        public static SyncScheduler<int>? NutPropScheduler { get; set; }
+
         //public static IZmstEntityMgr? ZmstEntityMgr { get; set; }
         public static IZmstEntityMgr? ZmstEntityMgr { get; set; }
+
+        public static SyncScheduler<int>? ZmstScheduler{ get; set; }
     }
 }

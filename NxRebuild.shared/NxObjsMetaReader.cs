@@ -49,6 +49,7 @@ namespace NxRebuild.shared {
         public string[] WorkDtlTblList { get; set; } = Array.Empty<string>();
         public string InfoTable { get; set; }
         public NxDataType DataType { get; set; }
+
     }
 
 

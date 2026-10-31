@@ -227,8 +227,8 @@ namespace NxRebuild.shared {
         }
 
         //材料マスタ専用のバリデータ
-        protected override NxValidator<int> CreateValidator(IBaseDataObj<int> IBaseDataObj, Dictionary<string, object> ValidData) {
-            return new ZmstValidator(this, _rawData);
+        protected override NxValidator<int> CreateValidator(IBaseDataObj<int> IBaseDataObj, string ValidData) {
+            return new ZmstValidator(this, ValidData);
         }
 
     }

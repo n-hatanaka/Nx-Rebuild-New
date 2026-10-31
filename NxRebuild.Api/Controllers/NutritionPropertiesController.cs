@@ -77,7 +77,7 @@ namespace NxRebuild.Api.Controllers {
             raw["Visible"] = newVal;
 
             // SaveAsync（NxOperationResult を返す）
-            var result = await target.SaveAsync(raw);
+            var result = await target.SaveQueryExec(null);
 
             // API 世界線の出口は IActionResult → JSON にするだけ
             return Ok(result);
@@ -86,28 +86,50 @@ namespace NxRebuild.Api.Controllers {
 
         [HttpGet("sync")]
         public async Task<IActionResult> SyncAll() {
-            // DataObjMgr を生成
-            await CreateObjMgrAsync(null);
-            var mgr = _dataObjMgr;
+            try { 
+                // ★ DataObjMgr を生成
+                await CreateObjMgrAsync(null);
+                var mgr = _dataObjMgr;
 
-            var resultList = new List<object>();
+                var items = new List<SyncItem<int>>();
 
-            foreach (var obj in mgr.DataList) {
-                // 全てのデータをJSonに変換
-                var json = obj.TblToJson();
+                foreach (var obj in mgr.DataList) {
+                    // ★ クライアントの更新及びロック時刻よりあたらしいBaseDataObj<TKey>
+                    string json;
 
-                resultList.Add(new {
-                    Key = obj.DataID,
-                    Data = json
+                    try {
+                        json = obj.TblToJson();   // ← ここで例外が起こる可能性あり
+                        if (json == null)
+                            continue;
+
+                    } catch (Exception ex) {
+                        // ★ TblToJson の例外を NxOperationResult に包んで返す
+                        return BadRequest(new NxOperationResult<int> {
+                            OperationErrorCode = NxOperationErrorCode.ServerException,
+                            Message = $"TblToJson failed: {ex.Message}"
+                        });
+                    }
+
+                    items.Add(new SyncItem<int> {
+                        DataId = obj.DataID,
+                        Data = json
+                    });
+                }
+
+                // ★ NxOperationResult に SyncItems を含めて返す
+                return Ok(new NxOperationResult<int> {
+                    SyncItems = items,
+                    Message = "Sync completed"
+                    // Success は計算判定で true
+                });
+            } catch (Exception ex) {
+                // ★ CreateObjMgrAsync やその他の例外を NxOperationResult に包んで返す
+                return BadRequest(new NxOperationResult<int> {
+            OperationErrorCode = NxOperationErrorCode.ServerException,
+                    Message = $"SyncAll failed: {ex.Message}"
                 });
             }
-
-            // ひとまとめにして返す
-            return Ok(new {
-                Refreshed_at = DateTime.UtcNow,
-                Items = resultList
-            });
-        }
+}
 
 
         [HttpPost("Delete")]

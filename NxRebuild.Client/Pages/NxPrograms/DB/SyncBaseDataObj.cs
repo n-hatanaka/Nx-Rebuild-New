@@ -847,8 +847,8 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         public void _SetProperties(IDictionary<string, object> record)
                                     => _dataObj._SetProperties(record);
 
-        public virtual NxOperationResult<TKey> _Validate(OperationType op, object? arg = null)
-                                                => _dataObj._Validate(op, arg);
+        public virtual NxOperationResult<TKey> _Validate(OperationType op, string? validData = null)
+                                                => _dataObj._Validate(op, validData);
 
         public virtual async Task<bool> _DeleteQueryExecAsync(IDbTransaction transaction, bool softDelete)
                                                 => await _dataObj._DeleteQueryExecAsync(transaction, softDelete);

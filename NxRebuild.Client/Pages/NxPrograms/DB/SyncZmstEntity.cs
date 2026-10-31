@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 
 namespace NxRebuild.Client.Pages.NxPrograms.DB {
     public class SyncZmstEntity : SyncBaseDataObj<int> , IBaseDataObj<int>, IZmstEntity {
+        
         public override string ApiRoute => "Zmst";
 
 

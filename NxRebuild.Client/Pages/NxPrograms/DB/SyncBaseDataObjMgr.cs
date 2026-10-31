@@ -13,6 +13,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
     public interface ISyncBaseDataObjMgr<TBase, TSync, TKey> : IBaseDataObjMgr<TBase, TKey>
         where TBase : BaseDataObj<TKey>
         where TSync : SyncBaseDataObj<TKey> {
+        event Action? DataChanged;
         Task<NxOperationResult<TKey>> SyncData();
     }
 
@@ -27,6 +28,8 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         protected CustomAuthStateProvider _auth;
 
         public abstract string ApiRoute { get; }
+
+        public event Action? DataChanged;　//更新イベント
 
         public string TblName => _baseDataObjMgr.TblName;
         public string[] DetailTableList => _baseDataObjMgr.DetailTableList;
@@ -133,7 +136,16 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         // そのためネットワーク例外・タイムアウト・APIエラーが発生しても、
         // ローカル側の整合性が崩れることはありません。次回の同期で解決されます。
         // =======================================================
+
+        protected bool _syncing;
         public virtual async Task<NxOperationResult<TKey>> SyncData() {
+            if (_syncing)
+                return new NxOperationResult<TKey> {
+                    OperationErrorCode = NxOperationErrorCode.Unknown,
+                    Message = "同期処理中"
+                };
+
+            _syncing = true;
 
             DateTime refreshed_at = _baseDataObjMgr.Refreshed_at;
             var url = $"{ApiRoute}/sync/{refreshed_at:O}";
@@ -141,10 +153,10 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             HttpResponseMessage response;
 
             try {
-                // --- 通信ハンドリング（世界線は通信失敗で壊れない） ---
+                // --- 通信ハンドリング（データは通信失敗で壊れない） ---
                 response = await _http.GetAsync(url);
             } catch (Exception ex) {
-                // ネットワーク例外時は世界線が進まないだけなので false を返す
+                // ネットワーク例外時はデータ更新が進まないだけなので false を返す
                 return new NxOperationResult<TKey> {
                     OperationErrorCode = NxOperationErrorCode.NetworkError,
                     Message = $"通信エラー: {ex.Message}"
@@ -184,6 +196,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             var tran = DBcon.BeginTransaction();
 
             try {
+                int index = 0;
                 foreach (var item in syncResult.SyncItems) {
 
                     var dataId = item.DataId;
@@ -191,14 +204,19 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
                     var target = _baseDataObjMgr.Get(dataId);
 
+                    index++;
+
                     if (target != null) {
                         await target.JsonToTblAsync(dataJson, tran);
                     } else {
+                        if (dataJson == null) {
+                            continue;
+                        }
+
                         target = CreateNewDataObj(default(TKey));
                         target.DataID = dataId;
                         await target.JsonToTblAsync(dataJson, tran);
 
-                        SetParent(target);
                         
                     }
 
@@ -218,6 +236,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                 tran.Commit();
             } catch (Exception ex) {
                 tran.Rollback();
+                _syncing = false;
                 return new NxOperationResult<TKey> {
                     OperationErrorCode = NxOperationErrorCode.ServerException,
                     Message = $"同期処理中に例外が発生しました: {ex.Message}"
@@ -229,10 +248,13 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             // =======================================================
 
             foreach (var obj in DataList) {
+
                 SetParent(obj);
             }
 
-
+            
+            DataChanged?.Invoke();
+            _syncing = false;
             // ★ 正常終了
             return new NxOperationResult<TKey> {
                 Message = "Sync completed",

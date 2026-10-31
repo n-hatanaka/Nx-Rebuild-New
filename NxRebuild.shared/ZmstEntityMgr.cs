@@ -82,12 +82,13 @@ namespace NxRebuild.shared {
             try {
                 this.DataType = NxDataType.Zairyou;
 
-                CreateRoot();
+                if (LocationKind == NxLocationKind.Client) {
+                    CreateRoot();
 
-                // ---------------------------------------------------------
-                // 大分類 gun_m（分類マスタ）
-                // ---------------------------------------------------------
-                string sqlCat = @"
+                    // ---------------------------------------------------------
+                    // 大分類 gun_m（分類マスタ）
+                    // ---------------------------------------------------------
+                    string sqlCat = @"
                                     SELECT
                                         tenant_code,
                                         0 AS jun,
@@ -101,53 +102,53 @@ namespace NxRebuild.shared {
                                     ORDER BY dai_cd;
                                 ";
 
-                var rawCatRows = await DBcon.QueryAsync<dynamic>(
-                    sqlCat,
-                    new { tc = TenantCode }   // ← パラメータ名修正
-                );
-                    
-                var catRows = rawCatRows
-                    .Select(r => NxTypeMapper.ConvertRow("gun_m", (IDictionary<string, object>)r))
-                    .ToList();
+                    var rawCatRows = await DBcon.QueryAsync<dynamic>(
+                        sqlCat,
+                        new { tc = TenantCode }   // ← パラメータ名修正
+                    );
 
-                foreach (var row in catRows) {
-                    var cat = new CategoryEntity();
-                    cat.DBcon = DBcon;
-                    cat.TenantCode = TenantCode;
-                    cat.CurrUsrID = CurrentUserID;
-                    cat._SetProperties(row);
+                    var catRows = rawCatRows
+                        .Select(r => NxTypeMapper.ConvertRow("gun_m", (IDictionary<string, object>)r))
+                        .ToList();
 
-                    _dataList.Add(cat);
-                }
+                    foreach (var row in catRows) {
+                        var cat = new CategoryEntity();
+                        cat.DBcon = DBcon;
+                        cat.TenantCode = TenantCode;
+                        cat.CurrUsrID = CurrentUserID;
+                        cat._SetProperties(row);
 
-                // ---------------------------------------------------------
-                // 小分類 gun_m
-                // ---------------------------------------------------------
-                sqlCat = @"
+                        _dataList.Add(cat);
+                    }
+
+                    // ---------------------------------------------------------
+                    // 小分類 gun_m
+                    // ---------------------------------------------------------
+                    sqlCat = @"
                             SELECT *
                             FROM ""gun_m""
                             WHERE ""tenant_code"" = @tc;
                         ";
 
-                rawCatRows = await DBcon.QueryAsync<dynamic>(
-                    sqlCat,
-                    new { tc = TenantCode }
-                );
+                    rawCatRows = await DBcon.QueryAsync<dynamic>(
+                        sqlCat,
+                        new { tc = TenantCode }
+                    );
 
-                catRows = rawCatRows
-                    .Select(r => NxTypeMapper.ConvertRow("gun_m", (IDictionary<string, object>)r))
-                    .ToList();
+                    catRows = rawCatRows
+                        .Select(r => NxTypeMapper.ConvertRow("gun_m", (IDictionary<string, object>)r))
+                        .ToList();
 
-                foreach (var row in catRows) {
-                    var cat = new CategoryEntity();
-                    cat.DBcon = DBcon;
-                    cat.TenantCode = TenantCode;
-                    cat.CurrUsrID = CurrentUserID;
-                    cat._SetProperties(row);
+                    foreach (var row in catRows) {
+                        var cat = new CategoryEntity();
+                        cat.DBcon = DBcon;
+                        cat.TenantCode = TenantCode;
+                        cat.CurrUsrID = CurrentUserID;
+                        cat._SetProperties(row);
 
-                    _dataList.Add(cat);
+                        _dataList.Add(cat);
+                    }
                 }
-
            
 
                 // ---------------------------------------------------------

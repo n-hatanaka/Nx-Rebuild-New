@@ -485,6 +485,19 @@ namespace NxRebuild.shared {
                 }
 
                 // 古い方を返す
+                if (latestUpdate == DateTime.MinValue &&
+                    latestLocked == DateTime.MinValue) {
+                    return DateTime.MinValue;
+                }
+
+                if (latestUpdate == DateTime.MinValue) {
+                    return latestLocked;
+                }
+
+                if (latestLocked == DateTime.MinValue) {
+                    return latestUpdate;
+                }
+
                 return latestUpdate < latestLocked
                     ? latestUpdate
                     : latestLocked;
@@ -521,9 +534,31 @@ namespace NxRebuild.shared {
             _w_detailTblList = meta.WorkDtlTblList;
             //_datatype = meta.DataType;
 
-            //Initialize()はインスタンス生成元が呼び出す事(この中で呼んではいけない)
+            //Initialize()はインスタンス生成元が呼び出す事(ラッパークラス生成に関連するためこの中で呼んではいけない)
         }
         protected abstract TKey GenerateDataID();
+
+        public NxLocationKind LocationKind {
+            get {
+                var conn = DBcon.ConnectionString;
+                // WASM / MAUI / WPF の in-memory をすべて拾う
+                if (string.IsNullOrWhiteSpace(conn))
+                    return NxLocationKind.Client;
+
+                // SQLite の in-memory 全パターン
+                if (conn.Contains(":memory:", StringComparison.OrdinalIgnoreCase))
+                    return NxLocationKind.Client;
+
+                if (conn.Contains("mode=memory", StringComparison.OrdinalIgnoreCase))
+                    return NxLocationKind.Client;
+
+                if (conn.Contains("cache=shared", StringComparison.OrdinalIgnoreCase))
+                    return NxLocationKind.Client;
+
+                // それ以外はサーバー
+                return NxLocationKind.Server;
+            }
+        }
 
 
         //RootノードにあたるDataObjを生成
@@ -716,8 +751,11 @@ namespace NxRebuild.shared {
         //データベースからデータを取得する。(クライアント、サーバー共用）
         //コンストラクタで呼び出してはいけない。
         public virtual async Task InitializeAsync(RecordQuery? query) {
-            if (!string.IsNullOrEmpty(RootName))
-                CreateRoot();
+
+            if (LocationKind == NxLocationKind.Client) {
+                if (!string.IsNullOrEmpty(RootName))
+                    CreateRoot();
+            }
 
             var records = await _LoadRecordsAsync(query);
 

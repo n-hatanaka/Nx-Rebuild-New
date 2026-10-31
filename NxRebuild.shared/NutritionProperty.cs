@@ -27,6 +27,8 @@ namespace NxRebuild.shared
     
     [NxObjsMetaData(
         PrimaryTable = "ColName",
+        PriTblPKColList = new[] {"tenant_code", "No"},
+        WorkPriTable = "ColName",//←存在しなければプライマリテーブル名を必ず入れる
         NameCol = "Name",
         IdCol = "No"
         )]
@@ -64,13 +66,13 @@ namespace NxRebuild.shared
             //_idColName = "No";
         }
     
-        protected override IEnumerable<(string tableName, string sql)> CreateJSONsql()
-        {
-            yield return (_primaryTableName, 
-                          $@"SELECT t.* FROM ""{_primaryTableName}"" t
-                          WHERE t.""{_idColName}"" = @dataID AND t.""tenant_code"" = @tenantCode"
-                          );
-        }
+        //protected override IEnumerable<(string tableName, string sql)> CreateJSONsql()
+        //{
+        //    yield return (_primaryTableName, 
+        //                  $@"SELECT t.* FROM ""{_primaryTableName}"" t
+        //                  WHERE t.""{_idColName}"" = @dataID AND t.""tenant_code"" = @tenantCode"
+        //                  );
+        //}
     
         public override async Task<NxOperationResult<int>> DataOpenAsync()
         {

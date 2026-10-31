@@ -158,11 +158,30 @@ else
 
                 await GlobalState.NutProperties.InitializeAsync(null);
 
+                //定期同期開始
+                GlobalState.NutPropScheduler = new SyncScheduler<int>(GlobalState.NutProperties.SyncData, 5);
+                //GlobalState.NutPropScheduler.Start();
+
+
+                initMessage = "材料マスタ初期化中...";
+                StateHasChanged();
                 //デバッグ差し替え用GlobalState.ZmstEntityMgr = new ZmstEntityMgr(DbState.Connection, Http, customAuth, tenantGuid, currentUserGuid);
                 GlobalState.ZmstEntityMgr = new SyncZmstEntityMgr(DbState.Connection, Http, customAuth, tenantGuid, currentUserGuid);
+
+
+                //Zmstは一部カスタムしてあるためInitializeしてからSyncする。呼び出し順に注意
+                await GlobalState.ZmstEntityMgr.InitializeAsync(null);
                 await ((ISyncZmstEntityMgr)GlobalState.ZmstEntityMgr).SyncData();
 
-                await GlobalState.ZmstEntityMgr.InitializeAsync(null);
+                //定期同期開始
+                GlobalState.ZmstScheduler =
+                                new SyncScheduler<int>(
+                                    () => ((ISyncZmstEntityMgr)GlobalState.ZmstEntityMgr).SyncData(),
+                                    5);
+
+                GlobalState.ZmstScheduler.Start();
+
+
             }
             catch (Exception ex)
             {

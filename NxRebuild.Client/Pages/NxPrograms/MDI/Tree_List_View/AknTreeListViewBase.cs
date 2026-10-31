@@ -49,6 +49,9 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
         protected IBaseDataObjMgr<TObj, TKey>? DataMgr { get; set; }
         // ---------------------------------------------------------
 
+        protected void SyncRefreshUI() {
+            InvokeAsync(StateHasChanged);
+        }
         // ノード選択イベントハンドラ
         public virtual void HandleNodeSelection(MyTreeData<TKey> selectedNode) {
             if (selectedNode.ItemData is IBaseDataObj<TKey> folder) {

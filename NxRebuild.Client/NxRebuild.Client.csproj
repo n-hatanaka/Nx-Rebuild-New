@@ -14,6 +14,14 @@
     <WasmBuildNative>true</WasmBuildNative>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+    <DebugType>portable</DebugType>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
+    <DebugType>portable</DebugType>
+  </PropertyGroup>
+
   <ItemGroup>
     <Content Include="Pages\NxPrograms\MDI\Tree_List_View\Templates\_AknTreeListView.razor.txt" />
   </ItemGroup>

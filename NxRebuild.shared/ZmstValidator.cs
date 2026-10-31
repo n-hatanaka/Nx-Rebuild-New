@@ -3,7 +3,7 @@ using System.Security.Cryptography.X509Certificates;
 
 namespace NxRebuild.shared {
     public class ZmstValidator : NxValidator<int> {
-        public ZmstValidator(IBaseDataObj<int> dataObj, Dictionary<string, object> rawData)
+        public ZmstValidator(IBaseDataObj<int> dataObj, string rawData)
             : base(dataObj, rawData)
         {
           

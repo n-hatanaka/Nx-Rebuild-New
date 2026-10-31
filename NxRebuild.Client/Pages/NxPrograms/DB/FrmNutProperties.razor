@@ -1,5 +1,6 @@
 @page "/nutrition-properties"
 @using NxRebuild.Client.Services
+@using NxRebuild.Client.Pages.NxPrograms.DB
 @using MudBlazor
 
 <MudCard Class="ma-4 pa-4">
@@ -49,6 +50,21 @@
             .Where(x => x.Nutrition)
             .OrderBy(x => x.DataID)
             .ToList();
+
+        GlobalState.NutProperties.DataChanged += SyncRefreshUI;
+    }
+    
+    protected void SyncRefreshUI()
+    {
+        Console.WriteLine("REFRESH");
+
+        _items = GlobalState.NutProperties.DataList
+            .Cast<SyncNutProperty>()
+            .Where(x => x.Nutrition)
+            .OrderBy(x => x.DataID)
+            .ToList();
+
+        InvokeAsync(StateHasChanged);
     }
 
     private async Task OnVisibleChanged(SyncNutProperty item, bool value) {

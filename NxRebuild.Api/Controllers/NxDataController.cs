@@ -94,11 +94,7 @@ namespace NxRebuild.Api.Controllers {
         //    await SetUserInfo();
         //    EnsureConnection(); // ★ここで _db を開く
         //    
-        //     // ★ObjMgr を生成（Initialize は呼ばない）
-        //    _dataObjMgr = new BaseDataObjMgr<T, TKey>(_db, _tenantCode, _userID);
 
-        //     ★DataList やテーブル情報を読み込む
-        //    _dataObjMgr.Initialize();
         //}
 
         [HttpGet("sync/{refreshedAt}")]
@@ -121,17 +117,6 @@ namespace NxRebuild.Api.Controllers {
                     });
                 }
 
-                //q.Or.Add(new Condition {
-                //    Column = "Update_at",
-                //    Operator = "IS NOT NULL",
-                //    Value = null
-                //});
-
-                //q.Or.Add(new Condition {
-                //    Column = "locked_at",
-                //    Operator = "IS NOT NULL",
-                //    Value = null
-                //});
 
                 // ★ DataObjMgr を生成
                 await CreateObjMgrAsync(q);
@@ -140,8 +125,11 @@ namespace NxRebuild.Api.Controllers {
                 var items = new List<SyncItem<TKey>>();
 
                 foreach (var obj in mgr.DataList) {
-                    if ((obj.Update_at < refreshedAt) || (obj.LockedAt < refreshedAt))
+                    if (obj.Update_at <= refreshedAt &&
+                        obj.LockedAt <= refreshedAt &&
+                        refreshedAt != DateTime.MinValue) {
                         continue;
+                    }
 
                     // ★ クライアントの更新及びロック時刻よりあたらしいBaseDataObj<TKey>
                     string json;
@@ -471,7 +459,8 @@ namespace NxRebuild.Api.Controllers {
                       ?? _dataObjMgr.CreateNewDataObj(default));
 
             // _Validate を通す
-            var v = obj._Validate(OperationType.Save);
+            var v = obj._Validate(OperationType.Save, ReceiveJson);
+
             if (!v.Success)
                 return BadRequest(v);
 
