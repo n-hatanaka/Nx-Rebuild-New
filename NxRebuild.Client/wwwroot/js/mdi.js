@@ -136,6 +136,9 @@ window.mdi.initResizeMulti = (element, dotNetHelper) => {
             };
             dx = dy = 0;
             handle.setPointerCapture(e.pointerId);
+            window.addEventListener("pointermove", onMove);
+            window.addEventListener("pointerup", onUp);
+            window.addEventListener("pointercancel", onUp);
         };
 
         const onMove = (e) => {
@@ -151,6 +154,9 @@ window.mdi.initResizeMulti = (element, dotNetHelper) => {
             apply();                       // 最終位置を確定
             active = null;
             if (handle.hasPointerCapture?.(e.pointerId)) handle.releasePointerCapture(e.pointerId);
+            window.removeEventListener("pointermove", onMove);
+            window.removeEventListener("pointerup", onUp);
+            window.removeEventListener("pointercancel", onUp);
 
             const r = element.getBoundingClientRect();
             // ★ C# 呼び出しは1回だけ

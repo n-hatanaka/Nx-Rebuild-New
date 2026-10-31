@@ -7,33 +7,35 @@
 @inject HttpClient Http
 @inject IJSRuntime JS
 
-<h3>ログイン</h3>
+<div style="display: flex; justify-content: center; align-items: center; width: 100%; min-height: 75vh; padding: 20px; box-sizing: border-box;">
+    <div style="width: 360px; padding: 30px 24px; background: #ffffff; border: 1px solid #ddd; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.12); display: flex; flex-direction: column; align-items: center; box-sizing: border-box;">
 
-<div class="login-container">
+        <h3 style="margin-top: 0; margin-bottom: 20px; font-size: 1.4rem; font-weight: bold; color: #333333; text-align: center;">ログイン</h3>
 
-    <div class="preset-users">
-        <button @onclick="() => SetPresetUser(1)">ユーザー①</button>
-        <button @onclick="() => SetPresetUser(2)">ユーザー②</button>
+        <div style="display: flex; justify-content: center; gap: 12px; width: 100%; margin-bottom: 20px;">
+            <button style="flex: 1; padding: 8px 12px; border-radius: 6px; border: 1px solid #ccc; background: #f8f9fa; cursor: pointer;" @onclick="() => SetPresetUser(1)">ユーザー①</button>
+            <button style="flex: 1; padding: 8px 12px; border-radius: 6px; border: 1px solid #ccc; background: #f8f9fa; cursor: pointer;" @onclick="() => SetPresetUser(2)">ユーザー②</button>
+        </div>
+
+        <div style="width: 100%; margin-bottom: 16px; display: flex; flex-direction: column; align-items: flex-start;">
+            <label style="margin-bottom: 6px; font-weight: 600; font-size: 0.9rem; color: #444;">Email</label>
+            <input style="width: 100%; padding: 8px 12px; border-radius: 6px; border: 1px solid #ccc; box-sizing: border-box;" @bind="Email" />
+        </div>
+
+        <div style="width: 100%; margin-bottom: 20px; display: flex; flex-direction: column; align-items: flex-start;">
+            <label style="margin-bottom: 6px; font-weight: 600; font-size: 0.9rem; color: #444;">Password</label>
+            <input type="password" style="width: 100%; padding: 8px 12px; border-radius: 6px; border: 1px solid #ccc; box-sizing: border-box;" @bind="Password" />
+        </div>
+
+        <button style="width: 100%; padding: 10px; background: #0078d4; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer;" @onclick="DoLogin">ログイン</button>
     </div>
-
-    <div class="input-group">
-        <label>Email</label>
-        <input @bind="Email" />
-    </div>
-
-    <div class="input-group">
-        <label>Password</label>
-        <input type="password" @bind="Password" />
-    </div>
-
-    <button class="login-button" @onclick="DoLogin">ログイン</button>
 </div>
 
 @code {
     string Email = "";
     string Password = "";
     private string? ErrorMessage;
-    
+
     void SetPresetUser(int n)
     {
         if (n == 1)
@@ -60,17 +62,12 @@
 
         var json = await result.Content.ReadFromJsonAsync<LoginResponse>();
 
-        // JWT を sessionStorage に保存
         await JS.InvokeVoidAsync("sessionStorage.setItem", "authToken", json!.token);
-
-        // TenantCode 保存
         await JS.InvokeVoidAsync("sessionStorage.setItem", "tenant_code", json!.TenantCode);
 
-        // JWT を AuthStateProvider に通知
         var provider = (CustomAuthStateProvider)AuthProvider;
         provider.NotifyUserAuthentication(json.token);
 
-        // ホームへ
         Nav.NavigateTo("/Home");
     }
 
@@ -79,5 +76,4 @@
         public string token { get; set; }
         public string TenantCode { get; set; }
     }
-
 }

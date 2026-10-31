@@ -113,12 +113,130 @@ code {
 .form-floating > .form-control-plaintext:focus::placeholder, .form-floating > .form-control:focus::placeholder {
     text-align: start;
 }
-input, button, select, textarea {
-    border: 1px solid #ccc !important;
-    border-radius: 4px !important;
-    padding: 6px 10px !important;
+
+/* テキストボックス、ボタン、セレクトボックスなどの基本枠線・パディングを復旧 */
+input:not([type="checkbox"]):not([type="radio"]),
+select,
+textarea {
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    padding: 6px 10px;
+    box-sizing: border-box;
+    background-color: #fff;
 }
 
-.mdi-window {
-    will-change: transform;
+button,
+.btn {
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    padding: 6px 12px;
+    background-color: #f8f9fa;
+    cursor: pointer;
 }
+
+button:hover,
+.btn:hover {
+    background-color: #e2e6ea;
+}
+
+/* MDIウィンドウの基本レイアウト */
+.mdi-window {
+    position: fixed;
+    background: #ffffff;
+    border: 1px solid #999999;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    overflow: visible;
+    box-sizing: border-box;
+    will-change: transform;
+    border-radius: 6px;
+}
+
+.mdi-window.mdi-maximized {
+    border-radius: 0;
+    border: none;
+    box-shadow: none;
+}
+
+.mdi-titlebar {
+    height: 34px;
+    background: #e1e1e1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 10px;
+    cursor: move;
+    flex-shrink: 0;
+    user-select: none;
+    border-bottom: 1px solid #ccc;
+}
+
+.mdi-title-text {
+    font-weight: 600;
+    font-size: 0.9rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #333;
+}
+
+.mdi-content {
+    flex: 1 1 auto;
+    width: 100%;
+    height: calc(100% - 34px);
+    min-height: 0;
+    min-width: 0;
+    overflow: auto !important;
+    display: flex;
+    flex-direction: column;
+    background: #ffffff;
+    padding: 8px;
+    box-sizing: border-box;
+    position: relative;
+}
+
+.mdi-buttons {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.mdi-btn {
+    width: 24px !important;
+    height: 24px !important;
+    border: 1px solid #c8c8c8 !important;
+    border-radius: 4px !important;
+    background: #f8f9fa !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    cursor: pointer;
+    font-size: 12px !important;
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    color: #333 !important;
+}
+
+.mdi-btn:hover {
+    background: rgba(0, 0, 0, 0.15) !important;
+}
+
+.resize-handle {
+    position: absolute;
+    background: transparent;
+    z-index: 10000;
+    pointer-events: auto;
+    touch-action: none;
+}
+
+.resize-nw { top: 0; left: 0; width: 14px; height: 14px; cursor: nw-resize; }
+.resize-ne { top: 0; right: 0; width: 14px; height: 14px; cursor: ne-resize; }
+.resize-sw { bottom: 0; left: 0; width: 14px; height: 14px; cursor: sw-resize; }
+.resize-se { bottom: 0; right: 0; width: 14px; height: 14px; cursor: se-resize; }
+.resize-n { top: 0; left: 14px; right: 14px; height: 8px; cursor: n-resize; }
+.resize-s { bottom: 0; left: 14px; right: 14px; height: 8px; cursor: s-resize; }
+.resize-w { left: 0; top: 14px; bottom: 14px; width: 8px; cursor: w-resize; }
+.resize-e { right: 0; top: 14px; bottom: 14px; width: 8px; cursor: e-resize; }

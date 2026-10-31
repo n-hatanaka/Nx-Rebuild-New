@@ -45,21 +45,21 @@ else
             <!-- 栄養素 -->
             <h4>栄養素</h4>
 
-            <div class="nut-container">
-                <div class="row">
-                        @foreach (var np in NutritionList)
-                        {
-
-                            <div class="nut-row">
-                                <span class="nut-name">@np.DataName</span>
-                                <InputNumber TValue="decimal?"
-                                             Value="Nut[np.Col]"
-                                             ValueChanged="v => Nut[np.Col] = v"
-                                             ValueExpression="() => Nut.ValueProxy" />
-                                <span class="nut-name">@np.PTanni</span>
-                            </div>
-                        }
-                </div>
+            <div style="display: flex; flex-wrap: wrap; gap: 12px 16px; margin-top: 10px;">
+                @foreach (var np in NutritionList)
+                {
+                    <div style="display: flex; flex-direction: column; width: 180px;">
+                        <span style="font-weight: 600; margin-bottom: 4px; font-size: 0.85rem;">@np.DataName</span>
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <InputNumber TValue="decimal?"
+                                         Value="Nut[np.Col]"
+                                         ValueChanged="v => Nut[np.Col] = v"
+                                         ValueExpression="() => Nut.ValueProxy"
+                                         style="width: 100px; text-align: right; padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;" />
+                            <span style="white-space: nowrap; font-size: 0.85rem;">@np.PTanni</span>
+                        </div>
+                    </div>
+                }
             </div>
 
             <!-- 単位（追加のみ） -->

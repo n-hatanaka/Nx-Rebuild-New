@@ -146,6 +146,14 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                 };
 
             _syncing = true;
+            try {
+                return await SyncDataCore();
+            } finally {
+                _syncing = false;      // 通信エラー・HTTPエラー・解析エラー・例外のどれでも必ず戻る
+            }
+        }
+
+        protected virtual async Task<NxOperationResult<TKey>> SyncDataCore() {
 
             DateTime refreshed_at = _baseDataObjMgr.Refreshed_at;
             var url = $"{ApiRoute}/sync/{refreshed_at:O}";
@@ -193,7 +201,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                 return syncResult;
 
             // ★ 検証が終わってからトランザクションを開始する（早期 return での開きっぱなしを防ぐ）
-            var tran = DBcon.BeginTransaction();
+            using var tran = DBcon.BeginTransaction();
 
             try {
                 int index = 0;
@@ -217,7 +225,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                         target.DataID = dataId;
                         await target.JsonToTblAsync(dataJson, tran);
 
-                        
+
                     }
 
                     // =======================================================
@@ -229,14 +237,13 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                     if (target.Update_at == DateTime.MaxValue
                         && target.LockedAt == DateTime.MinValue) {
 
-                        await _baseDataObjMgr._DeleteDataObjFromListAsync(target.DataID);
+                        await _baseDataObjMgr._DeleteDataObjFromListAsync(target.DataID, false, tran);
                     }
                 }
 
                 tran.Commit();
             } catch (Exception ex) {
                 tran.Rollback();
-                _syncing = false;
                 return new NxOperationResult<TKey> {
                     OperationErrorCode = NxOperationErrorCode.ServerException,
                     Message = $"同期処理中に例外が発生しました: {ex.Message}"
@@ -252,9 +259,15 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                 SetParent(obj);
             }
 
-            
-            DataChanged?.Invoke();
-            _syncing = false;
+
+            try { 
+                DataChanged?.Invoke(); 
+            } catch (Exception ex) { 
+                return new NxOperationResult<TKey> {
+                    OperationErrorCode = NxOperationErrorCode.Unknown,
+                    Message = $"DataChanged handler ERROR: {ex.Message}"
+                };
+            }
             // ★ 正常終了
             return new NxOperationResult<TKey> {
                 Message = "Sync completed",

@@ -22,60 +22,93 @@ namespace NxRebuild.Api.Controllers {
             return new NpgsqlConnection(_connectionString);
         }
 
-        // -------------------------------------------------------------
-        // 指定されたテーブル名のデータを丸ごと返す（識別子クォート統一版）
-        // -------------------------------------------------------------
+        
+        // クライアントが同期してよいマスタテーブルだけを列挙する(すべて tenant_code 列を持つこと)
+        private static readonly HashSet<string> AllowedTables =
+            new(StringComparer.Ordinal) { "ColName", "gun_m" };
+
         [HttpGet("data/{tableName}/{tenant_code}")]
         public async Task<IActionResult> GetTableData(string tableName, string tenant_code) {
-            if (!System.Text.RegularExpressions.Regex.IsMatch(tableName, @"^[a-zA-Z0-9_]+$"))
-                return BadRequest("不正なテーブル名です。");
+            // 許可リスト外は存在を教えない
+            if (!AllowedTables.Contains(tableName))
+                return NotFound();
 
-            if (string.IsNullOrEmpty(tenant_code))
-                return BadRequest("不正なtenant_codeです。");
+            // テナントは署名済みトークンのクレームから取る
+            if (!Guid.TryParse(User.FindFirst("tenant_code")?.Value, out var tenantGuid)
+                || tenantGuid == Guid.Empty)
+                return Forbid();
+
+            // URL の値はトークンと一致するかの確認にだけ使う
+            if (!Guid.TryParse(tenant_code, out var urlTenant) || urlTenant != tenantGuid)
+                return Forbid();
 
             try {
                 using var con = CreateConnection();
                 await con.OpenAsync();
 
-                // information_schema は PostgreSQL のシステムビューなのでクォート不要
-                var sql = @"
-                    SELECT EXISTS (
-                        SELECT 1
-                        FROM information_schema.columns
-                        WHERE table_name = @TableName
-                          AND column_name = 'tenant_code'
-                          AND table_schema = 'public'
-                    );
-                ";
-
-                var hasTenantCode = await con.ExecuteScalarAsync<bool>(sql, new { TableName = tableName });
-
-                IEnumerable<dynamic> data;
-
-                if (hasTenantCode) {
-                    var guidValue = Guid.Parse(tenant_code);
-
-                    sql = $@"
-                        SELECT *
-                        FROM ""{tableName}""
-                        WHERE ""tenant_code"" = @tenant_code;
-                    ";
-
-                    data = await con.QueryAsync(sql, new { tenant_code = guidValue });
-                } else {
-                    sql = $@"
-                        SELECT *
-                        FROM ""{tableName}"";
-                    ";
-
-                    data = await con.QueryAsync(sql);
-                }
-
+                var sql = $@"SELECT * FROM ""{tableName}"" WHERE ""tenant_code"" = @tenant_code;";
+                var data = await con.QueryAsync(sql, new { tenant_code = tenantGuid });
                 return Ok(data);
             } catch (Exception ex) {
-                return StatusCode(500, $"データ取得に失敗しました ({tableName}): {ex.Message}");
+                Console.WriteLine($"GetTableData ERROR ({tableName}): {ex}");
+                return StatusCode(500, "データ取得に失敗しました。");   // 例外メッセージは返さない
             }
         }
+
+        //// -------------------------------------------------------------
+        //// 指定されたテーブル名のデータを丸ごと返す（識別子クォート統一版）
+        //// -------------------------------------------------------------
+        //[HttpGet("data/{tableName}/{tenant_code}")]
+        //public async Task<IActionResult> GetTableData(string tableName, string tenant_code) {
+        //    if (!System.Text.RegularExpressions.Regex.IsMatch(tableName, @"^[a-zA-Z0-9_]+$"))
+        //        return BadRequest("不正なテーブル名です。");
+
+        //    if (string.IsNullOrEmpty(tenant_code))
+        //        return BadRequest("不正なtenant_codeです。");
+
+        //    try {
+        //        using var con = CreateConnection();
+        //        await con.OpenAsync();
+
+        //        // information_schema は PostgreSQL のシステムビューなのでクォート不要
+        //        var sql = @"
+        //            SELECT EXISTS (
+        //                SELECT 1
+        //                FROM information_schema.columns
+        //                WHERE table_name = @TableName
+        //                  AND column_name = 'tenant_code'
+        //                  AND table_schema = 'public'
+        //            );
+        //        ";
+
+        //        var hasTenantCode = await con.ExecuteScalarAsync<bool>(sql, new { TableName = tableName });
+
+        //        IEnumerable<dynamic> data;
+
+        //        if (hasTenantCode) {
+        //            var guidValue = Guid.Parse(tenant_code);
+
+        //            sql = $@"
+        //                SELECT *
+        //                FROM ""{tableName}""
+        //                WHERE ""tenant_code"" = @tenant_code;
+        //            ";
+
+        //            data = await con.QueryAsync(sql, new { tenant_code = guidValue });
+        //        } else {
+        //            sql = $@"
+        //                SELECT *
+        //                FROM ""{tableName}"";
+        //            ";
+
+        //            data = await con.QueryAsync(sql);
+        //        }
+
+        //        return Ok(data);
+        //    } catch (Exception ex) {
+        //        return StatusCode(500, $"データ取得に失敗しました ({tableName}): {ex.Message}");
+        //    }
+        //}
 
         // -------------------------------------------------------------
         // PostgreSQL の生スキーマを Nx 用 DTO に変換して返す

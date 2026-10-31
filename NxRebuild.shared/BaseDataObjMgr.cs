@@ -867,37 +867,32 @@ namespace NxRebuild.shared {
 
 
         //指定したデータを削除し、_dataListからオブジェクトを削除
-        public virtual async Task<bool> _DeleteDataObjFromListAsync(TKey dataID, bool softDelete = false ,IDbTransaction tran = null) {
-            var target = (ISharedDataObj<TKey>)Get(dataID);
+        public virtual async Task<bool> _DeleteDataObjFromListAsync(
+                TKey dataID, bool softDelete = false, IDbTransaction tran = null) {
 
+            var target = (ISharedDataObj<TKey>)Get(dataID);
             if (target == null)
                 return false;
 
-            var transaction = tran;
-
-            if (tran == null) 
-                transaction = DBcon.BeginTransaction();
+            // 呼び出し側から tran を渡された場合、確定・破棄は呼び出し側の責務
+            bool ownsTran = tran == null;
+            var transaction = tran ?? DBcon.BeginTransaction();
 
             try {
-
-
-                bool result;
-                var baseObj = target;
-                result = await baseObj._DeleteQueryExecAsync(transaction, softDelete);
-                
-                if (!result) {
-                    transaction.Rollback();
-                    return false;   // 正常系の失敗
+                if (!await target._DeleteQueryExecAsync(transaction, softDelete)) {
+                    if (ownsTran) transaction.Rollback();
+                    return false;               // 正常系の失敗
                 }
 
-                transaction.Commit();
+                if (ownsTran) transaction.Commit();
 
                 _RemoveFromList((IBaseDataObj<TKey>)target);
-
                 return true;
             } catch {
-                transaction.Rollback();
-                throw;  // 異常系の破綻
+                if (ownsTran) transaction.Rollback();
+                throw;                          // 異常系の破綻
+            } finally {
+                if (ownsTran) transaction.Dispose();
             }
         }
 

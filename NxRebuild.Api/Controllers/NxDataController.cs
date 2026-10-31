@@ -321,8 +321,14 @@ namespace NxRebuild.Api.Controllers {
             if (!before.Success) return before;
 
             var del = await _dataObjMgr.DeleteDataAsync(
-                new List<TKey> { dataObj.DataID }, softDelete, tran);
-            if (del.FailedIds.Count != 0) return del;
+                                        new List<TKey> { dataObj.DataID }, softDelete, tran);
+
+            if (del.FailedIds.Count != 0)
+                return new NxOperationResult<TKey> {
+                    OperationErrorCode = NxOperationErrorCode.DbError,
+                    Message = del.Message,
+                    FailedIds = del.FailedIds
+                };
 
             var after = await AfterDeleteProcess(dataId, tran);
             return after;

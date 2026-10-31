@@ -21,78 +21,82 @@
 @using NxRebuild.Client.Pages.Auth
 @inject InMemoryDatabaseState DbState
 
-<h3>MainWnd</h3>
-<hr />
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <h3>MainWnd</h3>
+    <hr />
 
-@if (isInitializing)
-{
-    <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
-    <p>@initMessage</p>
-    @* 初期化中はここで描画を止める *@
-    return;
-}
-
-@if (DbState.IsInitialized)
-{
-    <p style="color:green">インメモリDB準備完了！</p>
-}
-else
-{
-    <p>データベース初期化中</p>
-}
-
-<div>Hash: @Manager.GetHashCode()</div>
-
-<WindowManager Manager="Manager" />
-
-
-<MudCard Class="mt-4 pa-4" Style="background-color: #fafafa; border: 1px dashed #ccc;">
-    <MudText Typo="Typo.h6" Color="Color.Primary">👁 目隠し解除：簡易SQLコンソール</MudText>
-    <MudText Typo="Typo.caption">※インメモリDBに対して任意のSQL（SELECTなど）を実行できます。</MudText>
-
-    <MudTextField T="string"
-                  @bind-Value="sqlQuery"
-                  Label="SQLクエリを入力"
-                  Variant="Variant.Outlined"
-                  Lines="3"
-                  Class="mt-2" />
-
-    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ExecuteQuery" Class="mt-2">SQL実行</MudButton>
-
-    @if (!string.IsNullOrEmpty(queryError))
+    @if (isInitializing)
     {
-        <MudText Color="Color.Error" Class="mt-2">⚠️ @queryError</MudText>
+        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 60vh;">
+            <MudProgressCircular Indeterminate="true" Color="Color.Primary" Size="Size.Large" />
+            <p style="margin-top: 15px; font-weight: bold;">@initMessage</p>
+        </div>
+        @* 初期化中はここで描画を止める *@
+        return;
     }
 
-    @if (queryResult != null && queryResult.Any())
+    @if (DbState.IsInitialized)
     {
-        <div style="overflow-x: auto; max-height: 300px; margin-top: 15px;">
-            <table style="width: 100%; border-collapse: collapse; background-color: white; font-size: 13px;">
-                <thead>
-                    <tr style="background-color: #e0e0e0;">
-                        @foreach (var header in headers)
-                        {
-                            <th style="border: 1px solid #ccc; padding: 6px; text-align: left;">@header</th>
-                        }
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var row in queryResult)
-                    {
-                        <tr>
+        <p style="color:green">インメモリDB準備完了！</p>
+    }
+    else
+    {
+        <p>データベース初期化中</p>
+    }
+
+    <div>Hash: @Manager.GetHashCode()</div>
+
+    <WindowManager Manager="Manager" />
+
+
+    <MudCard Class="mt-8 pa-4" Style="background-color: #fafafa; border: 1px dashed #ccc;">
+        <MudText Typo="Typo.h6" Color="Color.Primary">👁 目隠し解除：簡易SQLコンソール</MudText>
+        <MudText Typo="Typo.caption">※インメモリDBに対して任意のSQL（SELECTなど）を実行できます。</MudText>
+
+        <MudTextField T="string"
+                      @bind-Value="sqlQuery"
+                      Label="SQLクエリを入力"
+                      Variant="Variant.Outlined"
+                      Lines="3"
+                      Class="mt-2" />
+
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ExecuteQuery" Class="mt-2">SQL実行</MudButton>
+
+        @if (!string.IsNullOrEmpty(queryError))
+        {
+            <MudText Color="Color.Error" Class="mt-2">⚠️ @queryError</MudText>
+        }
+
+        @if (queryResult != null && queryResult.Any())
+        {
+            <div style="overflow-x: auto; max-height: 300px; margin-top: 15px;">
+                <table style="width: 100%; border-collapse: collapse; background-color: white; font-size: 13px;">
+                    <thead>
+                        <tr style="background-color: #e0e0e0;">
                             @foreach (var header in headers)
                             {
-                                <td style="border: 1px solid #ccc; padding: 6px;">
-                                    @row[header]?.ToString()
-                                </td>
+                                <th style="border: 1px solid #ccc; padding: 6px; text-align: left;">@header</th>
                             }
                         </tr>
-                    }
-                </tbody>
-            </table>
-        </div>
-    }
-</MudCard>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in queryResult)
+                        {
+                            <tr>
+                                @foreach (var header in headers)
+                                {
+                                    <td style="border: 1px solid #ccc; padding: 6px;">
+                                        @row[header]?.ToString()
+                                    </td>
+                                }
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </MudCard>
+</MudContainer>
 
     @code {
 

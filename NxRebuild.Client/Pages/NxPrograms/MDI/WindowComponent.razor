@@ -2,147 +2,19 @@
 @inject IJSRuntime JS
 @implements IDisposable
 
-<style>
-    .mdi-window {
-        position: fixed;
-        background: white;
-        border: 1px solid #ccc;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-        z-index: 9999;
-        display: flex;
-        flex-direction: column;
-        overflow: hidden;
-        box-sizing: border-box; /* ★ 枠線分で毎回2pxずつ大きくならないように */
-        will-change: transform;
-    }
-
-    .mdi-titlebar {
-        height: 32px;
-        background: #eee;
-        display: flex;
-        align-items: center;
-        padding: 0 8px;
-        cursor: move;
-        flex-shrink: 0;
-    }
-
-    .mdi-content {
-        flex: 1;
-        min-height: 0;
-        min-width: 0;
-        overflow: auto;
-        display: flex;
-    }
-
-    .mdi-buttons {
-        margin-left: auto;
-        display: flex;
-        gap: 4px;
-    }
-
-    .mdi-btn {
-        width: 24px;
-        height: 24px;
-        border: none;
-        background: transparent;
-        cursor: pointer;
-        font-size: 14px;
-    }
-
-    .resize-handle {
-        position: absolute;
-        background: transparent;
-        z-index: 10;
-        touch-action: none;
-    }
-
-    .resize-nw, .resize-ne, .resize-sw, .resize-se {
-        z-index: 11; /* 角は辺より前面 */
-    }
-
-    .resize-nw {
-        top: 0;
-        left: 0;
-        width: 12px;
-        height: 12px;
-        cursor: nw-resize;
-    }
-
-    .resize-ne {
-        top: 0;
-        right: 0;
-        width: 12px;
-        height: 12px;
-        cursor: ne-resize;
-    }
-
-    .resize-sw {
-        bottom: 0;
-        left: 0;
-        width: 12px;
-        height: 12px;
-        cursor: sw-resize;
-    }
-
-    .resize-se {
-        bottom: 0;
-        right: 0;
-        width: 12px;
-        height: 12px;
-        cursor: se-resize;
-    }
-
-    .resize-n {
-        top: 0;
-        left: 12px;
-        right: 12px;
-        height: 6px;
-        cursor: n-resize;
-    }
-
-    .resize-s {
-        bottom: 0;
-        left: 12px;
-        right: 12px;
-        height: 6px;
-        cursor: s-resize;
-    }
-
-    .resize-w {
-        left: 0;
-        top: 12px;
-        bottom: 12px;
-        width: 6px;
-        cursor: w-resize;
-    }
-
-    .resize-e {
-        right: 0;
-        top: 12px;
-        bottom: 12px;
-        width: 6px;
-        cursor: e-resize;
-    }
-</style>
-
 @if (!Info.IsMinimized)
 {
     <div @ref="windowRef"
          class="mdi-window @(Info.IsMaximized ? "mdi-maximized" : "")"
-         style="
-        left:@Info.Xpx;
-        top:@Info.Ypx;
-        width:@Info.Wpx;
-        height:@Info.Hpx;
-        z-index:@Info.Z;"
+         style="left:@(Info.X)px; top:@(Info.Y)px; width:@(Info.Width)px; height:@(Info.Height)px; z-index:@Info.Z;"
          @onclick="() => Manager.BringToFront(Info)">
 
         <div class="mdi-titlebar">
-            <span>@Info.Title</span>
+            <span class="mdi-title-text">@Info.Title</span>
             <div class="mdi-buttons">
-                <button class="mdi-btn" @onclick="Minimize">＿</button>
-                <button class="mdi-btn" @onclick="ToggleMaximize">□</button>
-                <button class="mdi-btn" @onclick="() => Manager.Close(Info.Id)">✕</button>
+                <button class="mdi-btn" @onclick="Minimize" title="最小化">＿</button>
+                <button class="mdi-btn" @onclick="ToggleMaximize" title="最大化">□</button>
+                <button class="mdi-btn" @onclick="() => Manager.Close(Info.Id)" title="閉じる">✕</button>
             </div>
         </div>
 
@@ -176,12 +48,10 @@
     {
         if (Info.IsMinimized)
         {
-            // 最小化中は DOM 要素が無い → 復元されたら再初期化する
             _jsReady = false;
             return;
         }
 
-        // ★ 初期化は要素ごとに1回だけ(再レンダリングのたびに呼ばない)
         if (_jsReady) return;
         _jsReady = true;
 
@@ -190,8 +60,6 @@
         await JS.InvokeVoidAsync("mdi.initResizeMulti", windowRef, _dotNetRef);
     }
 
-    // ★ JS 側ですでに DOM を更新済みなので、ここでは再描画しない
-    //   (再描画すると中の DynamicComponent = ツリー/グリッドまで再描画されて重い)
     [JSInvokable]
     public void UpdatePosition(double x, double y)
     {

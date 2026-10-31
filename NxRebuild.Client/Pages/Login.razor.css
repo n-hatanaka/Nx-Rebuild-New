@@ -1,52 +1,94 @@
-﻿namespace NxRebuild.Client.Pages {
-    .login-container {
-        width: 320px;
-        margin: 60px auto; 
-        padding: 20px;
-        background: #ffffff;
-        border-radius: 10px;
-        box-shadow: 0 0 12px rgba(0,0,0,0.15);
-    }
+﻿/* 画面全体で中央に配置する外枠 */
+.login-page-center {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: calc(100vh - 100px); /* 画面の高さから上部バー分を引く */
+    width: 100%;
+}
 
-    .input-group {
-        margin-bottom: 15px;
-    }
+/* ログインカード本体 */
+.login-container {
+    width: 360px;
+    padding: 30px 24px;
+    background: #ffffff;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+}
 
-        .input-group label {
-            display: block;
-            margin-bottom: 5px;
-            font-weight: bold;
-        }
-
-        .input-group input {
-            width: 100%;
-            padding: 8px;
-            border-radius: 5px;
-            border: 1px solid #ccc;
-        }
-
-    .preset-users {
-        display: flex;
-        justify-content: space-between;
+    /* ログイン見出し */
+    .login-container h3 {
+        margin-top: 0;
         margin-bottom: 20px;
+        font-size: 1.4rem;
+        font-weight: bold;
+        color: #333333;
     }
 
-        .preset-users button {
-            width: 48%;
-            padding: 8px;
-            border-radius: 5px;
-            border: none;
-            background: #ddd;
-            cursor: pointer;
-        }
+/* プリセットユーザーボタン */
+.preset-users {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    width: 100%;
+    margin-bottom: 20px;
+}
 
-    .login-button {
-        width: 100%;
-        padding: 10px;
-        background: #0078d4;
-        color: white;
-        border: none;
-        border-radius: 5px;
+    .preset-users button {
+        flex: 1;
+        padding: 8px 12px;
+        border-radius: 6px;
+        border: 1px solid #ccc;
+        background: #f8f9fa;
         cursor: pointer;
     }
+
+        .preset-users button:hover {
+            background: #e2e6ea;
+        }
+
+/* 入力グループ */
+.input-group {
+    width: 100%;
+    margin-bottom: 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start; /* ラベルを左寄せにする場合 (中央なら center) */
 }
+
+    .input-group label {
+        margin-bottom: 6px;
+        font-weight: 600;
+        font-size: 0.9rem;
+        color: #444;
+    }
+
+    .input-group input {
+        width: 100%;
+        padding: 8px 12px;
+        border-radius: 6px;
+        border: 1px solid #ccc;
+        box-sizing: border-box;
+    }
+
+/* ログインボタン */
+.login-button {
+    width: 100%;
+    margin-top: 10px;
+    padding: 10px;
+    background: #0078d4;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+    .login-button:hover {
+        background: #005a9e;
+    }
