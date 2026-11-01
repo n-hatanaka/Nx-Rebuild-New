@@ -150,12 +150,16 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
 
                 // ★ 失敗したら元に戻す
                 if (!result.Success) {
+
                     Console.WriteLine($"Rename failed: {result.Message}");
+
+                    await JS.InvokeVoidAsync(
+                        "Alert",
+                        $"リネーム失敗\r\n{result.Message}"
+                    );
 
                     item.Name = baseObj.DataName;
                     item.IsEditing = false;
-
-                    // UI にエラー表示したいならここでイベント発火も可能
                     return;
                 }
 
@@ -364,10 +368,13 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
 
                 // ★ NxOperationResult に統一されたので Success / FailedIds を見る
                 if (!result.Success) {
+
                     Console.WriteLine($"削除失敗: {result.Message}");
 
-                    if (result.FailedIds != null && result.FailedIds.Count > 0)
-                        Console.WriteLine($"失敗ID: {result.FailedIds[0]}");
+                    await JS.InvokeVoidAsync(
+                        "Alert",
+                        $"削除失敗\r\n{result.Message}"
+                    );
 
                     return;
                 }

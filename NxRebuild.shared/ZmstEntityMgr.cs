@@ -12,7 +12,7 @@ using System.Security.Cryptography.X509Certificates;
 
 namespace NxRebuild.shared {
     public interface IZmstEntityMgr : IBaseDataObjMgr<ZmstEntity, int> {
-        List<CategoryEntity> GunList { get; }
+        List<IZmstEntity> GunList { get; }
     }
 
     public interface IsrvZmstEntityMgr : IZmstEntityMgr, IsrvBaseDataObjMgr<ZmstEntity, int> {
@@ -29,11 +29,12 @@ namespace NxRebuild.shared {
         // ---------------------------------------------------------
         // 食品群リスト
         // ---------------------------------------------------------
-        public List<CategoryEntity> GunList {
+        public List<IZmstEntity> GunList {
             get {
                 return _dataList
-                    .OfType<CategoryEntity>()
-                    .OrderBy(x => Convert.ToInt32(x.jun))
+                    .Where(x => x.DataType == NxDataType.Folder)
+                    .Cast<IZmstEntity>()
+                    .OrderBy(x => x.DataID)
                     .ToList();
             }
         }
@@ -44,7 +45,7 @@ namespace NxRebuild.shared {
         
         }
 
-        protected override int GenerateDataID() {
+        public override int _GenerateDataID() {
             //"ZmstEntityMgr は採番をしないので ZmstentityでGenerateDataID を使用してください。"
             return 0;
         }

@@ -70,7 +70,7 @@ namespace NxRebuild.shared {
         }
 
         // ID生成は行わない → とりあえず 0 を返す（Base側が使わないならこれでOK）
-        protected override int GenerateDataID() {
+        public override int _GenerateDataID() {
             return 0;
         }
     }

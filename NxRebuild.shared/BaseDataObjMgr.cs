@@ -62,7 +62,7 @@ namespace NxRebuild.shared {
 
         IBaseDataObj<TKey>? Get(TKey id);
 
-
+        TKey _GenerateDataID();
         Task DistributeJsonDataAsync(string json);
         Task InitializeAsync(RecordQuery? query);
         string LoadMultipleDataAsJson(List<TKey> idList);
@@ -536,7 +536,7 @@ namespace NxRebuild.shared {
 
             //Initialize()はインスタンス生成元が呼び出す事(ラッパークラス生成に関連するためこの中で呼んではいけない)
         }
-        protected abstract TKey GenerateDataID();
+        public abstract TKey _GenerateDataID();
 
         public NxLocationKind LocationKind {
             get {
@@ -574,7 +574,7 @@ namespace NxRebuild.shared {
             root.TenantCode = TenantCode;
             root.CurrUsrID = CurrentUserID;
 
-            // ★ GenerateDataID を使わず、型に応じて 0 / Guid.Empty をセット
+            // ★ _GenerateDataID を使わず、型に応じて 0 / Guid.Empty をセット
             if (typeof(TKey) == typeof(int))
                 root.DataID = (TKey)(object)0;
             else if (typeof(TKey) == typeof(Guid))
@@ -611,7 +611,7 @@ namespace NxRebuild.shared {
             dataObj.ParentID = parentID;
             dataObj.TenantCode = TenantCode;
             dataObj.CurrUsrID = CurrentUserID;
-            dataObj.DataID = GenerateDataID();
+            dataObj.DataID = _GenerateDataID();
             dataObj.DataType = this.DataType;
             // ここではまだ _dataList に入れない
             // DataID は仮で OK（保存時に確定でもいい）

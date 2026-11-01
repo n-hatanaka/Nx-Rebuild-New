@@ -299,10 +299,35 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                     return op;
                 }
 
+                // ------------------------------------------------------
+                // 競合保存
+                //
+                // サーバーが別データとして保存した場合は
+                // ID変更をクライアントへ反映する。
+                // ------------------------------------------------------
+                bool isNewSave =
+                    EqualityComparer<TKey>.Default.Equals(
+                        SendID,
+                        default
+                    );
 
+                bool conflictSaved =
+                    !isNewSave &&
+                    !EqualityComparer<TKey>.Default.Equals(
+                        op.NewID,
+                        SendID
+                    );
+
+                if (conflictSaved) {
+                    Console.WriteLine(
+                        $"WORLDLINE BRANCHED : {SendID} -> {op.NewID}"
+                    );
+                }
 
                 // ★ Working → Raw 反映（ローカル正史）
                 ApplyWorkingToRaw(workingRaw);
+
+
 
                 // ★ サーバー正史の RawData をローカルへ反映
                 if (op.RawData != null) {
@@ -321,7 +346,10 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                     RawData = op.RawData,
                     NewID = op.NewID,
                     UpdateAt = op.UpdateAt,
-                    Message = "Save completed"
+                    DataBranched = conflictSaved,
+                    Message = conflictSaved
+                        ? "他ユーザーによる更新を検出したため、新規データとして保存しました。"
+                        : "Save completed"
                 };
             } catch (Exception ex) {
                 Console.WriteLine("SyncBaseDataObj.SaveAsync ERROR:");

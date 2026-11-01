@@ -86,50 +86,24 @@ namespace NxRebuild.Api.Controllers {
 
         [HttpGet("sync")]
         public async Task<IActionResult> SyncAll() {
-            try { 
-                // ★ DataObjMgr を生成
+            try {
                 await CreateObjMgrAsync(null);
-                var mgr = _dataObjMgr;
 
-                var items = new List<SyncItem<int>>();
+                var items = new List<Dictionary<string, object>>();
 
-                foreach (var obj in mgr.DataList) {
-                    // ★ クライアントの更新及びロック時刻よりあたらしいBaseDataObj<TKey>
-                    string json;
-
-                    try {
-                        json = obj.TblToJson();   // ← ここで例外が起こる可能性あり
-                        if (json == null)
-                            continue;
-
-                    } catch (Exception ex) {
-                        // ★ TblToJson の例外を NxOperationResult に包んで返す
-                        return BadRequest(new NxOperationResult<int> {
-                            OperationErrorCode = NxOperationErrorCode.ServerException,
-                            Message = $"TblToJson failed: {ex.Message}"
-                        });
-                    }
-
-                    items.Add(new SyncItem<int> {
-                        DataId = obj.DataID,
-                        Data = json
-                    });
+                foreach (NutritionProperty obj in _dataObjMgr.DataList) {
+                    items.Add(new Dictionary<string, object>(obj._rawData));
                 }
 
-                // ★ NxOperationResult に SyncItems を含めて返す
-                return Ok(new NxOperationResult<int> {
-                    SyncItems = items,
-                    Message = "Sync completed"
-                    // Success は計算判定で true
-                });
+                return Ok(items);
             } catch (Exception ex) {
-                // ★ CreateObjMgrAsync やその他の例外を NxOperationResult に包んで返す
                 return BadRequest(new NxOperationResult<int> {
-            OperationErrorCode = NxOperationErrorCode.ServerException,
-                    Message = $"SyncAll failed: {ex.Message}"
+                    OperationErrorCode = NxOperationErrorCode.ServerException,
+                    Message = ex.Message
                 });
             }
-}
+        }
+
 
 
         [HttpPost("Delete")]

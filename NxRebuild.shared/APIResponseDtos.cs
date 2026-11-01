@@ -10,7 +10,6 @@ namespace NxRebuild.shared {
         Timeout,
         HttpError,
         ResponseParseError,
-
         // DB
         DbError,
         TransactionFailed,
@@ -29,6 +28,8 @@ namespace NxRebuild.shared {
     }
 
     public class NxOperationResult<TKey> {
+        //保存時の競合でデータの分岐が発生した
+        public bool DataBranched { get; set; } = false;
         // Validation
         public NxValidationErrorCode ValidationErrorCode { get; set; }
             = NxValidationErrorCode.None;

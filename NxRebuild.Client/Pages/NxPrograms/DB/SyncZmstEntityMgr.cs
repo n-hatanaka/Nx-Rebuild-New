@@ -31,7 +31,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             _baseDataObjMgr = new ZmstEntityMgr(db, tenantCode, currentUserId);
         }
 
-        public List<CategoryEntity> GunList {
+        public List<IZmstEntity> GunList {
             get => ((IZmstEntityMgr)_baseDataObjMgr).GunList;
         }
 

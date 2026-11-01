@@ -478,23 +478,32 @@ namespace NxRebuild.Api.Controllers {
             if (!v.Success)
                 return BadRequest(v);
 
+            //var lockst = await obj._SetLockAsync();
+            //if (!lockst.CanSave) {
+            //    return BadRequest(new NxOperationResult<TKey> {
+            //        OperationErrorCode = NxOperationErrorCode.ServerException,
+            //        Message = "Lock failed"
+            //    });
+            //}
+
+
+            // ------------------------------------------------------
+            // 競合検出フラグ
+            //
+            // Nxでは編集内容を失わせない。
+            // 保存時に他ユーザーによる更新を検出した場合は
+            // 別データとして新規データ化する。
+            // ------------------------------------------------------
+            bool conflictDetected = false;
+
             var lockst = await obj._SetLockAsync();
+
             if (!lockst.CanSave) {
-                return BadRequest(new NxOperationResult<TKey> {
-                    OperationErrorCode = NxOperationErrorCode.ServerException,
-                    Message = "Lock failed"
-                });
+                conflictDetected = true;
             }
+
 
             using var tran = _db.BeginTransaction();
-
-            if (!await obj._DeleteDetailQueryExecAsync(tran)) {
-                tran.Rollback();
-                return BadRequest(new NxOperationResult<TKey> {
-                    OperationErrorCode = NxOperationErrorCode.DbError,
-                    Message = "既存データの削除に失敗しました"
-                });
-            }
 
             var SaveJson = ReceiveJson;
 
@@ -511,28 +520,44 @@ namespace NxRebuild.Api.Controllers {
                     obj.DataID = (TKey)(object)Guid.Parse(Row[obj.IdColName].ToString()!);
                 }
 
-                // IDが0なら ID 採番
-                if (EqualityComparer<TKey>.Default.Equals(obj.DataID, default)) {
-
+                // ------------------------------------------------------
+                // 新規保存または競合保存時は新規採番
+                //
+                // 競合時は既存データを上書きせず、
+                // 別世界線として保存する。
+                // ------------------------------------------------------
+                if (
+                    conflictDetected ||
+                    EqualityComparer<TKey>.Default.Equals(obj.DataID, default)
+                ) {
                     var realID = EnsureIDForSave(obj, tran);
 
-                    // rawData の PK を更新（必須）
                     obj.DataID = realID;
 
-                    // 親（Zmst）
+                    // 親テーブル
                     Row[obj.IdColName] = realID;
 
-                    // 子（tan_m）
+                    // 子テーブルFK更新
                     foreach (var tbl in workingRaw.Where(t => t.Table != this._tblName)) {
                         foreach (var row in tbl.Rows) {
                             row[obj.IdColName] = realID;
                         }
                     }
                 }
+
                 // テナントは認証済みの値を全テーブル・全行に強制（新規/既存、int/Guid 共通）
                 foreach (var tbl in workingRaw)
                     foreach (var row in tbl.Rows)
                         row["tenant_code"] = _tenantCode;
+
+
+                if (!await obj._DeleteDetailQueryExecAsync(tran)) {
+                    tran.Rollback();
+                    return BadRequest(new NxOperationResult<TKey> {
+                        OperationErrorCode = NxOperationErrorCode.DbError,
+                        Message = "既存データの削除に失敗しました"
+                    });
+                }
 
                 // テーブル書き込み前フック
                 var beforeSaveResult = await BeforeSaveProcess(obj, workingRaw, tran);
@@ -578,11 +603,14 @@ namespace NxRebuild.Api.Controllers {
                 // ★ DB → オブジェクトへ最新値を反映
                 await obj._UpdatePropertiesFromTblAsync();
 
-                // ★ NxOperationResult を返す（正史の世界線）
                 return Ok(new NxOperationResult<TKey> {
                     RawData = obj._rawData,
                     NewID = obj.DataID,
-                    UpdateAt = obj.Update_at.ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+                    UpdateAt = obj.Update_at.ToString("yyyy-MM-ddTHH:mm:ss.fffZ"),
+                    DataBranched = conflictDetected,
+                    Message = conflictDetected
+                        ? "Conflict detected. Saved as new data."
+                        : "Save completed"
                 });
             } catch (Exception ex) {
                 tran.Rollback();
@@ -628,7 +656,7 @@ namespace NxRebuild.Api.Controllers {
         // オーバーライドして処理を記述(ZmstController参照)
         // =======================================================
         protected virtual TKey EnsureIDForSave(IBaseDataObj<TKey> obj, IDbTransaction tran) {
-            return obj.DataID;
+            return _dataObjMgr._GenerateDataID();
         }
 
 

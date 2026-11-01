@@ -163,8 +163,8 @@
                 await GlobalState.NutProperties.InitializeAsync(null);
 
                 //定期同期開始
-                GlobalState.NutPropScheduler = new SyncScheduler<int>(GlobalState.NutProperties.SyncData, 5);
-                //GlobalState.NutPropScheduler.Start();
+                GlobalState.NutPropScheduler = new SyncScheduler<int>(GlobalState.NutProperties.SyncData, 30);
+                GlobalState.NutPropScheduler.Start();
 
 
                 initMessage = "材料マスタ初期化中...";

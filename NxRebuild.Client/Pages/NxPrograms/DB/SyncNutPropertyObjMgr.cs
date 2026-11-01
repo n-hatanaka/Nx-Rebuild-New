@@ -33,108 +33,76 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             return await DBcon.QueryAsync<dynamic>(sql, new { TenantCode = TenantCode });
         }
 
-
         public override async Task<NxOperationResult<int>> SyncData() {
             using var slot = NxSyncControl.For(DBcon).TryBeginSync();
-            if (slot == null)
-                return new NxOperationResult<int> { 
-                                            OperationErrorCode = NxOperationErrorCode.TransactionFailed
-                                            ,Message = "操作中のため同期をスキップしました" };
 
-            // ① API に世界線同期点を渡す
-            var url = $"{ApiRoute}/sync";
-
-            HttpResponseMessage response;
+            if (slot == null) {
+                return new NxOperationResult<int> {
+                    OperationErrorCode = NxOperationErrorCode.TransactionFailed,
+                    Message = "操作中のため同期をスキップしました"
+                };
+            }
 
             try {
-                response = await _http.GetAsync(url);
-            } catch (Exception ex) {
-                return new NxOperationResult<int> {
-                    OperationErrorCode = NxOperationErrorCode.NetworkError,
-                    Message = $"通信エラー: {ex.Message}"
-                };
-            }
+                var rows = await _http.GetFromJsonAsync<
+                    List<Dictionary<string, object>>
+                >($"{ApiRoute}/sync");
 
-            if (!response.IsSuccessStatusCode) {
-                return new NxOperationResult<int> {
-                    OperationErrorCode = NxOperationErrorCode.HttpError,
-                    Message = $"HTTPエラー: {response.StatusCode}"
-                };
-            }
+                if (rows == null) {
+                    return new NxOperationResult<int> {
+                        OperationErrorCode = NxOperationErrorCode.ResponseParseError,
+                        Message = "同期データを取得できませんでした"
+                    };
+                }
 
-            // ② NxOperationResult として受け取る（API の返却形と同じ）
-            NxOperationResult<int>? syncResult;
-
-            try {
-                syncResult = await response.Content.ReadFromJsonAsync<NxOperationResult<int>>();
-            } catch (Exception ex) {
-                return new NxOperationResult<int> {
-                    OperationErrorCode = NxOperationErrorCode.ResponseParseError,
-                    Message = $"レスポンス解析エラー: {ex.Message}"
-                };
-            }
-
-            if (syncResult == null) {
-                return new NxOperationResult<int> {
-                    OperationErrorCode = NxOperationErrorCode.Unknown,
-                    Message = "同期結果が取得できませんでした"
-                };
-            }
-
-            // サーバーがエラーコード付きで返してきた場合はそのまま返す
-            if (!syncResult.Success)
-                return syncResult;
-
-            // ③ 反映（削除判定なし）。更新ゼロ件は SyncItems が空なだけで正常
-            foreach (var item in syncResult.SyncItems) {
-
-                var dataId = item.DataId;
-                var dataJson = item.Data;
-
-                var tran = DBcon.BeginTransaction();
+                using var tran = DBcon.BeginTransaction();
 
                 try {
-                    var target = _baseDataObjMgr.Get(dataId);
+                    foreach (var row in rows) {
+                        var dataId = Convert.ToInt32(row["No"]);
 
-                    if (target != null) {
-                        var ok = await target.JsonToTblAsync(dataJson, tran);
-                        if (!ok) {
-                            tran.Rollback();
-                            return new NxOperationResult<int> {
-                                OperationErrorCode = NxOperationErrorCode.DbError,
-                                Message = $"JsonToTblAsync 失敗: ID={dataId}"
-                            };
-                        }
-                    } else {
-                        var newSyncObj = _baseDataObjMgr.CreateNewDataObj(default(int));
-                        newSyncObj.DataID = dataId;
+                        var target = _baseDataObjMgr.Get(dataId);
 
-                        var ok = await newSyncObj.JsonToTblAsync(dataJson, tran);
-                        if (!ok) {
-                            tran.Rollback();
-                            return new NxOperationResult<int> {
-                                OperationErrorCode = NxOperationErrorCode.DbError,
-                                Message = $"JsonToTblAsync 新規作成失敗: ID={dataId}"
-                            };
+                        if (target == null) {
+                            target = _baseDataObjMgr.CreateNewDataObj(default);
+                            target.DataID = dataId;
+                            _baseDataObjMgr._dataList.Add(target);
                         }
 
-                        _baseDataObjMgr._dataList.Add(newSyncObj);
+                        ((SyncNutProperty)target)._SetProperties(
+                            NxTypeMapper.ConvertRow("ColName", row)
+                        );
+
+                        await ((SyncNutProperty)target)._dataObj.SaveWorkingPrimaryAsync(
+                            new Dictionary<string, object?>(((SyncNutProperty)target)._rawData),
+                            tran
+                        );
                     }
 
                     tran.Commit();
+
+                    return new NxOperationResult<int> {
+                        Message = "Sync completed"
+                    };
                 } catch (Exception ex) {
                     tran.Rollback();
+
                     return new NxOperationResult<int> {
-                        OperationErrorCode = NxOperationErrorCode.ServerException,
-                        Message = $"同期処理中に例外が発生しました: {ex.Message}"
+                        OperationErrorCode = NxOperationErrorCode.DbError,
+                        Message = ex.Message
                     };
                 }
+            } catch (HttpRequestException ex) {
+                return new NxOperationResult<int> {
+                    OperationErrorCode = NxOperationErrorCode.NetworkError,
+                    Message = ex.Message
+                };
+            } catch (Exception ex) {
+                return new NxOperationResult<int> {
+                    OperationErrorCode = NxOperationErrorCode.ServerException,
+                    Message = ex.Message
+                };
             }
-
-            return new NxOperationResult<int> {
-                Message = "Sync completed",
-                RefreshedAt = syncResult.RefreshedAt
-            };
         }
 
 

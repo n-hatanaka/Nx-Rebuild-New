@@ -47,7 +47,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
         [Inject] IJSRuntime JS { get; set; } = default!;
         [Parameter] public EventCallback OnClose { get; set; }
 
-        public List<CategoryEntity> GunList { get => GlobalState.ZmstEntityMgr.GunList; }
+        public List<IZmstEntity> GunList { get => GlobalState.ZmstEntityMgr.GunList; }
         public IZmstEntity Entity { get; set; }
 
         public NutrientModel Nut { get; set; } = new();
@@ -141,6 +141,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
             GunCd = Convert.ToInt32(WorkingRaw["gun_cd"]);
             Txt = WorkingRaw["Txt"]?.ToString();
 
+            Console.WriteLine($"GunList={GunList.Count}");
 
             // 栄養素メタデータ（これもロード済み）
             // ① 全メタデータ
@@ -201,19 +202,25 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
 
                 // ★ NxOperationResult に統一されたので Success / Message を見る
                 if (!result.Success) {
-                    Console.WriteLine($"保存失敗: {result.Message}");
-
-                    // UI にエラー表示（任意）
-                    await JS.InvokeVoidAsync("aknAlert", $"保存失敗: {result.Message}");
-
+                    await JS.InvokeVoidAsync(
+                        "Alert",
+                        $"保存失敗: {result.Message}"
+                    );
                     return;
+                }
+
+                if (result.DataBranched) {
+                    await JS.InvokeVoidAsync(
+                        "Alert",
+                        result.Message
+                    );
                 }
 
                 //  保存成功 → 親画面を更新（Window は閉じない）
                 await OnSaved.InvokeAsync();   // ← これを Z_Edit に追加する
 
                 //  成功メッセージ（任意）
-                await JS.InvokeVoidAsync("aknAlert", "保存しました。");
+                await JS.InvokeVoidAsync("Alert", "保存しました。");
 
                 var zm = GlobalState.ZmstEntityMgr;
                 zm.SetParent(Entity);//親子関係を登録
@@ -221,7 +228,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
             } catch (Exception ex) {
                 // エラー処理
                 Console.WriteLine($"Z_EditBase.SaveAsync:保存中にエラーが発生しました: {ex.Message}");
-                await JS.InvokeVoidAsync("aknAlert", $"例外発生: {ex.Message}");
+                await JS.InvokeVoidAsync("Alert", $"例外発生: {ex.Message}");
                 throw;
             } finally {
                 _saving = false;
