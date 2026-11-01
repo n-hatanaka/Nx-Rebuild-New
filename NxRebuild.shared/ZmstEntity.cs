@@ -202,6 +202,12 @@ namespace NxRebuild.shared {
         }
 
 
+        // ZmstEntity
+        protected override void CompleteDetailRow(
+            string tableName, Dictionary<string, object?> row, Dictionary<string, object?> mainWorkingRaw) {
+            if (tableName == "tan_m")
+                row["Z_Code"] = mainWorkingRaw["Z_code"];
+        }
 
         public override int EnsureIDForSave(IDbTransaction tran){
             if (this.DataID == 0)

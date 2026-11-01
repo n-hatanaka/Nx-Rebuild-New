@@ -438,7 +438,7 @@ namespace NxRebuild.shared {
 
 
         public virtual void SetAsRoot(string RootName, NxDataType DataType = NxDataType.root) {
-            _SetProperties(new Dictionary<string, object> { [_nameColName] = RootName });
+            _SetProperties(new Dictionary<string, object?> { [_nameColName] = RootName });
             _datatype = DataType;
         }
 
@@ -446,7 +446,7 @@ namespace NxRebuild.shared {
         // _rawDataが保持するレコードの内容を正本化してセットする
         // セットするカラムは一部だけでもよい。正本化は NxTypeMapper に委譲する。
         // ---------------------------------------------------------
-        public virtual void _SetProperties(IDictionary<string, object> record)
+        public virtual void _SetProperties(IDictionary<string, object?> record)
         {
             // ---------------------------------------------------------
             // ★ NxTypeMapper による「型の正本化」
@@ -631,59 +631,51 @@ namespace NxRebuild.shared {
 
         public virtual async Task<bool> JsonToTblAsync(string json, IDbTransaction tran) {
             if (!await _DeleteDetailQueryExecAsync(tran))
-                throw new Exception($"JsonToTblAsync ERROR: _DeleteDetailQueryExecAsync failed");
+                throw new Exception("JsonToTblAsync ERROR: _DeleteDetailQueryExecAsync failed");
 
-            this._Validate(OperationType.Import);
+            var tables = JsonSerializer.Deserialize<List<TableJson>>(json)
+                         ?? throw new Exception("JsonToTblAsync ERROR: json is empty");
 
-            var tables = JsonSerializer.Deserialize<List<TableJson>>(json);
+            bool isServer = LocationKind == NxLocationKind.Server;
 
             foreach (var table in tables) {
-                foreach (var row in table.Rows) {
+                bool isDetail = _detailTblPKList.TryGetValue(table.Table, out var pkCols);
+                var pkSet = isDetail ? pkCols! : _primaryTblPKList;
 
+                foreach (var row in table.Rows) {
                     var normalized = NxTypeMapper.ConvertRow(table.Table, row);
 
-                    var columns = string.Join(", ", normalized.Keys.Select(k => $@"""{k}"""));
-                    var values = string.Join(", ", normalized.Keys.Select(k => $@"@{k}"));
-
-                    bool isServer = LocationKind == NxLocationKind.Server;
-
-                    var updates = string.Join(", ",
-                        normalized.Keys
-                            .Where(k => k != IdColName && k != "update_at")
-                            .Where(k => !(isServer && (k == "locked_by" || k == "locked_at")))
-                            .Select(k => $@"""{k}"" = EXCLUDED.""{k}""")
-                    );                    
-
-                    string sql;
-
-                    if (_detailTblPKList.TryGetValue(table.Table, out var pkCols)) {
-
-                        // ★ Detail PK 補完（親 PK のみ）
-                        var parentPKs = pkCols.Where(pk =>
-                            pk == "tenant_code" || pk == IdColName
-                        );
-
+                    if (isDetail) {
+                        // 親 PK の補完は、列リストを組み立てる前に行う
+                        var parentPKs = pkCols!.Where(pk => pk == "tenant_code" || pk == IdColName).ToArray();
                         foreach (var pk in parentPKs)
                             normalized[pk] = _rawData[pk];
 
-                        // ★ Detail 固有 PK は row に必須
-                        foreach (var pk in pkCols.Except(parentPKs))
+                        foreach (var pk in pkCols!.Except(parentPKs))
                             if (!normalized.ContainsKey(pk))
                                 throw new Exception($"Detail PK '{pk}' missing in JSON row.");
-
-                        sql = BuildDetailUpsertSql(table.Table, columns, values, updates);
-
-                    } else {
-                        sql = BuildPrimaryUpsertSql(table.Table, columns, values, updates);
                     }
 
+                    var columns = string.Join(", ", normalized.Keys.Select(k => $@"""{k}"""));
+                    var values = string.Join(", ", normalized.Keys.Select(k => $@"@{k}"));
+                    var updates = string.Join(", ",
+                        normalized.Keys
+                            .Where(k => !pkSet.Contains(k))
+                            .Where(k => !(isServer && (k == "locked_by" || k == "locked_at")))  // 5番のa'
+                            .Select(k => $@"""{k}"" = EXCLUDED.""{k}"""));
+
+                    var sql = isDetail
+                        ? BuildDetailUpsertSql(table.Table, columns, values, updates)
+                        : BuildPrimaryUpsertSql(table.Table, columns, values, updates);
+
                     var rowsAffected = await DBcon.ExecuteAsync(sql, normalized, tran);
-                    await _UpdatePropertiesFromTblAsync();
                     if (rowsAffected != 1)
                         throw new Exception($"JsonToTblAsync ERROR: Upsert failed or affected {rowsAffected} rows");
                 }
             }
 
+            // 全行を反映してから、メモリ上のプロパティを1回だけ更新する(同じトランザクション内で読む)
+            await _UpdatePropertiesFromTblAsync(tran);
             return true;
         }
 
@@ -1015,7 +1007,7 @@ namespace NxRebuild.shared {
 
 
         // データベースから最新のプロパティを取得して _rawData に反映する
-        public virtual async Task _UpdatePropertiesFromTblAsync() {
+        public virtual async Task _UpdatePropertiesFromTblAsync(IDbTransaction tran = null) {
             try {
                 // ★ PK の WHERE 句を動的生成
                 var whereClause = string.Join(" AND ",
@@ -1033,7 +1025,7 @@ namespace NxRebuild.shared {
                 foreach (var pk in _primaryTblPKList)
                     param[pk] = PrimaryPKDict[pk]!;
 
-                var record = await DBcon.QueryFirstOrDefaultAsync<dynamic>(sql, param);
+                var record = await DBcon.QueryFirstOrDefaultAsync<dynamic>(sql, param, tran);
 
                 if (record == null)
                     throw new Exception(
@@ -1207,6 +1199,8 @@ namespace NxRebuild.shared {
                     foreach (var pk in parentPKs)
                         row[pk] = MainWorkingRaw[pk];
 
+                    CompleteDetailRow(tableName, row, MainWorkingRaw);
+
                     // ★ Detail 固有 PK は row に必須
                     foreach (var pk in pkCols.Except(parentPKs)) {
                         if (!row.ContainsKey(pk))
@@ -1248,7 +1242,8 @@ namespace NxRebuild.shared {
             return true;
         }
 
-
+        protected virtual void CompleteDetailRow(
+                                string tableName, Dictionary<string, object?> row, Dictionary<string, object?> mainWorkingRaw) { }
 
         // =======================================================
         // 正本 Raw に反映
@@ -1489,20 +1484,21 @@ namespace NxRebuild.shared {
                 if (result.UserId != null)
                     Guid.TryParse(result.UserId.ToString(), out lockedByRaw);
 
-                // ---- LockStatus（生データ）を構築 ----
+                var lockedAt = NxTypeMapper.Convert(TblName, "locked_at", (object?)result.locked_at) as DateTime?;
+                var updateAt = NxTypeMapper.Convert(TblName, "update_at", (object?)result.Update_at) as DateTime?;
+
                 var lockSt = new LockStatus {
                     Exists = true,
-                    LockedByUserId = lockedByRaw,
-                    Locked_at = (DateTime?)result.locked_at,
-                    Update_at = (DateTime?)result.Update_at,
+                    LockedByUserId = lockedByRaw == Guid.Empty ? null : lockedByRaw,
+                    Locked_at = lockedAt,
+                    Update_at = updateAt,
                     lockReqUsr = CurrUsrID,
                     HasError = false,
                     ErrorMessage = ""
                 };
 
-                // ---- UI世界線へ反映（rawData） ----
-                _SetProperties(new Dictionary<string, object> {
-                    ["locked_at"] = lockSt.Locked_at ?? DateTime.MinValue,
+                _SetProperties(new Dictionary<string, object?> {      // 未ロックは NULL のまま
+                    ["locked_at"] = lockSt.Locked_at,
                     ["locked_by"] = lockSt.LockedByUserId
                 });
 

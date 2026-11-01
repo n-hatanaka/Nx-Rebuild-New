@@ -111,6 +111,11 @@ namespace NxRebuild.shared {
         /// JSON → C#、SQLite → C# の型ズレを吸収する。
         /// </summary>
         public object? Convert(string table, string column, object? value) {
+            // NULL は NULL のまま返す(欠損と 0 を区別するため)
+            if (value is null || value is DBNull) return null;
+            if (value is JsonElement e0 &&
+                (e0.ValueKind == JsonValueKind.Null || e0.ValueKind == JsonValueKind.Undefined)) return null;
+
             if (!ColumnTypeMap.TryGetValue(table, out var cols))
                 return value;
 
