@@ -3,10 +3,12 @@ using Microsoft.AspNetCore.Components.Authorization;
 using NxRebuild.Client.Pages.Auth;
 using NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View;
 using NxRebuild.shared;
+using NxRebuild.Client.Pages;
 using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Data;
+using System.Net;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
@@ -244,25 +246,16 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
                 HttpResponseMessage response;
 
-                try {
-                    // ★ サーバーへ送信
-                    response = await Http.PostAsJsonAsync(url, postJson);
-                } catch (Exception ex) {
-                    // ★ 通信レベルのエラー（ネットワーク断・タイムアウト等）
-                    Console.WriteLine("SyncBaseDataObj.SaveAsync NETWORK ERROR:");
-                    Console.WriteLine(ex.Message);
-                    tran.Rollback();
-                    return new NxOperationResult<TKey> {
-                        OperationErrorCode = NxOperationErrorCode.NetworkError,
-                        Message = $"通信エラー: {ex.Message}"
-                    };
-                }
+                response = await Http.PostAsJsonAsync(url, postJson);
 
-                // ★ HTTP ステータス異常（4xx / 5xx）
                 if (!response.IsSuccessStatusCode) {
-                    Console.WriteLine("SyncBaseDataObj.SaveAsync HTTP ERROR:");
-                    Console.WriteLine($"StatusCode: {response.StatusCode}");
-                    tran.Rollback();
+                    if (response.StatusCode == HttpStatusCode.ServiceUnavailable) {
+                        return new NxOperationResult<TKey> {
+                            OperationErrorCode = NxOperationErrorCode.HttpError,
+                            Message = "サーバーへ接続できません"
+                        };
+                    }
+
                     return new NxOperationResult<TKey> {
                         OperationErrorCode = NxOperationErrorCode.HttpError,
                         Message = $"HTTPエラー: {response.StatusCode}"
@@ -400,19 +393,17 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
             HttpResponseMessage response;
 
-            try {
-                // ★ サーバーへ送信
-                response = await Http.PostAsJsonAsync(url, req);
-            } catch (Exception ex) {
-                // ★ 通信レベルのエラー（ネットワーク断・タイムアウト等）
-                return new NxOperationResult<TKey> {
-                    OperationErrorCode = NxOperationErrorCode.NetworkError,
-                    Message = $"通信エラー: {ex.Message}"
-                };
-            }
 
-            // ★ HTTP ステータス異常（4xx / 5xx）
+            response = await Http.PostAsJsonAsync(url, req);
+
             if (!response.IsSuccessStatusCode) {
+                if (response.StatusCode == HttpStatusCode.ServiceUnavailable) {
+                    return new NxOperationResult<TKey> {
+                        OperationErrorCode = NxOperationErrorCode.HttpError,
+                        Message = "サーバーへ接続できません"
+                    };
+                }
+
                 return new NxOperationResult<TKey> {
                     OperationErrorCode = NxOperationErrorCode.HttpError,
                     Message = $"HTTPエラー: {response.StatusCode}"
@@ -485,19 +476,19 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
             var url = $"{ApiRoute}/SetLockStatus";
 
+
             HttpResponseMessage response;
 
-            try {
-                // ★ サーバーへ送信
-                response = await Http.PostAsJsonAsync(url, req);
-            } catch (Exception ex) {
-                return new NxOperationResult<TKey> {
-                    OperationErrorCode = NxOperationErrorCode.NetworkError,
-                    Message = $"通信エラー: {ex.Message}"
-                };
-            }
+            response = await Http.PostAsJsonAsync(url, req);
 
             if (!response.IsSuccessStatusCode) {
+                if (response.StatusCode == HttpStatusCode.ServiceUnavailable) {
+                    return new NxOperationResult<TKey> {
+                        OperationErrorCode = NxOperationErrorCode.HttpError,
+                        Message = "サーバーへ接続できません"
+                    };
+                }
+
                 return new NxOperationResult<TKey> {
                     OperationErrorCode = NxOperationErrorCode.HttpError,
                     Message = $"HTTPエラー: {response.StatusCode}"
@@ -559,29 +550,21 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                 };
             }
 
-            HttpResponseMessage result;
+            HttpResponseMessage response;
 
             try {
-                // ② サーバーへロック要求＋最新正本の取得
-                var apiUrl = $"{ApiRoute}/DataOpenLatest";
-                result = await Http.PostAsJsonAsync(apiUrl, DataID);
-            } catch (Exception ex) {
-                // ★ 通信レベルのエラー（ネットワーク断・タイムアウト等）
-                Console.WriteLine("DataOpenAsync NETWORK ERROR:");
-                Console.WriteLine(ex.Message);
-                return new NxOperationResult<TKey> {
-                    OperationErrorCode = NxOperationErrorCode.NetworkError,
-                    Message = "通信エラーが発生しました"
-                };
-            }
 
-            // ★ HTTP ステータス異常（4xx / 5xx）
-            if (!result.IsSuccessStatusCode) {
-                Console.WriteLine("DataOpenAsync HTTP ERROR:");
-                Console.WriteLine($"StatusCode: {result.StatusCode}");
+                var apiUrl = $"{ApiRoute}/DataOpenLatest";
+                response = await Http.PostAsJsonAsync(apiUrl, DataID);
+            } catch (HttpRequestException ex) {
                 return new NxOperationResult<TKey> {
                     OperationErrorCode = NxOperationErrorCode.HttpError,
-                    Message = "サーバー応答が異常です"
+                    Message = $"通信エラー: {ex.Message}"
+                };
+            } catch (TaskCanceledException ex) {
+                return new NxOperationResult<TKey> {
+                    OperationErrorCode = NxOperationErrorCode.HttpError,
+                    Message = $"通信タイムアウト: {ex.Message}"
                 };
             }
 
@@ -589,7 +572,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
             try {
                 // ★ 応答を読む（JSON パース）
-                openResult = await result.Content.ReadFromJsonAsync<NxOperationResult<TKey>>();
+                openResult = await response.Content.ReadFromJsonAsync<NxOperationResult<TKey>>();
             } catch (Exception ex) {
                 // ★ JSON パース失敗（サーバー側の異常応答）
                 Console.WriteLine("DataOpenAsync RESPONSE PARSE ERROR:");
@@ -676,21 +659,16 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             HttpResponseMessage response;
 
             try {
-                // ★ サーバーへ送信
                 response = await Http.PostAsJsonAsync(url, req);
-            } catch (Exception ex) {
-                // ★ 通信レベルのエラー（ネットワーク断・タイムアウト等）
-                return new NxOperationResult<TKey> {
-                    OperationErrorCode = NxOperationErrorCode.NetworkError,
-                    Message = $"通信エラー: {ex.Message}"
-                };
-            }
-
-            // ★ HTTP ステータス異常（4xx / 5xx）
-            if (!response.IsSuccessStatusCode) {
+            } catch (HttpRequestException ex) {
                 return new NxOperationResult<TKey> {
                     OperationErrorCode = NxOperationErrorCode.HttpError,
-                    Message = $"HTTPエラー: {response.StatusCode}"
+                    Message = $"通信エラー: {ex.Message}"
+                };
+            } catch (TaskCanceledException ex) {
+                return new NxOperationResult<TKey> {
+                    OperationErrorCode = NxOperationErrorCode.HttpError,
+                    Message = $"通信タイムアウト: {ex.Message}"
                 };
             }
 
@@ -762,21 +740,16 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             HttpResponseMessage response;
 
             try {
-                // ★ サーバーへ送信
                 response = await Http.PostAsync(url, null);
-            } catch (Exception ex) {
-                // ★ 通信レベルのエラー（ネットワーク断・タイムアウト等）
-                return new NxOperationResult<TKey> {
-                    OperationErrorCode = NxOperationErrorCode.NetworkError,
-                    Message = $"通信エラー: {ex.Message}"
-                };
-            }
-
-            // ★ HTTP ステータス異常（4xx / 5xx）
-            if (!response.IsSuccessStatusCode) {
+            } catch (HttpRequestException ex) {
                 return new NxOperationResult<TKey> {
                     OperationErrorCode = NxOperationErrorCode.HttpError,
-                    Message = $"HTTPエラー: {response.StatusCode}"
+                    Message = $"通信エラー: {ex.Message}"
+                };
+            } catch (TaskCanceledException ex) {
+                return new NxOperationResult<TKey> {
+                    OperationErrorCode = NxOperationErrorCode.HttpError,
+                    Message = $"通信タイムアウト: {ex.Message}"
                 };
             }
 

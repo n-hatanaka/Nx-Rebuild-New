@@ -159,16 +159,8 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
             HttpResponseMessage response;
 
-            try {
-                // --- 通信ハンドリング（データは通信失敗で壊れない） ---
-                response = await _http.GetAsync(url);
-            } catch (Exception ex) {
-                // ネットワーク例外時はデータ更新が進まないだけなので false を返す
-                return new NxOperationResult<TKey> {
-                    OperationErrorCode = NxOperationErrorCode.NetworkError,
-                    Message = $"通信エラー: {ex.Message}"
-                };
-            }
+            //NetworkErrorHandler導入
+            response = await _http.GetAsync(url);
 
             if (!response.IsSuccessStatusCode) {
                 return new NxOperationResult<TKey> {
@@ -282,19 +274,16 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
             HttpResponseMessage response;
 
-            try {
-                // ★ サーバーへ送信
-                response = await _http.PostAsJsonAsync(url, dataIDs);
-            } catch (Exception ex) {
-                Console.WriteLine("DeleteData ERROR: HTTP通信失敗");
-                Console.WriteLine(ex.Message);
+            //NetworkErrorHandler導入
+            response = await _http.GetAsync(url);
 
+            if (!response.IsSuccessStatusCode) {
                 return new NxOperationResult<TKey> {
-                    OperationErrorCode = NxOperationErrorCode.NetworkError,
-                    Message = $"通信エラー: {ex.Message}",
-                    FailedIds = dataIDs.ToList() // 全件失敗扱い
+                    OperationErrorCode = NxOperationErrorCode.HttpError,
+                    Message = $"HTTPエラー: {response.StatusCode}"
                 };
             }
+
 
             if (!response.IsSuccessStatusCode) {
                 Console.WriteLine($"DeleteData ERROR: APIステータス異常 ({response.StatusCode})");
