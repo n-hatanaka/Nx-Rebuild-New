@@ -1,4 +1,4 @@
-﻿using Dapper;
+using Dapper;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Data.Sqlite;
 using Npgsql;
@@ -150,40 +150,47 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         // =======================================================
 
         protected bool _syncing;
+        // 1. 従来の引数なしの SyncData（既存の呼び出しをそのまま維持するため）
         public virtual async Task<NxOperationResult<TKey>> SyncData() {
+            return await SyncData(null);
+        }
+        
+        // 2. RecordQuery を受け取れるようにした新しい SyncData（オーバーロード版）
+        public virtual async Task<NxOperationResult<TKey>> SyncData(RecordQuery? query) {
             using var slot = NxSyncControl.For(DBcon).TryBeginSync();
             if (slot == null)
-                return new NxOperationResult<TKey> { Message = "操作中のため同期をスキップしました" };  // エラーではない
-
-            return await SyncDataCore();     
+                return new NxOperationResult<TKey> { Message = "操作中のため同期をスキップしました" };  
+        
+            return await SyncDataCore(query);     
         }
 
-        protected virtual async Task<NxOperationResult<TKey>> SyncDataCore() {
-
+        // 3. Core 側の処理でクエリをシリアライズ、あるいは URL/クエリパラメータとしてサーバーに投げる
+        protected virtual async Task<NxOperationResult<TKey>> SyncDataCore(RecordQuery? query = null) {
             DateTime refreshed_at = _baseDataObjMgr.Refreshed_at;
             var url = $"{ApiRoute}/sync/{refreshed_at:O}";
-
-            HttpResponseMessage response;
-
-            //NetworkErrorHandler導入
-            response = await _http.GetAsync(url);
-
-            if (!response.IsSuccessStatusCode) {
-                if (response.StatusCode == HttpStatusCode.ServiceUnavailable) {
-                    return new NxOperationResult<TKey> {
-                        OperationErrorCode = NxOperationErrorCode.HttpError,
-                        Message = "サーバーへ接続できません"
-                    };
+        
+            // もし query があれば、ページング情報などをクエリパラメータとして付与する
+            if (query != null) {
+                var queryParams = new List<string>();
+                if (query.PageIndex > 0) queryParams.Add($"pageIndex={query.PageIndex}");
+                if (query.PageSize > 0) queryParams.Add($"pageSize={query.PageSize}");
+                
+                if (queryParams.Count > 0) {
+                    url += "?" + string.Join("&", queryParams);
                 }
-
+            }
+        
+            HttpResponseMessage response = await _http.GetAsync(url);
+        
+            if (!response.IsSuccessStatusCode) {
                 return new NxOperationResult<TKey> {
                     OperationErrorCode = NxOperationErrorCode.HttpError,
                     Message = $"HTTPエラー: {response.StatusCode}"
                 };
             }
-
+        
             NxOperationResult<TKey>? syncResult;
-
+        
             try {
                 syncResult = await response.Content.ReadFromJsonAsync<NxOperationResult<TKey>>();
             } catch (Exception ex) {
@@ -192,12 +199,17 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                     Message = $"レスポンス解析エラー: {ex.Message}"
                 };
             }
-
+        
             if (syncResult == null) {
                 return new NxOperationResult<TKey> {
                     OperationErrorCode = NxOperationErrorCode.Unknown,
                     Message = "同期結果が取得できませんでした"
                 };
+            }
+        
+            // 必要であれば、レスポンスに含まれてきた TotalCount などを RecordQuery 側に書き戻してあげる
+            if (query != null) {
+                query.TotalCount = syncResult.TotalCount;
             }
 
             // サーバーが正常系の形でエラーを返してきた場合はそのまま返す
