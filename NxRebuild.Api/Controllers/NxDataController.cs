@@ -98,71 +98,78 @@ namespace NxRebuild.Api.Controllers {
         //}
 
         [HttpGet("sync/{refreshedAt}")]
-        public virtual async Task<IActionResult> SyncAll(DateTime refreshedAt) {
+        public virtual async Task<IActionResult> SyncAll(
+            DateTime refreshedAt, 
+            [FromQuery] RecordQuery? query = null) 
+        {
             try {
-                var syncedAt = DateTime.UtcNow;   // ★ 問い合わせ開始時点を基準時刻にする
+                var syncedAt = DateTime.UtcNow;   
                 
-                var q = new RecordQuery() ;
-
-                if (refreshedAt > DateTime.MinValue) {
+                // query が渡されていない場合は新規インスタンスを作成
+                var q = query ?? new RecordQuery();
+        
+                // ★ Recordクエリの条件（And/Or/TargetIds/Keyword）が空かどうかを判定
+                bool hasCustomQuery = q.And.Count > 0 || q.Or.Count > 0 || q.TargetIds.Count > 0 || !string.IsNullOrEmpty(q.Keyword);
+        
+                if (!hasCustomQuery && refreshedAt > DateTime.MinValue) {
+                    // Recordクエリが空なので、refreshedAt による差分同期条件を有効化する
                     q.Or.Add(new Condition {
                         Column = "Update_at",
                         Operator = ">=",
                         Value = refreshedAt
                     });
-
+        
                     q.Or.Add(new Condition {
                         Column = "locked_at",
                         Operator = ">=",
                         Value = refreshedAt
                     });
                 }
-
-
-                // ★ DataObjMgr を生成
+        
+                // DataObjMgr を生成（ここで q が渡され、DBから条件に合ったデータおよび TotalCount が取得される）
                 await CreateObjMgrAsync(q);
                 var mgr = _dataObjMgr;
-
+        
                 var items = new List<SyncItem<TKey>>();
-
+        
                 foreach (var obj in mgr.DataList) {
-                    if (obj.Update_at < refreshedAt &&
-                        obj.LockedAt < refreshedAt &&
-                        refreshedAt != DateTime.MinValue) {
-                        continue;
+                    // 差分同期モードのときのみ、古いものをスキップ
+                    if (!hasCustomQuery && refreshedAt != DateTime.MinValue) {
+                        if (obj.Update_at < refreshedAt && obj.LockedAt < refreshedAt) {
+                            continue;
+                        }
                     }
-
-                    // ★ クライアントの更新及びロック時刻よりあたらしいBaseDataObj<TKey>
+        
                     string json;
-
                     try {
-                        json = obj.TblToJson();   // ← ここで例外が起こる可能性あり
+                        json = obj.TblToJson();
                         if (json == null)
                             continue;
-
                     } catch (Exception ex) {
-                        // ★ TblToJson の例外を NxOperationResult に包んで返す
                         return BadRequest(new NxOperationResult<TKey> {
                             OperationErrorCode = NxOperationErrorCode.ServerException,
                             Message = $"TblToJson failed: {ex.Message}"
                         });
                     }
-
+        
                     items.Add(new SyncItem<TKey> {
                         DataId = obj.DataID,
                         Data = json
                     });
                 }
-
-                // ★ NxOperationResult に SyncItems を含めて返す
+        
+                // q.TotalCount から総page数を取得
+                int totalCount = q.TotalCount > 0 ? q.totalCount : 0;
+        
+                // レスポンスにページング情報（PageIndex, TotalCount）を含めて返す
                 return Ok(new NxOperationResult<TKey> {
                     SyncItems = items,
-                    RefreshedAt = syncedAt.AddSeconds(-10),// 保存途中の行の取りこぼし防止。再送は UPSERT なので無害
-                    Message = "Sync completed"
-                    // Success は計算判定で true
+                    RefreshedAt = syncedAt.AddSeconds(-10),
+                    Message = "Sync completed",
+                    PageIndex = q.PageIndex,
+                    TotalPageCnt = totalCount
                 });
             } catch (Exception ex) {
-                // ★ CreateObjMgrAsync やその他の例外を NxOperationResult に包んで返す
                 return BadRequest(new NxOperationResult<TKey> {
                     OperationErrorCode = NxOperationErrorCode.ServerException,
                     Message = $"SyncAll failed: {ex.Message}"

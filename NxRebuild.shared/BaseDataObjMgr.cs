@@ -673,8 +673,16 @@ namespace NxRebuild.shared {
                         param[$"id{i}"] = query.TargetIds[i];
                 }
             }
-
-            return await DBcon.QueryAsync<dynamic>(sql, param);
+            // 1. ページング前の総件数を求めて query に直接書き込む
+            if (query != null && query.PageSize > 0) {
+                string countSql = _BuildCountSql(query);
+                query.TotalCount = await DBcon.ExecuteScalarAsync<int>(countSql, param);
+            }
+        
+            // 2. 通常のデータ取得
+            string sql = _BuildSql(query);
+            return await DBcon.QueryAsync<dynamic>(sql, param);       
+          
         }
 
 
