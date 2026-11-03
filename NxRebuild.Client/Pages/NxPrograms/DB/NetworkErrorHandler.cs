@@ -1,6 +1,18 @@
 ﻿using System.Net;
+namespace NxRebuild.Client.Pages.NxPrograms.DB {
+    public static class NxHttpClientFactory {
+        public static HttpClient Create() {
+            // 1. ハンドラをインスタンス化
+            var errorHandler = new NetworkErrorHandler();
 
-namespace NxRebuild.Client.Pages {
+            // 2. その裏側に通常の通信ハンドラをぶら下げる
+            errorHandler.InnerHandler = new HttpClientHandler();
+
+            // 3. エラーハンドラをラップした HttpClient を生成して返す
+            return new HttpClient(errorHandler);
+        }
+    }
+
     public sealed class NetworkErrorHandler : DelegatingHandler {
         protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
@@ -37,4 +49,5 @@ namespace NxRebuild.Client.Pages {
                 ReasonPhrase = $"Network error: {ex.Message}"
             };
     }
+
 }

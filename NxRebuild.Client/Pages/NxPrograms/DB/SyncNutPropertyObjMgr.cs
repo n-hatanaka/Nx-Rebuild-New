@@ -15,14 +15,11 @@ using System.Text.Json;
 namespace NxRebuild.Client.Pages.NxPrograms.DB {
     public class SyncNutPropertyObjMgr : SyncBaseDataObjMgr<NutritionProperty, SyncNutProperty, int> {
         public override string ApiRoute => "NutProperty"; // 実際のAPIルート
-        public SyncNutPropertyObjMgr(IDbConnection db, HttpClient http, CustomAuthStateProvider auth, Guid tenantCode, Guid currentUserId)
+        public SyncNutPropertyObjMgr(IDbConnection db, HttpClient? http, CustomAuthStateProvider auth, Guid tenantCode, Guid currentUserId)
             : base(db, http, auth, tenantCode, currentUserId)
         {
-            _http = http;
-            _auth = auth; 
             
             _baseDataObjMgr = new NutritionPropertiesMgr(db, tenantCode, currentUserId);
-
         }
 
         //Initializeメソッドから呼び出される。栄養素プロパティのデータをDBから取得する。
@@ -44,9 +41,8 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             }
 
             try {
-                var rows = await _http.GetFromJsonAsync<
-                    List<Dictionary<string, object>>
-                >($"{ApiRoute}/sync");
+                // サーバーから List<Dictionary<string, object>> を直接受け取る
+                var rows = await _http.GetFromJsonAsync<List<Dictionary<string, object>>>($"{ApiRoute}/sync");
 
                 if (rows == null) {
                     return new NxOperationResult<int> {
@@ -69,6 +65,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                             _baseDataObjMgr._dataList.Add(target);
                         }
 
+                        // テーブル名やカラムマッピングに合わせて調整
                         ((SyncNutProperty)target)._SetProperties(
                             NxTypeMapper.ConvertRow("ColName", row)
                         );

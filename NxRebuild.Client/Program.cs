@@ -3,7 +3,6 @@ using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using MudBlazor.Services;
 using NxRebuild.Client;
-using NxRebuild.Client.Pages;
 using NxRebuild.Client.Pages.Auth;
 using NxRebuild.Client.Pages.NxPrograms.DB;
 using NxRebuild.Client.Pages.NxPrograms.MDI;
@@ -26,10 +25,6 @@ builder.Services.AddScoped<CustomAuthStateProvider>();
 
 builder.Services.AddSingleton<SessionEvents>();
 
-
-//　ネットワークエラー時のハンドラーをDIコンテナに登録
-builder.Services.AddTransient<NetworkErrorHandler>();
-
 // jwt自動付与ハンドラーをDIコンテナに登録
 builder.Services.AddTransient<JwtAuthorizationMessageHandler>();
 
@@ -45,8 +40,7 @@ builder.Services.AddHttpClient("SecureClient", client => {
 
     client.BaseAddress = baseAddress;
 })
-.AddHttpMessageHandler<JwtAuthorizationMessageHandler>()
-.AddHttpMessageHandler<NetworkErrorHandler>();
+.AddHttpMessageHandler<JwtAuthorizationMessageHandler>();
 
 
 //builder.Services.AddHttpClient("SecureClient", client =>

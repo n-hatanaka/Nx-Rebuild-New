@@ -58,8 +58,13 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             set => _baseDataObjMgr.PrimaryPKDict = value;
         }
 
-        public SyncBaseDataObjMgr(IDbConnection db, HttpClient http, CustomAuthStateProvider auth,
+        public SyncBaseDataObjMgr(IDbConnection db, HttpClient? http, CustomAuthStateProvider auth,
                                   Guid tenantCode, Guid currentUserId) {
+            // 呼び出し側が HttpClient を渡さなかった（null の）場合は、
+            // ライブラリ側で自動的にエラーハンドラ付きの HttpClient を生成する！
+            _http = http ?? NxHttpClientFactory.Create();
+            _auth = auth;
+
             // 派生先で BaseDataObjMgr を生成すること
         }
 

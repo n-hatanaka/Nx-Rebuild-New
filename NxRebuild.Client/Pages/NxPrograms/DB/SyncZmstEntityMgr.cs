@@ -25,8 +25,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             Guid tenantCode,
             Guid currentUserId)
             : base(db, http, auth, tenantCode, currentUserId) {
-            _http = http;
-            _auth = auth;
+
 
             _baseDataObjMgr = new ZmstEntityMgr(db, tenantCode, currentUserId);
         }

@@ -158,7 +158,7 @@
                 Guid currentUserGuid = Guid.TryParse(userIdClaim?.Value, out var ug) ? ug : Guid.Empty;
 
                 GlobalState.NutProperties =
-                    new SyncNutPropertyObjMgr(DbState.Connection, Http, customAuth, tenantGuid, currentUserGuid);
+                    new SyncNutPropertyObjMgr(DbState.Connection, null, customAuth, tenantGuid, currentUserGuid);
 
                 await GlobalState.NutProperties.InitializeAsync(null);
 
