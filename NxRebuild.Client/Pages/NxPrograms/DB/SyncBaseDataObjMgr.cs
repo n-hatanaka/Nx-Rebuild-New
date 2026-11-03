@@ -5,6 +5,7 @@ using Npgsql;
 using NxRebuild.Client.Pages.Auth;
 using NxRebuild.shared;
 using System.Data;
+using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 
@@ -163,6 +164,13 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             response = await _http.GetAsync(url);
 
             if (!response.IsSuccessStatusCode) {
+                if (response.StatusCode == HttpStatusCode.ServiceUnavailable) {
+                    return new NxOperationResult<TKey> {
+                        OperationErrorCode = NxOperationErrorCode.HttpError,
+                        Message = "サーバーへ接続できません"
+                    };
+                }
+
                 return new NxOperationResult<TKey> {
                     OperationErrorCode = NxOperationErrorCode.HttpError,
                     Message = $"HTTPエラー: {response.StatusCode}"
@@ -275,25 +283,22 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             HttpResponseMessage response;
 
             //NetworkErrorHandler導入
-            response = await _http.GetAsync(url);
+            response = await _http.PostAsJsonAsync(url, dataIDs);
 
             if (!response.IsSuccessStatusCode) {
+                if (response.StatusCode == HttpStatusCode.ServiceUnavailable) {
+                    return new NxOperationResult<TKey> {
+                        OperationErrorCode = NxOperationErrorCode.HttpError,
+                        Message = "サーバーへ接続できません"
+                    };
+                }
+
                 return new NxOperationResult<TKey> {
                     OperationErrorCode = NxOperationErrorCode.HttpError,
                     Message = $"HTTPエラー: {response.StatusCode}"
                 };
             }
 
-
-            if (!response.IsSuccessStatusCode) {
-                Console.WriteLine($"DeleteData ERROR: APIステータス異常 ({response.StatusCode})");
-
-                return new NxOperationResult<TKey> {
-                    OperationErrorCode = NxOperationErrorCode.HttpError,
-                    Message = $"HTTPエラー: {response.StatusCode}",
-                    FailedIds = dataIDs.ToList()
-                };
-            }
 
             NxOperationResult<TKey>? op;
 

@@ -6,7 +6,7 @@ namespace NxRebuild.Client.Pages {
             HttpRequestMessage request,
             CancellationToken cancellationToken) {
             const int retryCount = 1;
-
+            Console.WriteLine("NetworkErrorHandler");
             for (int retry = 0; ; retry++) {
                 try {
                     return await base.SendAsync(request, cancellationToken);

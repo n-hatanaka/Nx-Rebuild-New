@@ -1,13 +1,14 @@
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
-using NxRebuild.Client;
-using NxRebuild.Client.Pages.Auth;
-using NxRebuild.Client.Pages.NxPrograms.MDI;
-using System.Net.NetworkInformation;
 using MudBlazor.Services;
+using NxRebuild.Client;
+using NxRebuild.Client.Pages;
+using NxRebuild.Client.Pages.Auth;
 using NxRebuild.Client.Pages.NxPrograms.DB;
+using NxRebuild.Client.Pages.NxPrograms.MDI;
 using System.Data.Common;
+using System.Net.NetworkInformation;
 
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
 builder.RootComponents.Add<App>("#app");
@@ -25,6 +26,10 @@ builder.Services.AddScoped<CustomAuthStateProvider>();
 
 builder.Services.AddSingleton<SessionEvents>();
 
+
+//　ネットワークエラー時のハンドラーをDIコンテナに登録
+builder.Services.AddTransient<NetworkErrorHandler>();
+
 // jwt自動付与ハンドラーをDIコンテナに登録
 builder.Services.AddTransient<JwtAuthorizationMessageHandler>();
 
@@ -40,7 +45,9 @@ builder.Services.AddHttpClient("SecureClient", client => {
 
     client.BaseAddress = baseAddress;
 })
-.AddHttpMessageHandler<JwtAuthorizationMessageHandler>();
+.AddHttpMessageHandler<JwtAuthorizationMessageHandler>()
+.AddHttpMessageHandler<NetworkErrorHandler>();
+
 
 //builder.Services.AddHttpClient("SecureClient", client =>
 //{
@@ -60,6 +67,8 @@ builder.Services.AddHttpClient("SecureClient", client => {
 // デフォルトの HttpClient として「SecureClient」を使うように設定
 builder.Services.AddScoped(sp =>
     sp.GetRequiredService<IHttpClientFactory>().CreateClient("SecureClient"));
+
+
 
 // MudBlazor 必須サービス
 builder.Services.AddMudServices();

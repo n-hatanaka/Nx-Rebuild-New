@@ -552,21 +552,25 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
             HttpResponseMessage response;
 
-            try {
+            var apiUrl = $"{ApiRoute}/DataOpenLatest";
 
-                var apiUrl = $"{ApiRoute}/DataOpenLatest";
-                response = await Http.PostAsJsonAsync(apiUrl, DataID);
-            } catch (HttpRequestException ex) {
+            response =
+                await Http.PostAsJsonAsync(apiUrl, DataID);
+
+            if (!response.IsSuccessStatusCode) {
+                if (response.StatusCode == HttpStatusCode.ServiceUnavailable) {
+                    return new NxOperationResult<TKey> {
+                        OperationErrorCode = NxOperationErrorCode.HttpError,
+                        Message = "サーバーへ接続できません"
+                    };
+                }
+
                 return new NxOperationResult<TKey> {
                     OperationErrorCode = NxOperationErrorCode.HttpError,
-                    Message = $"通信エラー: {ex.Message}"
-                };
-            } catch (TaskCanceledException ex) {
-                return new NxOperationResult<TKey> {
-                    OperationErrorCode = NxOperationErrorCode.HttpError,
-                    Message = $"通信タイムアウト: {ex.Message}"
+                    Message = $"HTTPエラー: {response.StatusCode}"
                 };
             }
+
 
             NxOperationResult<TKey>? openResult = null;
 
@@ -658,20 +662,21 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
             HttpResponseMessage response;
 
-            try {
-                response = await Http.PostAsJsonAsync(url, req);
-            } catch (HttpRequestException ex) {
+            response = await Http.PostAsJsonAsync(url, req);
+
+            if (!response.IsSuccessStatusCode) {
+                if (response.StatusCode == HttpStatusCode.ServiceUnavailable) {
+                    return new NxOperationResult<TKey> {
+                        OperationErrorCode = NxOperationErrorCode.HttpError,
+                        Message = "サーバーへ接続できません"
+                    };
+                }
+
                 return new NxOperationResult<TKey> {
                     OperationErrorCode = NxOperationErrorCode.HttpError,
-                    Message = $"通信エラー: {ex.Message}"
-                };
-            } catch (TaskCanceledException ex) {
-                return new NxOperationResult<TKey> {
-                    OperationErrorCode = NxOperationErrorCode.HttpError,
-                    Message = $"通信タイムアウト: {ex.Message}"
+                    Message = $"HTTPエラー: {response.StatusCode}"
                 };
             }
-
             NxOperationResult<TKey>? op;
 
             try {
@@ -739,20 +744,21 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             var url = $"{ApiRoute}/ReName/{DataID}/{newName}";
             HttpResponseMessage response;
 
-            try {
-                response = await Http.PostAsync(url, null);
-            } catch (HttpRequestException ex) {
+            response = await Http.PostAsync(url, null);
+
+            if (!response.IsSuccessStatusCode) {
+                if (response.StatusCode == HttpStatusCode.ServiceUnavailable) {
+                    return new NxOperationResult<TKey> {
+                        OperationErrorCode = NxOperationErrorCode.HttpError,
+                        Message = "サーバーへ接続できません"
+                    };
+                }
+
                 return new NxOperationResult<TKey> {
                     OperationErrorCode = NxOperationErrorCode.HttpError,
-                    Message = $"通信エラー: {ex.Message}"
-                };
-            } catch (TaskCanceledException ex) {
-                return new NxOperationResult<TKey> {
-                    OperationErrorCode = NxOperationErrorCode.HttpError,
-                    Message = $"通信タイムアウト: {ex.Message}"
+                    Message = $"HTTPエラー: {response.StatusCode}"
                 };
             }
-
             NxOperationResult<TKey>? op;
 
             try {
