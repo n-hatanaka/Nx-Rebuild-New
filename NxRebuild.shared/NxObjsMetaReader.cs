@@ -15,6 +15,9 @@ namespace NxRebuild.shared {
     // [NxObjsMetaData(
     // PrimaryTable = "Zmst",
     // NameCol = "Z_name",
+    // UpdateAtCol = "Update_at",
+    // LockedByCol = "locked_by",
+    // LockedAtCol = "locked_at",
     // IdCol = "LocalCode",
     // ParentIDCol = "gun_cd",
     // DetailTables = "tan_m",
@@ -42,6 +45,10 @@ namespace NxRebuild.shared {
 
         // その他メタ情報
         public string NameCol { get; set; }
+        public string UpdateAtCol { get; set; }
+        public string LockedByCol { get; set; }
+        public string LockedAtCol { get; set; }
+        public string TenantCodeCol { get; set; }
         public string IdCol { get; set; }
         public string ParentIDCol { get; set; }
         public string RootName { get; set; }

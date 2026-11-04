@@ -89,7 +89,7 @@ namespace NxRebuild.shared {
                     // ---------------------------------------------------------
                     // 大分類 gun_m（分類マスタ）
                     // ---------------------------------------------------------
-                    string sqlCat = @"
+                    string sqlCat = $@"
                                     SELECT
                                         tenant_code,
                                         0 AS jun,
@@ -98,8 +98,8 @@ namespace NxRebuild.shared {
                                         dai_cd AS syou_cd,
                                         dai_name AS syou_name
                                     FROM gun_m
-                                    WHERE tenant_code = @tc
-                                    GROUP BY tenant_code, dai_cd, dai_name
+                                    WHERE ""{TenantCodeCol}"" = @tc
+                                    GROUP BY ""{TenantCodeCol}"", dai_cd, dai_name
                                     ORDER BY dai_cd;
                                 ";
 
@@ -125,10 +125,10 @@ namespace NxRebuild.shared {
                     // ---------------------------------------------------------
                     // 小分類 gun_m
                     // ---------------------------------------------------------
-                    sqlCat = @"
+                    sqlCat = $@"
                             SELECT *
                             FROM ""gun_m""
-                            WHERE ""tenant_code"" = @tc;
+                            WHERE ""{TenantCodeCol}"" = @tc;
                         ";
 
                     rawCatRows = await DBcon.QueryAsync<dynamic>(

@@ -29,6 +29,7 @@ namespace NxRebuild.shared
         PrimaryTable = "ColName",
         PriTblPKColList = new[] {"tenant_code", "No"},
         WorkPriTable = "ColName",//←存在しなければプライマリテーブル名を必ず入れる
+        TenantCodeCol = "tenant_code",
         NameCol = "Name",
         IdCol = "No"
         )]
@@ -42,8 +43,6 @@ namespace NxRebuild.shared
         public string PName2 => _rawData["PName2"]?.ToString() ?? "";
         public string PName3 => _rawData["PName3"]?.ToString() ?? "";
         public string PTanni => _rawData["PTanni"]?.ToString() ?? "";
-
-        // 編集可能なのは Visible のみ
 
         // 編集可能なのは Visible のみ
         public bool Visible

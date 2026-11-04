@@ -142,6 +142,10 @@ namespace NxRebuild.shared {
                               ?? new Dictionary<string, string[]>();
 
             _nameColName = meta.NameCol;
+            _updateAtCol = meta.UpdateAtCol;
+            _lockedAtCol = meta.LockedAtCol;
+            _lockedByCol = meta.LockedByCol;
+            _tenantCodeCol = meta.TenantCodeCol;
             _idColName = meta.IdCol;
             _parentIDColName = meta.ParentIDCol;
             _infoTbl = meta.InfoTable;
@@ -156,6 +160,10 @@ namespace NxRebuild.shared {
         public Dictionary<string, object> _rawData = new();
 
         protected string _nameColName; //テーブルのデータ名カラムのカラム名
+        protected string _updateAtCol;
+        protected string _lockedByCol;
+        protected string _lockedAtCol;
+        protected string _tenantCodeCol;
         protected string _idColName;//テーブルのIDカラムのカラム名
         public string _parentIDColName;//テーブルの親IDカラムのカラム名
         public string _primaryTableName; //データ名等基本データが格納されるテーブル名
@@ -174,6 +182,10 @@ namespace NxRebuild.shared {
         public IBaseDataObj<TKey>? ParentDataObj { get; set; }
         public string NameColName => _nameColName;
         public string IdColName => _idColName;
+        public string UpdateAtCol => _updateAtCol;
+        public string LockedAtCol => _lockedAtCol;
+        public string LockedByCol => _lockedByCol;
+        public string TenantCodeCol => _tenantCodeCol;
         public string ParentIDColName => _parentIDColName;
         public string TblName => _primaryTableName;
         public string[] DetailTableList => _detailTableList;
@@ -214,12 +226,12 @@ namespace NxRebuild.shared {
             }
         }
 
-        public Guid TenantCode {
-            get => _rawData.TryGetValue("tenant_code", out var v)
+        public virtual Guid TenantCode {
+            get => _rawData.TryGetValue(_tenantCodeCol, out var v)
                 ? (v is Guid g ? g : Guid.Parse(v.ToString()!))
                 : Guid.Empty;
 
-            set => _SetProperties(new Dictionary<string, object> { ["tenant_code"] = value });   
+            set => _SetProperties(new Dictionary<string, object> { [_tenantCodeCol] = value });   
         }
 
         
@@ -265,7 +277,7 @@ namespace NxRebuild.shared {
         public DateTime Update_at {
             get {
                 try {
-                    if (_rawData.TryGetValue("update_at", out var v) && v != null && v is not DBNull)
+                    if (_rawData.TryGetValue(_updateAtCol, out var v) && v != null && v is not DBNull)
                         return Convert.ToDateTime(v);
                 } catch {
                     // 苦肉の策：
@@ -282,7 +294,7 @@ namespace NxRebuild.shared {
         public DateTime LockedAt {
             get {
                 try {
-                    if (_rawData.TryGetValue("locked_at", out var v) && v != null && v is not DBNull)
+                    if (_rawData.TryGetValue(_lockedAtCol, out var v) && v != null && v is not DBNull)
                         return Convert.ToDateTime(v);
                 } catch { }
 
@@ -293,7 +305,7 @@ namespace NxRebuild.shared {
         public Guid LockerID {
             get {
                 try {
-                    if (_rawData.TryGetValue("locked_by", out var v) && v != null && v is not DBNull)
+                    if (_rawData.TryGetValue(LockedByCol, out var v) && v != null && v is not DBNull)
                         return Guid.Parse(v.ToString());
                 } catch { }
 
@@ -647,7 +659,7 @@ namespace NxRebuild.shared {
 
                     if (isDetail) {
                         // 親 PK の補完は、列リストを組み立てる前に行う
-                        var parentPKs = pkCols!.Where(pk => pk == "tenant_code" || pk == IdColName).ToArray();
+                        var parentPKs = pkCols!.Where(pk => pk == _tenantCodeCol || pk == IdColName).ToArray();
                         foreach (var pk in parentPKs)
                             normalized[pk] = _rawData[pk];
 
@@ -661,7 +673,7 @@ namespace NxRebuild.shared {
                     var updates = string.Join(", ",
                         normalized.Keys
                             .Where(k => !pkSet.Contains(k))
-                            .Where(k => !(isServer && (k == "locked_by" || k == "locked_at")))  // 5番のa'
+                            .Where(k => !(isServer && (k == _lockedByCol || k == _lockedAtCol)))  // 5番のa'
                             .Select(k => $@"""{k}"" = EXCLUDED.""{k}"""));
 
                     var sql = isDetail
@@ -849,8 +861,8 @@ namespace NxRebuild.shared {
             string sql = $@"
                             UPDATE ""{_primaryTableName}""
                             SET ""deleted"" = 1,
-                                ""Update_at"" = @UpdateAt,
-                                ""Locked_at"" = @LockedAt
+                                ""{_updateAtCol}"" = @UpdateAt,
+                                ""{_lockedAtCol}"" = @LockedAt
                             WHERE {whereClause};
                         ";
 
@@ -861,8 +873,8 @@ namespace NxRebuild.shared {
                 param[pk] = PrimaryPKDict[pk]!;   // rawData から正本化済み PK を取得
 
             // SoftDelete 固有の値
-            param["UpdateAt"] = DateTime.MaxValue;
-            param["LockedAt"] = DateTime.MinValue;
+            param[_updateAtCol] = DateTime.MaxValue;
+            param[_lockedAtCol] = DateTime.MinValue;
 
             var rows = await DBcon.ExecuteAsync(sql, param, transaction);
 
@@ -896,7 +908,7 @@ namespace NxRebuild.shared {
 
                     // ★ 親由来 PK のみ抽出
                     var parentPKs = pkCols.Where(pk =>
-                        pk == "tenant_code" || pk == IdColName
+                        pk == _tenantCodeCol || pk == IdColName
                     ).ToArray();
 
                     // ★ WHERE は親 PK のみ
@@ -975,14 +987,14 @@ namespace NxRebuild.shared {
                 string sql = $@"
                                 UPDATE ""{_primaryTableName}""
                                 SET ""{_nameColName}"" = @name,
-                                    ""Update_at"" = @update_at
+                                    ""{_updateAtCol}"" = @update_at
                                 WHERE {whereClause};
                             ";
 
                 // ★ PK パラメータ辞書を作成（PrimaryPKDict を使う）
                 var param = new Dictionary<string, object> {
-                    ["name"] = newName,
-                    ["update_at"] = updateAt
+                    [_nameColName] = newName,
+                    [_updateAtCol] = updateAt
                 };
 
                 foreach (var pk in _primaryTblPKList)
@@ -1129,7 +1141,7 @@ namespace NxRebuild.shared {
             IDbTransaction tran) {
             try {
                 // ★ このメソッドはローカル書き込み用なのでとりあえずPC時間で
-                workingRaw["Update_at"] = DateTime.UtcNow;
+                workingRaw[_updateAtCol] = DateTime.UtcNow;
 
                 // ★ カラム名とパラメータ名を生成
                 var cols = new List<string>();
@@ -1191,7 +1203,7 @@ namespace NxRebuild.shared {
 
                 // ★ 親由来 PK
                 var parentPKs = pkCols.Where(pk =>
-                    pk == "tenant_code" || pk == IdColName
+                    pk == _tenantCodeCol || pk == IdColName
                 ).ToArray();
 
                 foreach (var row in detailRows) {
@@ -1217,7 +1229,7 @@ namespace NxRebuild.shared {
                         vals.Add($@"@{kv.Key}");
 
                         // ★ PK と update_at は UPDATE しない
-                        if (!pkCols.Contains(kv.Key) && kv.Key != "update_at")
+                        if (!pkCols.Contains(kv.Key) && kv.Key != _updateAtCol)
                             updates.Add($@"""{kv.Key}"" = EXCLUDED.""{kv.Key}""");
                     }
 
@@ -1290,8 +1302,8 @@ namespace NxRebuild.shared {
             var nowupdate_at = result.Locked_at ?? DateTime.MinValue;
             // UIへの反映
             _SetProperties(new Dictionary<string, object> {
-                ["locked_at"] = DateTime.UtcNow,
-                ["locked_by"] = result.LockedByUserId
+                [_lockedAtCol] = DateTime.UtcNow,
+                [_lockedByCol] = result.LockedByUserId
             });
 
             return result;
@@ -1322,15 +1334,15 @@ namespace NxRebuild.shared {
 
                 // DBのロック情報を反映するためにプロパティ更新
                 _SetProperties(new Dictionary<string, object> {
-                    ["locked_at"] = result.Locked_at,
-                    ["locked_by"] = result.LockedByUserId
+                    [_lockedAtCol] = result.Locked_at,
+                    [_lockedByCol] = result.LockedByUserId
                 });
             }
 
             // ---- UIへの反映（整合） ----
             _SetProperties(new Dictionary<string, object> {
-                ["locked_at"] = result.Locked_at,
-                ["locked_by"] = result.LockedByUserId
+                [_lockedAtCol] = result.Locked_at,
+                [_lockedByCol] = result.LockedByUserId
             });
 
             return result;
@@ -1361,13 +1373,13 @@ namespace NxRebuild.shared {
                 if (doLock) {
                     string sqlLock = $@"
                 UPDATE ""{TblName}""
-                SET ""locked_by"" = @userId,
-                    ""locked_at"" = @lockedAt
+                SET ""{_lockedByCol}"" = @userId,
+                    ""{_lockedAtCol}"" = @lockedAt
                 WHERE {whereClause}
                   AND (
-                        ""locked_by"" = @userId
-                     OR ""locked_at"" IS NULL
-                     OR ""locked_at"" < @expiryTime
+                        ""{_lockedByCol}"" = @userId
+                     OR ""{_lockedAtCol}"" IS NULL
+                     OR ""{_lockedAtCol}"" < @expiryTime
                   );
             ";
 
@@ -1417,10 +1429,10 @@ namespace NxRebuild.shared {
                 // ============================================================
                 string sqlUnlock = $@"
                                     UPDATE ""{TblName}""
-                                    SET ""locked_by"" = NULL,
-                                        ""locked_at"" = NULL
+                                    SET ""{_lockedByCol}"" = NULL,
+                                        ""{_lockedAtCol}"" = NULL
                                     WHERE {whereClause}
-                                      AND ""locked_by"" = @userId;
+                                      AND ""{_lockedByCol}"" = @userId;
                                 ";
 
                 var unlockParam = new Dictionary<string, object>(pkParams) {
@@ -1455,9 +1467,9 @@ namespace NxRebuild.shared {
 
                 string sql = $@"
                                 SELECT
-                                    ""locked_at"",
-                                    ""locked_by"" AS ""UserId"",
-                                    ""Update_at""
+                                    ""{_lockedAtCol}"",
+                                    ""{_lockedByCol}"" AS ""UserId"",
+                                    ""{_updateAtCol}""
                                 FROM ""{TblName}""
                                 WHERE {whereClause};
                             ";
@@ -1484,8 +1496,8 @@ namespace NxRebuild.shared {
                 if (result.UserId != null)
                     Guid.TryParse(result.UserId.ToString(), out lockedByRaw);
 
-                var lockedAt = NxTypeMapper.Convert(TblName, "locked_at", (object?)result.locked_at) as DateTime?;
-                var updateAt = NxTypeMapper.Convert(TblName, "update_at", (object?)result.Update_at) as DateTime?;
+                var lockedAt = NxTypeMapper.Convert(TblName, _lockedAtCol, (object?)result[_lockedAtCol]) as DateTime?;
+                var updateAt = NxTypeMapper.Convert(TblName, _updateAtCol, (object?)result[_updateAtCol]) as DateTime?;
 
                 var lockSt = new LockStatus {
                     Exists = true,
@@ -1498,8 +1510,8 @@ namespace NxRebuild.shared {
                 };
 
                 _SetProperties(new Dictionary<string, object?> {      // 未ロックは NULL のまま
-                    ["locked_at"] = lockSt.Locked_at,
-                    ["locked_by"] = lockSt.LockedByUserId
+                    [_lockedAtCol] = lockSt.Locked_at,
+                    [_lockedByCol] = lockSt.LockedByUserId
                 });
 
                 return lockSt;

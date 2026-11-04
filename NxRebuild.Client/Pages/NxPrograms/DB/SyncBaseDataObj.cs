@@ -31,6 +31,10 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
         protected BaseDataObj<TKey> DataObj { get => _dataObj; }
 
+        public string UpdateAtCol => _dataObj.UpdateAtCol;
+        public string LockedAtCol => _dataObj.LockedAtCol;
+        public string LockedByCol => _dataObj.LockedByCol;
+        public string TenantCodeCol => _dataObj.TenantCodeCol;
         public HttpClient Http { get; set; }
         public CustomAuthStateProvider Auth { get; set; }
         public abstract string ApiRoute { get; } //←派生先で設定する事。
@@ -204,6 +208,9 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
             using var tran = DBcon.BeginTransaction();
 
+            bool conflictSaved;
+
+            NxOperationResult<TKey>? op = null;
             try {
 
                 //仮ID採番の前に現在のID（新規なら最小値になっている）を取得しておく
@@ -262,7 +269,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                     };
                 }
 
-                NxOperationResult<TKey>? op = null;
+                
 
                 try {
                     // ★ 応答を読む（JSON パース）
@@ -304,7 +311,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                         default
                     );
 
-                bool conflictSaved =
+                conflictSaved =
                     !isNewSave &&
                     !EqualityComparer<TKey>.Default.Equals(
                         op.NewID,
@@ -324,26 +331,14 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
                 // ★ サーバー正史の RawData をローカルへ反映
                 if (op.RawData != null) {
-                    await UpdateDetailIDExec(newID, op.NewID);
+                    await UpdateDetailIDExec(newID, op.NewID, tran);
                     await UpdateRawDataToTbl(op.RawData, tran);
                 }
 
                 // ★ コミット（ローカル世界線の確定）
                 tran.Commit();
 
-                // ★ サーバー正史のプロパティをオブジェクトに反映
-                await _dataObj._UpdatePropertiesFromTblAsync();
-
-                // ★ 正常終了
-                return new NxOperationResult<TKey> {
-                    RawData = op.RawData,
-                    NewID = op.NewID,
-                    UpdateAt = op.UpdateAt,
-                    DataBranched = conflictSaved,
-                    Message = conflictSaved
-                        ? "他ユーザーによる更新を検出したため、新規データとして保存しました。"
-                        : "Save completed"
-                };
+                
             } catch (Exception ex) {
                 Console.WriteLine("SyncBaseDataObj.SaveAsync ERROR:");
                 Console.WriteLine(ex.Message);
@@ -354,25 +349,33 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                     Message = $"SaveAsync failed: {ex.Message}"
                 };
             }
+                // ★ サーバー正史のプロパティをオブジェクトに反映
+                await _dataObj._UpdatePropertiesFromTblAsync();
+
+            // ★ 正常終了
+            return new NxOperationResult<TKey> {
+                RawData = op.RawData,
+                NewID = op.NewID,
+                UpdateAt = op.UpdateAt,
+                DataBranched = conflictSaved,
+                Message = conflictSaved
+                    ? "他ユーザーによる更新を検出したため、新規データとして保存しました。"
+                    : "Save completed"
+            };
         }
 
         // 子テーブルの親IDを更新する。DELETEしないのでFKが壊れない。
         // 抽象化は子テーブルが1つの場合のみまで、それ以上はオーバーライドして
         // 子テーブルのアップデートを実装する
-        protected virtual async Task UpdateDetailIDExec(TKey oldID, TKey newID) {
-            if (!EqualityComparer<TKey>.Default.Equals(oldID, newID)) {
-                // 親IDが変わったときだけ子テーブルを更新
-                string sql = $@"
-                                UPDATE ""{DetailTableList}""
-                                SET ""{IdColName}"" = @NewID
-                                WHERE ""{IdColName}"" = @OldID
-                                  AND ""tenant_code"" = @TenantCode;
-                            ";
-
-                await DBcon.ExecuteAsync(sql, new { NewID = newID, OldID = oldID, TenantCode });
+        protected virtual async Task UpdateDetailIDExec(TKey oldID, TKey newID, IDbTransaction? tran) {
+            if (EqualityComparer<TKey>.Default.Equals(oldID, newID)) return;
+            foreach (var tbl in DetailTableList) {
+                string sql = $@"UPDATE ""{tbl}"" SET ""{IdColName}"" = @NewID
+                        WHERE ""{IdColName}"" = @OldID AND ""{TenantCodeCol}"" = @TenantCode;";
+                await DBcon.ExecuteAsync(sql, new { NewID = newID, OldID = oldID, TenantCode }, tran);
             }
         }
-
+        // 331行目: await UpdateDetailIDExec(newID, op.NewID, tran);
 
 
         public async Task<NxOperationResult<TKey>> SetLockAsync() {
@@ -433,8 +436,8 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             if (op.LockStatus != null) {
                 try {
                     if (!await UpdateRawDataToTbl(new Dictionary<string, object> {
-                                    { "locked_at", op.LockStatus.Locked_at },
-                                    { "locked_by", op.LockStatus.LockedByUserId }
+                                    { LockedAtCol, op.LockStatus.Locked_at },
+                                    { LockedByCol, op.LockStatus.LockedByUserId }
                                     }, null)) {
                         return new NxOperationResult<TKey> {
                             OperationErrorCode = NxOperationErrorCode.DbError,
@@ -517,8 +520,8 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             if (op.LockStatus != null) {
                 try {
                     if (!await UpdateRawDataToTbl(new Dictionary<string, object> {
-                                    { "locked_at", op.LockStatus.Locked_at },
-                                    { "locked_by", op.LockStatus.LockedByUserId }
+                                    { LockedAtCol, op.LockStatus.Locked_at },
+                                    { LockedByCol, op.LockStatus.LockedByUserId }
                                     }, null)) {
                         return new NxOperationResult<TKey> {
                             OperationErrorCode = NxOperationErrorCode.DbError,
@@ -828,12 +831,13 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                 }
             }
 
+            var pkCols = _dataObj._primaryTblPKList;
             // ★ UPSERT SQL（DELETE を使わないので FK が壊れない）
             string sql = $@"
                                 INSERT INTO ""{TblName}""
                                 ({string.Join(", ", cols)})
                                 VALUES ({string.Join(", ", vals)})
-                                ON CONFLICT (""{IdColName}"", ""tenant_code"")
+                                ON CONFLICT ({string.Join(", ", pkCols.Select(c => $"\"{c}\""))})
                                 DO UPDATE SET
                                     {string.Join(", ", updates)};
                             ";

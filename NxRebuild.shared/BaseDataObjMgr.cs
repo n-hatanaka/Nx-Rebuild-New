@@ -387,14 +387,26 @@ namespace NxRebuild.shared {
     // 生成元）が PrimaryPKDict を使って DataObj に注入する。
     public abstract class BaseDataObjMgr<T, TKey> : IBaseDataObjMgr<T, TKey> , IsrvBaseDataObjMgr<T, TKey> where T : BaseDataObj<TKey>, new() {
 
-        protected string _piymaryTableName;
+        protected string _priymaryTableName;
+
+        protected string _updateAtCol;
+        protected string _lockedByCol;
+        protected string _lockedAtCol;
+        protected string _tenantCodeCol;
+
+        public string UpdateAtCol => _updateAtCol;
+        public string LockedAtCol => _lockedAtCol;
+        public string LockedByCol => _lockedByCol;
+        public string TenantCodeCol => _tenantCodeCol;
+
         protected string _idColName;
+        protected string _nameColName;
         protected string[] _primaryTblPKList;
         protected string[] _detailTableList;
         protected string _infoTbl;
         protected string _w_tblName;
         protected string[] _w_detailTblList;
-        public string TblName { get => _piymaryTableName; }//データ名等基本データが格納されるテーブル名
+        public string TblName { get => _priymaryTableName; }//データ名等基本データが格納されるテーブル名
         public string[] DetailTableList { get => _detailTableList; }//明細データが格納されるサブテーブル名
         public string InfoTbl { get => _infoTbl; }//TblNameに加え栄養素などの集計結果が入っているテーブル(プロパティをビューから取得したいときはこれを使う
 
@@ -403,8 +415,8 @@ namespace NxRebuild.shared {
 
         protected string RootName { get; set; }//rootNodeの表示名。空の場合はInitializeメソッドでRootNodeオブジェクトは作成されない
 
-        string IdColName { get; }
-        string NameColName { get; }
+        string IdColName { get => _idColName; }
+        string NameColName { get => _nameColName; }
         public NxDataType DataType { get; set; }
 
         public Guid TenantCode { get; set; }
@@ -523,7 +535,7 @@ namespace NxRebuild.shared {
             if (meta == null)
                 throw new Exception($"NxObjsMetaDataAttribute が {typeof(T).Name} に設定されていません。");
 
-            _piymaryTableName = meta.PrimaryTable;
+            _priymaryTableName = meta.PrimaryTable;
             //_nameColName = meta.NameCol;
             _idColName = meta.IdCol;
             _primaryTblPKList = meta.PriTblPKColList;
@@ -533,6 +545,10 @@ namespace NxRebuild.shared {
             _w_tblName = meta.WorkPriTable;
             _w_detailTblList = meta.WorkDtlTblList;
             //_datatype = meta.DataType;
+            _updateAtCol = meta.UpdateAtCol;
+            _lockedByCol = meta.LockedByCol;
+            _lockedAtCol = meta.LockedAtCol;
+            _tenantCodeCol = meta.TenantCodeCol;
 
             //Initialize()はインスタンス生成元が呼び出す事(ラッパークラス生成に関連するためこの中で呼んではいけない)
         }
@@ -639,7 +655,7 @@ namespace NxRebuild.shared {
                 throw new Exception("NxTypeMap が初期化されていません。");
         
             // 型マップに基づいて初期値辞書を生成
-            return NxTypeMapper.Current.CreateEmptyRow(_piymaryTableName);
+            return NxTypeMapper.Current.CreateEmptyRow(_priymaryTableName);
         }
 
 
@@ -675,29 +691,27 @@ namespace NxRebuild.shared {
             }
             // 1. ページング前の総件数を求めて query に直接書き込む
             if (query != null && query.PageSize > 0) {
-                string countSql = _BuildCountSql(query);
+                string countSql = _BuildSql(query);
                 query.TotalCount = await DBcon.ExecuteScalarAsync<int>(countSql, param);
             }
         
             // 2. 通常のデータ取得
-            string sql = _BuildSql(query);
+            sql = _BuildSql(query);
             return await DBcon.QueryAsync<dynamic>(sql, param);       
           
         }
 
 
         //RecordQueryをもとにSQLを組み立てる
-        // RecordQueryをもとにSQLを組み立てる
-        // RecordQueryをもとにSQLを組み立てる
         public virtual string _BuildSql(RecordQuery? q) {
             var sql = new List<string>();
 
             // SELECT
-            sql.Add($"SELECT * FROM \"{_piymaryTableName}\"");
+            sql.Add($"SELECT * FROM \"{_priymaryTableName}\"");
             sql.Add("WHERE 1=1");
 
             // 世界線境界（必ず入れる）
-            sql.Add("AND \"tenant_code\" = @TenantCode");
+            sql.Add($"AND \"{TenantCodeCol}\" = @TenantCode");
 
             // null → 全件取得
             if (q == null)
@@ -709,7 +723,7 @@ namespace NxRebuild.shared {
                     .Select((id, idx) => $"@id{idx}")
                     .ToList();
 
-                sql.Add($"AND \"{_idColName}\" IN ({string.Join(", ", idParams)})");
+                sql.Add($"AND \"{IdColName}\" IN ({string.Join(", ", idParams)})");
             }
 
             // 条件（Condition）を安全にSQL文字列に変換するヘルパー関数

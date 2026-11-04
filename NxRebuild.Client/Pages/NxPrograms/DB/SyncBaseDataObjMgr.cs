@@ -37,6 +37,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         public event Action? DataChanged;　//更新イベント
 
         public string TblName => _baseDataObjMgr.TblName;
+        public string TenantCodeCol => _baseDataObjMgr.TenantCodeCol;
         public string[] DetailTableList => _baseDataObjMgr.DetailTableList;
         public string InfoTbl => _baseDataObjMgr.InfoTbl;
         public string W_TblName => _baseDataObjMgr.W_TblName;
@@ -134,7 +135,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         }
 
         public virtual async Task<IEnumerable<dynamic>> LoadRecordsAsync() {
-            string sql = $"SELECT * FROM \"{TblName}\" WHERE tenant_code = @TenantCode;";
+            string sql = $"SELECT * FROM \"{TblName}\" WHERE \"{TenantCodeCol}\" = @TenantCode;";
             return await DBcon.QueryAsync<dynamic>(sql, new { TenantCode = TenantCode });
         }
 
@@ -205,11 +206,6 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                     OperationErrorCode = NxOperationErrorCode.Unknown,
                     Message = "同期結果が取得できませんでした"
                 };
-            }
-        
-            // 必要であれば、レスポンスに含まれてきた TotalCount などを RecordQuery 側に書き戻してあげる
-            if (query != null) {
-                query.TotalCount = syncResult.TotalCount;
             }
 
             // サーバーが正常系の形でエラーを返してきた場合はそのまま返す

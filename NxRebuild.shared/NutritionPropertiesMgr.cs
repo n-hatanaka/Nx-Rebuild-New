@@ -16,7 +16,7 @@ namespace NxRebuild.shared {
         public override async Task<IEnumerable<dynamic>> _LoadRecordsAsync(RecordQuery? q) {
             string sql = $@"
                                 SELECT *
-                                FROM ""{_piymaryTableName}""
+                                FROM ""{_priymaryTableName}""
                                 WHERE tenant_code = @TenantCode
                                 ORDER BY ""SortNo"";
                             ";

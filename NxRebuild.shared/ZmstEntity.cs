@@ -98,6 +98,10 @@ namespace NxRebuild.shared {
 
         NameCol = "Z_name",
         IdCol = "LocalCode",
+        UpdateAtCol = "Update_at",
+        LockedByCol = "locked_by",
+        LockedAtCol = "locked_at",
+        TenantCodeCol = "tenant_code",
         ParentIDCol = "gun_cd",
         WorkPriTable = "Zmst",
         WorkDtlTblList = new[] { "tan_m" },
@@ -162,9 +166,9 @@ namespace NxRebuild.shared {
                 string sql = $@"
                     UPDATE ""{_primaryTableName}""
                     SET ""deleted"" = 1,
-                        ""Update_at"" = @UpdateAt
+                        ""{UpdateAtCol}"" = @UpdateAt
                     WHERE ""{_idColName}"" = @DataID
-                      AND ""tenant_code"" = @TenantCode;
+                      AND ""{_tenantCodeCol}"" = @TenantCode;
                 ";
 
                 await DBcon.ExecuteAsync(sql, new {
@@ -196,7 +200,7 @@ namespace NxRebuild.shared {
             string sql = $@"
                             SELECT COALESCE(MAX(""LocalCode""), 0) + 1
                             FROM ""{_primaryTableName}""
-                            WHERE ""tenant_code"" = @TenantCode;";
+                            WHERE ""{_tenantCodeCol}"" = @TenantCode;";
 
             return DBcon.ExecuteScalar<int>(sql, new { TenantCode }, tran);
         }

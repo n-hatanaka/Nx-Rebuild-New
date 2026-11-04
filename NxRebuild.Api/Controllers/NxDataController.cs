@@ -28,6 +28,11 @@ namespace NxRebuild.Api.Controllers {
         protected string _tblName;//メタデータのテーブル名
         protected string _nameColName; //テーブルのデータ名カラムのカラム名
         protected string _idColName;//テーブルのIDカラムのカラム名
+        protected string _tenantCodeCol;
+        protected string _updateAtCol;
+        protected string _lockedAtCol;
+        protected string _lockedByCol;
+
         protected Guid _tenantCode;//テナントコード
         protected ApplicationUser _user;
         protected Guid? _userID;
@@ -47,9 +52,13 @@ namespace NxRebuild.Api.Controllers {
 
             _tblName = meta.PrimaryTable;
             _nameColName = meta.NameCol;
+            _tenantCodeCol = meta.TenantCodeCol;
+            _updateAtCol = meta.UpdateAtCol;
+            _lockedAtCol = meta.LockedAtCol;
+            _lockedByCol = meta.LockedByCol;
+
             _idColName = meta.IdCol;
-
-
+            
         }
 
         protected NpgsqlConnection CreateConnection() {
@@ -114,13 +123,13 @@ namespace NxRebuild.Api.Controllers {
                 if (!hasCustomQuery && refreshedAt > DateTime.MinValue) {
                     // Recordクエリが空なので、refreshedAt による差分同期条件を有効化する
                     q.Or.Add(new Condition {
-                        Column = "Update_at",
+                        Column = _updateAtCol,
                         Operator = ">=",
                         Value = refreshedAt
                     });
         
                     q.Or.Add(new Condition {
-                        Column = "locked_at",
+                        Column = _lockedAtCol,
                         Operator = ">=",
                         Value = refreshedAt
                     });
@@ -159,7 +168,7 @@ namespace NxRebuild.Api.Controllers {
                 }
         
                 // q.TotalCount から総page数を取得
-                int totalCount = q.TotalCount > 0 ? q.totalCount : 0;
+                int totalCount = q.TotalCount > 0 ? q.TotalCount : 0;
         
                 // レスポンスにページング情報（PageIndex, TotalCount）を含めて返す
                 return Ok(new NxOperationResult<TKey> {
@@ -555,7 +564,7 @@ namespace NxRebuild.Api.Controllers {
                 // テナントは認証済みの値を全テーブル・全行に強制（新規/既存、int/Guid 共通）
                 foreach (var tbl in workingRaw)
                     foreach (var row in tbl.Rows)
-                        row["tenant_code"] = _tenantCode;
+                        row[_tenantCodeCol] = _tenantCode;
 
 
                 if (!await obj._DeleteDetailQueryExecAsync(tran)) {
@@ -574,7 +583,7 @@ namespace NxRebuild.Api.Controllers {
                 }
 
                 var UpdateAtsrv = DateTime.UtcNow;//.ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
-                Row["Update_at"] = UpdateAtsrv;
+                Row[_updateAtCol] = UpdateAtsrv;
                 SaveJson = JsonSerializer.Serialize(workingRaw);
 
                 // 保存処理へ
