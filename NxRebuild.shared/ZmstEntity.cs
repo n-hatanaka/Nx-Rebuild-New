@@ -101,6 +101,7 @@ namespace NxRebuild.shared {
         UpdateAtCol = "Update_at",
         LockedByCol = "locked_by",
         LockedAtCol = "locked_at",
+        LockTimeOutSec = 600,
         TenantCodeCol = "tenant_code",
         ParentIDCol = "gun_cd",
         WorkPriTable = "Zmst",

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Numerics;
 using System.Reflection;
 using System.Text;
 
@@ -51,6 +52,7 @@ namespace NxRebuild.shared {
         public string TenantCodeCol { get; set; }
         public string IdCol { get; set; }
         public string ParentIDCol { get; set; }
+        public int LockTimeOutSec { get; set; } = 600; // ロックタイムアウト時間（デフォルト10分）
         public string RootName { get; set; }
         public string WorkPriTable { get; set; }
         public string[] WorkDtlTblList { get; set; } = Array.Empty<string>();

@@ -27,15 +27,23 @@ namespace NxRebuild.shared {
         public DateTime? Locked_at { get; set; } = null;
         public DateTime? Update_at { get; set; } = null;
 
+        private TimeSpan _lockTimeOutLimit = TimeSpan.Zero;
+        public TimeSpan LockTimeOutLimit {
+            get => _lockTimeOutLimit == TimeSpan.Zero
+                ? TimeSpan.FromMinutes(10)// ロックタイムアウト時間（デフォルト10分） }
+                : _lockTimeOutLimit;
+
+            set => _lockTimeOutLimit = value;
+        }
+
         // ---- 判定に必要な外部情報ロック情報更新を要求したユーザーID ----
         public Guid lockReqUsr { get; set; } = Guid.Empty;
 
         // ---- 判定ロジック（計算プロパティ） ----
 
-        // ロック時刻が有効か（10分以内）
         public bool IsTimeValid =>
             Locked_at != null &&
-            (DateTime.UtcNow - Locked_at.Value).TotalMinutes < 10;
+            (DateTime.UtcNow - Locked_at.Value).TotalSeconds < LockTimeOutLimit.TotalSeconds;
 
         // 自分がロックしたかどうか
         public bool IsMine =>
