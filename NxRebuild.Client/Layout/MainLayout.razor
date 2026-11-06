@@ -11,6 +11,7 @@
 @using NxRebuild.Client.Services
 @using NxRebuild.Client.Pages.NxPrograms.MDI
 @using NxRebuild.Client.Pages.NxPrograms.MDI.Zmst
+@using NxRebuild.Client.Pages.NxPrograms.MDI.RyLib
 @using NxRebuild.Client.Pages.NxPrograms.DB
 @inject SessionEvents Events
 @inject NavigationManager Nav
@@ -97,6 +98,7 @@
                     <MudNavLink Href="logout" Icon="@Icons.Material.Filled.Dashboard">ログアウト</MudNavLink>
                     <MudNavLink OnClick="@(() => Manager.Open<FrmNutProperties>("栄養素設定"))" Icon="@Icons.Material.Filled.List">栄養素設定</MudNavLink>
                     <MudNavLink Icon="@Icons.Material.Filled.List" OnClick="@OpenZmst">材料マスタ</MudNavLink>
+                    <MudNavLink Icon="@Icons.Material.Filled.List" OnClick="@OpenRyLib">料理ライブラリ</MudNavLink>
                 </Authorized>
 
                 <NotAuthorized>
@@ -148,6 +150,12 @@
     private void OpenZmst()
     {
         Manager.Open<FrmZmstView>("材料マスタ");
+    }
+
+    // ★ 料理ライブラリ画面を MDI ウィンドウで開くハンドラー
+    private void OpenRyLib()
+    {
+        Manager.Open<FrmRyLibView>("料理ライブラリ");
     }
 
     private void ToggleWindowMenu() => _windowMenuOpen = !_windowMenuOpen;

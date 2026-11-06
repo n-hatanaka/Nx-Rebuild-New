@@ -5,7 +5,12 @@ using System.Threading.Tasks;
 using Dapper;
 
 namespace NxRebuild.shared {
-    public class RyLibEntityMgr : BaseDataObjMgr<RyLibEntity, Guid> {
+    public interface IRyLibEntityMgr : IBaseDataObjMgr<RyLibEntity, Guid> {
+    }
+
+    public interface IsrvRyLibEntityMgr : IsrvBaseDataObjMgr<RyLibEntity, Guid> {
+    }
+    public class RyLibEntityMgr : BaseDataObjMgr<RyLibEntity, Guid>, IRyLibEntityMgr ,IsrvRyLibEntityMgr{
         
         public RyLibEntityMgr(IDbConnection db, Guid tenantCode, Guid currUserID) 
             : base(db, tenantCode, currUserID) {

@@ -1,0 +1,176 @@
+﻿@inherits FrmRyLibViewBase
+@using MudBlazor
+@using NxRebuild.Client.Services
+@using NxRebuild.shared
+@using NxRebuild.Client.Pages.NxPrograms.DB
+@using NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View
+
+<style>
+    .zmst-view-root {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        width: 100%;
+        min-height: 0;
+        box-sizing: border-box;
+    }
+
+    .top-bar {
+        display: flex;
+        flex-direction: row;
+        gap: 10px;
+        padding: 5px 10px;
+        background-color: #f5f5f5;
+        border-bottom: 1px solid #ccc;
+        width: 100%;
+        flex-shrink: 0;
+        box-sizing: border-box;
+    }
+
+    .app-container {
+        display: flex;
+        flex-direction: row;
+        gap: 10px;
+        flex: 1;
+        width: 100%;
+        min-height: 0 !important;
+        min-width: 0;
+        overflow: hidden;
+        padding: 5px;
+        box-sizing: border-box;
+    }
+
+    .tree-pane, .grid-pane {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .tree-pane {
+        flex: 0 0 300px;
+        min-width: 250px;
+    }
+
+    .grid-pane {
+        flex: 1;
+        min-width: 0;
+        width: 0;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .scroll-pane {
+        flex: 1;
+        width: 100%;
+        height: 100%;
+        overflow-y: auto;
+        overflow-x: auto;
+        background-color: white;
+        border: 1px solid #ccc;
+        padding: 0;
+        box-sizing: border-box;
+        display: block;
+    }
+
+        .scroll-pane > * {
+            width: 100% !important;
+            box-sizing: border-box;
+        }
+
+    @@media (max-width: 700px) {
+        .app-container {
+            flex-direction: column;
+        }
+
+        .tree-pane {
+            flex: 0 0 25% !important;
+            max-height: 25% !important;
+            width: 100%;
+        }
+
+        .grid-pane {
+            flex: 1 !important;
+            width: 100% !important;
+        }
+    }
+</style>
+
+<div class="zmst-view-root">
+    <div class="top-bar">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="HandleCreate">新規作成</MudButton>
+        <MudButton Variant="Variant.Outlined" Color="Color.Info" OnClick="HandleEdit">編集</MudButton>
+        <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="HandleDelete">削除</MudButton>
+    </div>
+
+    <div class="app-container">
+        <div class="tree-pane">
+            <div class="scroll-pane">
+                <AknTreeView TKey="Guid"
+                             TreeData="TreeData"
+                             OnNodeSelected="HandleNodeSelection"
+                             OnNodeDropped="HandleNodeDrop"
+                             @ref="TreeView" />
+            </div>
+        </div>
+
+        <div class="grid-pane">
+            <div class="scroll-pane">
+                <AknListView TKey="Guid"
+                             ListDataItems="GridDataItems"
+                             Columns="Columns"
+                             AllowSorting="true"
+                             OnRenameRequested="HandleRename"
+                             OnRowClicked="HandleGridClick"
+                             OnRowDoubleClicked="HandleGridDoubleClick"
+                             OnRowDropped="HandleGridReorder"
+                             OnSortRequested="HandleSortRequest"
+                             @ref="ListView" />
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private bool _initialized = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // マネージャーの取得（プロジェクトのGlobalStateやサービス構成に合わせて調整してください）
+        RyLibMgr = GlobalState.RyLibEntityMgr;
+        if (RyLibMgr is INotifyDataChanged notifyMgr)
+        {
+            notifyMgr.DataChanged += SyncRefreshUI;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _initialized) return;
+
+        _initialized = true;
+
+        if (RyLibMgr != null)
+        {
+            SetManager(RyLibMgr);
+        }
+
+        AddDefaultColumns();
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task HandleCreate()
+    {
+        await CreateNewItemAsync();
+    }
+
+    private async Task HandleEdit()
+    {
+        await BeginEditSelectedItem();
+    }
+
+    private async Task HandleDelete()
+    {
+        await DeleteSelectedItemAsync();
+    }
+}

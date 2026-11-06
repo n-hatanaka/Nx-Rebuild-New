@@ -30,6 +30,8 @@ namespace NxRebuild.shared {
         IBaseDataObj<TKey>? Get(TKey id);
 
         IBaseDataObj<TKey> CreateNewDataObj(TKey? parentID);
+        Task<IBaseDataObj<TKey>> CreateNewFolderAsync(TKey? parentID, string folderName = "NewFolder");
+
         void InsertNewDataItem(IBaseDataObj<TKey> obj);
 
         Task<NxOperationResult<TKey>> DeleteDataAsync(IEnumerable<TKey> dataIDs, bool softDelete = false, IDbTransaction tran = null);
@@ -634,6 +636,35 @@ namespace NxRebuild.shared {
             return dataObj;
         }
 
+        // =======================================================
+        // 新規フォルダを生成し、workingRawを作って名前を設定・保存、
+        // 最後に InsertNewDataItem で親子関係を確定させる
+        // =======================================================
+        public virtual async Task<IBaseDataObj<TKey>> CreateNewFolderAsync(TKey? parentID, string folderName = "NewFolder") {
+            // 1. 基礎オブジェクトの生成
+            var folderObj = CreateNewDataObj(parentID);
+
+            // 2. データ型をフォルダに設定
+            folderObj.DataType = NxDataType.Folder;
+
+            // 3. workingRaw を作って名前を書き換え、SaveAsync で保存する if
+            var workingRaw = new Dictionary<string, object?>();
+            folderObj.CreateWorkingMemory(workingRaw);
+
+            if (!string.IsNullOrEmpty(folderObj.NameColName)) {
+                workingRaw[folderObj.NameColName] = folderName;
+
+                var result = await folderObj.SaveAsync(workingRaw);
+                if (!result.Success) {
+                    throw new Exception($"フォルダの作成に失敗しました: {result.Message}");
+                }
+            }
+
+            // 4. リストに追加し、親子関係（SetParent）を確定させる
+            InsertNewDataItem(folderObj);
+
+            return folderObj;
+        }
 
         //createnewDataObj()で生成したオブジェクトを_dataListに追加
         //子リストに追加する

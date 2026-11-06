@@ -143,7 +143,10 @@
     protected override async Task OnInitializedAsync()
     {
         ZmstMgr = GlobalState.ZmstEntityMgr;
-        ((ISyncZmstEntityMgr)ZmstMgr).DataChanged += SyncRefreshUI;
+        if (ZmstMgr is INotifyDataChanged notifyMgr)
+        {
+            notifyMgr.DataChanged += SyncRefreshUI;
+        }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)

@@ -5,6 +5,10 @@ using System.Threading.Tasks;
 using Dapper;
 
 namespace NxRebuild.shared {
+    public interface IRyLibEntity : IBaseDataObj<Guid> {
+        decimal Ninzu { get; set; }
+        string? RyNote { get; set; }
+    }
 
     [NxObjsMetaData(
         PrimaryTable = "Ry_lib",
@@ -31,7 +35,7 @@ namespace NxRebuild.shared {
         DataType = NxDataType.Ryouri,
         RootName = "料理ライブラリ"
     )]
-    public class RyLibEntity : BaseDataObj<Guid> {
+    public class RyLibEntity : BaseDataObj<Guid>, IRyLibEntity {
         public RyLibEntity() : base() { }
 
 

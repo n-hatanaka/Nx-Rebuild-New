@@ -185,6 +185,10 @@
 
                 GlobalState.ZmstScheduler.Start();
 
+                initMessage = "料理ライブラリ初期化中...";
+                StateHasChanged();                
+                GlobalState.RyLibEntityMgr = new RyLibEntityMgr(DbState.Connection, tenantGuid, currentUserGuid);
+                await GlobalState.RyLibEntityMgr.InitializeAsync(null);
 
             }
             catch (Exception ex)

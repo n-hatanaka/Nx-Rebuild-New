@@ -18,9 +18,13 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         Task<NxOperationResult<TKey>> SyncData();
     }
 
+    public interface INotifyDataChanged {
+        event Action? DataChanged;
+    }
+
     // インスタンス生成後、Mgr が保持している PK（IdCol 以外の親 PK/FK）がある場合は、
     // 生成元）が PrimaryPKDict を使って DataObj に注入する。
-    public abstract class SyncBaseDataObjMgr<TBase, TSync, TKey> : ISyncBaseDataObjMgr<TBase, TSync, TKey>
+    public abstract class SyncBaseDataObjMgr<TBase, TSync, TKey> : ISyncBaseDataObjMgr<TBase, TSync, TKey>, INotifyDataChanged
         where TBase : BaseDataObj<TKey>, new()
         where TSync : SyncBaseDataObj<TKey>, new() {
 
@@ -70,6 +74,53 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         }
 
         public virtual IBaseDataObj<TKey>? Get(TKey id) => _baseDataObjMgr.Get(id);
+
+
+        // =======================================================
+        // 非同期でフォルダを生成・保存し、成功したらリストに追加する（Base側と同一の安全な流れ）
+        // =======================================================
+        public virtual async Task<IBaseDataObj<TKey>> CreateNewFolderAsync(TKey? parentID, string folderName = "NewFolder") {
+            // 1. ベースオブジェクト生成 ＆ 初期設定
+            var baseObj = _baseDataObjMgr.CreateNewDataObj(parentID);
+            baseObj.DataType = NxDataType.Folder;
+
+            if (!string.IsNullOrEmpty(baseObj.NameColName)) {
+                ((BaseDataObj<TKey>)baseObj)._SetProperties(new Dictionary<string, object?> {
+                    [baseObj.NameColName] = folderName
+                });
+            }
+
+            // 2. 同期用ラッパー（TSync）で包む
+            var syncObj = new TSync();
+            syncObj.Http = _http;
+            syncObj.Auth = _auth;
+            syncObj._dataObj = (TBase)baseObj;
+            syncObj.SelfObjMgr = this;
+            syncObj.DBcon = DBcon;
+            syncObj.TenantCode = TenantCode;
+            syncObj.CurrUsrID = CurrentUserID;
+
+            // 3. ワーキングメモリを作って保存を実行
+            var workingRaw = new Dictionary<string, object?>();
+            syncObj.CreateWorkingMemory(workingRaw);
+
+            if (!string.IsNullOrEmpty(syncObj.NameColName)) {
+                workingRaw[syncObj.NameColName] = folderName;
+
+                var result = await syncObj.SaveAsync(workingRaw);
+                if (!result.Success) {
+                    // 保存に失敗した場合は例外を投げるだけでよく、
+                    // リストに未登録なのでゴミ掃除（Remove）の必要すらない！
+                    throw new Exception($"フォルダの作成に失敗しました: {result.Message}");
+                }
+            }
+
+            // 4. 保存が完全に成功したので、ここで初めてリストに追加し親子関係を確定させる
+            _baseDataObjMgr._dataList.Add(syncObj);
+            _baseDataObjMgr.SetParent(syncObj);
+
+            return syncObj;
+        }
 
         //新しいデータオブジェクトを作成する。
         //PKが複数ある場合は、オーバーライドしてPKDictで設定する。
