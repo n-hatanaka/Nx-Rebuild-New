@@ -17,6 +17,7 @@ namespace NxRebuild.shared {
 
         NameCol = "Name",
         IdCol = "Ry_Code",
+        DataTypeCol = "Type",
         UpdateAtCol = "Update_at",
         LockedByCol = "locked_by",
         LockedAtCol = "locked_at",
@@ -25,6 +26,7 @@ namespace NxRebuild.shared {
         ParentIDCol = "Parent",
         WorkPriTable = "w_Ry_Lib",
         WorkDtlTblList = new[] { "w_Ry_Lib_s" },
+        
         InfoTable = "",
         DataType = NxDataType.Ryouri,
         RootName = "料理ライブラリ"
@@ -32,25 +34,6 @@ namespace NxRebuild.shared {
     public class RyLibEntity : BaseDataObj<Guid> {
         public RyLibEntity() : base() { }
 
-        // サブテーブル（Ry_lib_s：料理内材料など）へのアクセサ
-        public List<Dictionary<string, object?>> RyLibSList {
-            get {
-                if (SubTables.Count == 0)
-                    SubTables.Add(("Ry_lib_s", new List<Dictionary<string, object?>>()));
-
-                return SubTables[0].Rows;
-            }
-        }
-
-        // フォルダか献立/料理かの判定プロパティ
-        public int Type {
-            get {
-                if (_rawData.TryGetValue("Type", out var v) && v != null)
-                    return Convert.ToInt32(v);
-                return 0; // 0: 献立/料理, 1: フォルダ
-            }
-            set => _SetProperties(new Dictionary<string, object> { ["Type"] = value });
-        }
 
         public decimal Ninzu {
             get {
@@ -64,26 +47,6 @@ namespace NxRebuild.shared {
         public string? RyNote {
             get => _rawData.TryGetValue("Ry_note", out var v) ? v?.ToString() : null;
             set => _SetProperties(new Dictionary<string, object> { ["Ry_note"] = value ?? string.Empty });
-        }
-
-        // JSON復元時にサブテーブルも再読み込みする
-        public override async Task<bool> JsonToTblAsync(string json, IDbTransaction tran) {
-            var result = await base.JsonToTblAsync(json, tran);
-            
-            if (!result)
-                return result;
-
-            await _LoadDetailTablesFromRawAsync();
-            return result;
-        }
-
-        // サブテーブル行の親キー補完
-        protected override void CompleteDetailRow(
-            string tableName, Dictionary<string, object?> row, Dictionary<string, object?> mainWorkingRaw) {
-            if (tableName == "Ry_lib_s") {
-                row["tenant_code"] = mainWorkingRaw["tenant_code"];
-                row["Ry_Code"] = mainWorkingRaw["Ry_Code"];
-            }
         }
 
     }

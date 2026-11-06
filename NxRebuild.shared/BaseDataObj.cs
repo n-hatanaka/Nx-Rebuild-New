@@ -142,6 +142,7 @@ namespace NxRebuild.shared {
                               ?? new Dictionary<string, string[]>();
 
             _nameColName = meta.NameCol;
+            _DataTypeColName = meta.DataTypeCol;
             _updateAtCol = meta.UpdateAtCol;
             _lockedAtCol = meta.LockedAtCol;
             _lockedByCol = meta.LockedByCol;
@@ -167,6 +168,7 @@ namespace NxRebuild.shared {
         protected TimeSpan _lockTimeOutLimit;// ロックタイムアウト時間 
         protected string _tenantCodeCol;
         protected string _idColName;//テーブルのIDカラムのカラム名
+        protected string _DataTypeColName;//テーブルのデータ種別カラムのカラム名
         public string _parentIDColName;//テーブルの親IDカラムのカラム名
         public string _primaryTableName; //データ名等基本データが格納されるテーブル名
 
@@ -271,9 +273,35 @@ namespace NxRebuild.shared {
         }
 
 
-        public NxDataType DataType {
-            get => _datatype;
-            set => _datatype = value;
+        // ★ DataType は NxDataType 列がある場合は _rawData から読み書きする
+        public virtual NxDataType DataType {
+            get {
+                // _DataTypeColName が空の時はフィールドから読み込む
+                if (string.IsNullOrEmpty(_DataTypeColName)) {
+                    return _datatype;
+                }
+
+                // _DataTypeColName があるときは _rawData から読み込む
+                if (_rawData.TryGetValue(_DataTypeColName, out var v) && v != null && v is not DBNull) {
+                    return v switch {
+                        NxDataType dt => dt,
+                        int i => (NxDataType)i,
+                        long l => (NxDataType)l,
+                        _ => Enum.TryParse(v.ToString(), out NxDataType parsed) ? parsed : _datatype
+                    };
+                }
+
+                return _datatype;
+            }
+            set {
+                // _DataTypeColName が空の時はフィールドへ書き込む
+                if (string.IsNullOrEmpty(_DataTypeColName)) {
+                    _datatype = value;
+                } else {
+                    // あるときは _rawData（正本）に書き込む
+                    _SetProperties(new Dictionary<string, object?> { [_DataTypeColName] = value });
+                }
+            }
         }
 
         public DateTime Update_at {
@@ -741,7 +769,13 @@ namespace NxRebuild.shared {
         public virtual async Task<NxOperationResult<TKey>> DataOpenAsync() {
 
             try {
-                // ローカル専用世界線ではロック機能を使わない
+                // ローカル専用ではロック機能を使わない
+
+                // ワークテーブルが存在するエンティティは、ワークテーブルを削除して再作成する
+                if (_primaryTableName != _w_tblName) {
+                    await _DeleteWorksAsync();
+                    await _InsertWorksAsync();
+                }
                 Opened = true;
 
                 return new NxOperationResult<TKey> {
@@ -937,7 +971,203 @@ namespace NxRebuild.shared {
             }
         }
 
+        // =======================================================
+        // ワークテーブル（_w_tblName および _w_detailTblList）の削除
+        // =======================================================
+        public virtual async Task<bool> _DeleteWorksAsync(IDbTransaction? transaction = null) {
+            try {
+                // 1. サブテーブル（_w_detailTblList）の物理削除
+                if (_w_detailTblList != null && _w_detailTblList.Length > 0) {
+                    foreach (var dtl in _w_detailTblList) {
+                        if (!_detailTblPKList.TryGetValue(dtl, out var pkCols))
+                            throw new Exception($"_DeleteWorksAsync ERROR: PK not defined for detail table '{dtl}'");
 
+                        // 親由来 PK のみ抽出（TenantCode または IdColName）
+                        var parentPKs = pkCols.Where(pk =>
+                            pk == TenantCodeCol || pk == IdColName
+                        ).ToArray();
+
+                        var whereClause = string.Join(" AND ",
+                            parentPKs.Select(pk => $@"""{pk}"" = @{pk}")
+                        );
+
+                        string dtlSql = $@"
+                            DELETE FROM ""{dtl}""
+                            WHERE {whereClause}
+                        ";
+
+                        var dtlParam = new Dictionary<string, object>();
+                        foreach (var pk in parentPKs) {
+                            if (PrimaryPKDict.TryGetValue(pk, out var val) && val != null) {
+                                dtlParam[pk] = val;
+                            } else if (_rawData.TryGetValue(pk, out var rawVal) && rawVal != null) {
+                                dtlParam[pk] = rawVal;
+                            } else {
+                                throw new Exception($"_DeleteWorksAsync ERROR: Missing primary key value for '{pk}'");
+                            }
+                        }
+
+                        await DBcon.ExecuteAsync(dtlSql, dtlParam, transaction);
+                    }
+                }
+
+                // 2. メインワークテーブル（_w_tblName）の物理削除
+                if (!string.IsNullOrEmpty(_w_tblName)) {
+                    var priWhereClause = string.Join(" AND ",
+                        _primaryTblPKList.Select(pk => $@"""{pk}"" = @{pk}")
+                    );
+
+                    string priSql = $@"
+                        DELETE FROM ""{ _w_tblName}""
+                        WHERE {priWhereClause};
+                    ";
+
+                    var priParam = new Dictionary<string, object>();
+                    foreach (var pk in _primaryTblPKList) {
+                        if (PrimaryPKDict.TryGetValue(pk, out var val) && val != null) {
+                            priParam[pk] = val;
+                        } else if (_rawData.TryGetValue(pk, out var rawVal) && rawVal != null) {
+                            priParam[pk] = rawVal;
+                        } else {
+                            throw new Exception($"_DeleteWorksAsync ERROR: Missing primary key value for '{pk}'");
+                        }
+                    }
+
+                    await DBcon.ExecuteAsync(priSql, priParam, transaction);
+                }
+
+                return true;
+            } catch (Exception ex) {
+                // 例外を握りつぶさず、上位へ正確に伝えるためにカスタムメッセージ付きで再スロー
+                throw new Exception($"_DeleteWorksAsync failed: {ex.Message}", ex);
+            }
+        }
+
+        // =======================================================
+        // 正本テーブルの内容をワークテーブル（_w_tblName / _w_detailTblList）へ複製・挿入する
+        // _detailTableList / _w_detailTblList の順序は必ず対応していること
+        // =======================================================
+        public virtual async Task<bool> _InsertWorksAsync(IDbTransaction? transaction = null) {
+            try {
+                // 1. メインテーブルの複製（_primaryTableName → _w_tblName）
+                if (!string.IsNullOrEmpty(_primaryTableName) && !string.IsNullOrEmpty(_w_tblName)) {
+                    // PK の WHERE 句を動的生成
+                    var priWhereClause = string.Join(" AND ",
+                        _primaryTblPKList.Select(pk => $@"""{pk}"" = @{pk}")
+                    );
+
+                    // 正本から該当レコードを全カラム取得するSQL
+                    string selectPriSql = $@"
+                        SELECT* FROM ""{ _primaryTableName}""
+                        WHERE { priWhereClause};
+                    ";
+
+                    var priParam = new Dictionary<string, object>();
+                    foreach (var pk in _primaryTblPKList) {
+                        if (PrimaryPKDict.TryGetValue(pk, out var val) && val != null) {
+                            priParam[pk] = val;
+                        } else if (_rawData.TryGetValue(pk, out var rawVal) && rawVal != null) {
+                            priParam[pk] = rawVal;
+                        } else {
+                            throw new Exception($"_InsertWorksAsync ERROR: Missing primary key value for '{pk}'");
+                        }
+                    }
+
+                    // 正本からレコードを取得（DapperRow / 辞書 or 動的オブジェクト）
+                    var record = await DBcon.QueryFirstOrDefaultAsync<IDictionary<string, object>>(selectPriSql, priParam, transaction);
+
+                    if (record != null) {
+                        // 型マッピング等を通して一応正規化しておく
+                        var normalized = NxTypeMapper.ConvertRow(_w_tblName, record);
+
+                        var cols = string.Join(", ", normalized.Keys.Select(k => $@"""{k}"""));
+                        var vals = string.Join(", ", normalized.Keys.Select(k => $@"""{k}""")); // プレースホルダーは @key
+
+                        // 動的に INSERT 文を構築（プレースホルダー用）
+                        var colNames = new List<string>();
+                        var valParams = new List<string>();
+                        foreach (var kv in normalized) {
+                            colNames.Add($@"""{kv.Key}""");
+                            valParams.Add($@"@{kv.Key}");
+                        }
+
+                        string insertPriSql = $@"
+                            INSERT INTO ""{ _w_tblName}""
+                            ({ string.Join(", ", colNames)})
+                            VALUES({ string.Join(", ", valParams)})
+                            ON CONFLICT DO NOTHING;
+                        ";
+
+                        await DBcon.ExecuteAsync(insertPriSql, normalized, transaction);
+                    }
+                }
+
+                // 2. 詳細テーブルの複製（_detailTableList から _w_detailTblList へ順次コピー）
+                if (_detailTableList != null && _detailTableList.Length > 0 &&
+                    _w_detailTblList != null && _w_detailTblList.Length > 0) {
+
+                    for (int i = 0; i < _detailTableList.Length; i++) {
+                        var srcTable = _detailTableList[i];
+                        var dstTable = _w_detailTblList[i];
+
+                        if (!_detailTblPKList.TryGetValue(srcTable, out var pkCols))
+                            throw new Exception($"_InsertWorksAsync ERROR: PK not defined for detail table '{srcTable}'");
+
+                        // 親由来 PK のみ抽出（TenantCode または IdColName）
+                        var parentPKs = pkCols.Where(pk =>
+                            pk == TenantCodeCol || pk == IdColName
+                        ).ToArray();
+
+                        var dtlWhereClause = string.Join(" AND ",
+                            parentPKs.Select(pk => $@"""{pk}"" = @{pk}")
+                        );
+
+                        string selectDtlSql = $@"
+                            SELECT* FROM ""{ srcTable}""
+                            WHERE { dtlWhereClause};
+                        ";
+
+                        var dtlParam = new Dictionary<string, object>();
+                        foreach (var pk in parentPKs) {
+                            if (PrimaryPKDict.TryGetValue(pk, out var val) && val != null) {
+                                dtlParam[pk] = val;
+                            } else if (_rawData.TryGetValue(pk, out var rawVal) && rawVal != null) {
+                                dtlParam[pk] = rawVal;
+                            } else {
+                                throw new Exception($"_InsertWorksAsync ERROR: Missing primary key value for detail '{pk}'");
+                            }
+                        }
+
+                        var rows = await DBcon.QueryAsync<IDictionary<string, object>>(selectDtlSql, dtlParam, transaction);
+
+                        foreach (var row in rows) {
+                            var normalizedDtl = NxTypeMapper.ConvertRow(dstTable, row);
+
+                            var dtlColNames = new List<string>();
+                            var dtlValParams = new List<string>();
+                            foreach (var kv in normalizedDtl) {
+                                dtlColNames.Add($@"""{kv.Key}""");
+                                dtlValParams.Add($@"@{kv.Key}");
+                            }
+
+                            string insertDtlSql = $@"
+                                INSERT INTO ""{ dstTable}""
+                                ({ string.Join(", ", dtlColNames)})
+                                VALUES({ string.Join(", ", dtlValParams)})
+                                ON CONFLICT DO NOTHING;
+                            ";
+
+                            await DBcon.ExecuteAsync(insertDtlSql, normalizedDtl, transaction);
+                        }
+                    }
+                }
+
+                return true;
+            } catch (Exception ex) {
+                // 例外を握りつぶさずに再スローして上位トランザクションのロールバックへ繋げる
+                throw new Exception($"_InsertWorksAsync failed: {ex.Message}", ex);
+            }
+        }
 
         // 名前変更の検証メソッド
         // 必要に応じて派生クラスでオーバーライドできるように virtual にしておく
@@ -1068,45 +1298,68 @@ namespace NxRebuild.shared {
             return this.DataID;
         }
         // =======================================================
-        // 保存のローカル実装
+        // 保存のローカル実装（ワーク系テーブルへの保存）
+        // 【処理順】
+        //   1. 新規レコードの場合はローカル側で仮IDを採番する
+        //   2. ワーク側ディテール（_w_detailTblList）の事前整理・削除
+        //      - subTables が渡されている場合：ワーク側の既存データを一度クリアして差し替え
+        //      - subTables が null の場合：_w_detailTblList と _detailTableList を比較し、不要なものをワーク側から削除
+        //   3. workingRaw を _w_tblName（メインワークテーブル）へ Upsert 保存
+        //   4. subTables を _w_detailTblList（サブワークテーブル群）へ Upsert 保存
         // =======================================================
         public virtual async Task<NxOperationResult<TKey>> SaveAsync(
-                                    Dictionary<string, object?> workingRaw,
-                                    List<(string , List<Dictionary<string, object?>>)>? subTables = null) {
+                                            Dictionary<string, object?> workingRaw,
+                                            List<(string, List<Dictionary<string, object?>>)>? subTables = null) {
             using var tran = DBcon.BeginTransaction();
 
             try {
-
-                // ★ 新規ならローカル側で仮ID採番
+                // 1. 【ID採番】新規レコードならローカル側で仮ID採番
                 var newID = EnsureIDForSave(tran);
                 DataID = newID;
                 workingRaw[IdColName] = newID;
 
-                if (!await _DeleteDetailQueryExecAsync(tran)) {
+                // 2. 【ワーク側ディテールの差分整理・削除】
+                if (!await _SyncAndDeleteWorkingDetailsAsync(subTables, tran)) {
                     tran.Rollback();
                     return new NxOperationResult<TKey> {
                         OperationErrorCode = NxOperationErrorCode.DbError,
-                        Message = "既存データの削除に失敗しました"
+                        Message = "ワーク側ディテールデータの整理に失敗しました"
                     };
                 }
 
-                // ★ Working 全体保存（メイン＋サブ）
+                // 3. 【ワークテーブルへの一括保存】
                 if (!await SaveWorkingAsync(workingRaw, subTables, tran)) {
                     tran.Rollback();
                     return new NxOperationResult<TKey> {
                         OperationErrorCode = NxOperationErrorCode.DbError,
-                        Message = "ローカル保存に失敗しました"
+                        Message = "ワークテーブルへの保存に失敗しました"
                     };
                 }
 
+                // 4. 【本テーブル（正本）への保存・反映】
+                // ワークテーブルに確定した内容を、本番の本テーブル（_primaryTableName / _detailTableList）へ書き込む
+                // ただし、ワークテーブルが存在しない設計の場合（本テーブルと同じテーブル名）の場合は保存済なので実行しない
+                if (_w_tblName != _primaryTableName) {
+
+                    if (!await SaveQueryExec(tran)) {
+                        tran.Rollback();
+                        return new NxOperationResult<TKey> {
+                            OperationErrorCode = NxOperationErrorCode.DbError,
+                            Message = "本テーブルへの保存に失敗しました"
+                        };
+                    }
+                }
+
+                // すべての処理が正常に完了したらトランザクションをコミット
                 tran.Commit();
 
+                // メモリ上の正本データを更新し、DBから最新状態を再読み込み
                 ApplyWorkingToRaw(workingRaw);
                 await _UpdatePropertiesFromTblAsync();
 
                 return new NxOperationResult<TKey> {
                     RawData = _rawData,
-                    Message = "Local Save completed"
+                    Message = "Save completed"
                 };
             } catch (Exception ex) {
                 tran.Rollback();
@@ -1118,34 +1371,142 @@ namespace NxRebuild.shared {
         }
 
 
+        // =======================================================
+        // ワーク側ディテールの整理・削除メソッド
+        // （subTables が null の時は _w_detailTblList と本テーブル側 _detailTableList を比較して、
+        //   本テーブル側に存在しなくなった不要な行をワーク側からピンポイントで削除する）
+        // =======================================================
+        public virtual async Task<bool> _SyncAndDeleteWorkingDetailsAsync(
+            List<(string TableName, List<Dictionary<string, object?>> Rows)>? subTables,
+            IDbTransaction tran) {
 
+            // ワーク側のディテールテーブル定義がない場合は処理をスキップ
+            if (_w_detailTblList == null || _w_detailTblList.Length == 0)
+                return true;
+
+            // ワーク側の各ディテールテーブルを順番に走査する
+            for (int i = 0; i < _w_detailTblList.Length; i++) {
+                var targetWorkTable = _w_detailTblList[i];
+
+                // 対象ワークテーブルの主キー構成を取得（定義がない場合は正本側からフォールバック取得）
+                if (!_detailTblPKList.TryGetValue(targetWorkTable, out var pkCols)) {
+                    if (_detailTableList != null && i < _detailTableList.Length) {
+                        _detailTblPKList.TryGetValue(_detailTableList[i], out pkCols);
+                    }
+                }
+
+                if (pkCols == null)
+                    throw new Exception($"SyncAndDeleteWorkingDetailsAsync ERROR: PK not defined for work detail table '{targetWorkTable}'");
+
+                // 主キーを「親結合用PK」と「明細の固有PK」に分離
+                var parentPKs = pkCols.Where(pk => pk == TenantCodeCol || pk == IdColName).ToArray();
+                var uniquePKs = pkCols.Except(parentPKs).ToArray();
+
+                // 親ID等で絞り込むための WHERE 条件を構築
+                var parentWhere = string.Join(" AND ", parentPKs.Select(pk => $@"""{pk}"" = @{pk}"));
+                var param = new Dictionary<string, object>();
+                foreach (var pk in parentPKs) {
+                    param[pk] = PrimaryPKDict.TryGetValue(pk, out var val) && val != null ? val : _rawData[pk];
+                }
+
+                // -----------------------------------------------------------------
+                // パターンA: subTables が null の場合
+                //   → ワーク側の既存行と、本テーブル（_detailTableList）側を比較し、
+                //      本テーブル側に存在しない（画面等で削除された）行をワーク側から削除する
+                // -----------------------------------------------------------------
+                if (subTables == null) {
+                    string targetSrcTable = (_detailTableList != null && i < _detailTableList.Length) ? _detailTableList[i] : targetWorkTable;
+
+                    // 1. 本テーブル側から現在のレコードを全取得
+                    string srcSelectSql = $@"SELECT * FROM ""{targetSrcTable}"" WHERE {parentWhere};";
+                    var srcRows = await DBcon.QueryAsync<IDictionary<string, object>>(srcSelectSql, param, tran);
+
+                    // 2. 本テーブル側の固有PKの組み合わせリストを抽出
+                    var srcPkValuesList = new List<Dictionary<string, object?>>();
+                    foreach (var sRow in srcRows) {
+                        var pkDict = new Dictionary<string, object?>();
+                        bool hasAll = true;
+                        foreach (var upk in uniquePKs) {
+                            if (sRow.TryGetValue(upk, out var v)) pkDict[upk] = v;
+                            else { hasAll = false; break; }
+                        }
+                        if (hasAll) srcPkValuesList.Add(pkDict);
+                    }
+
+                    // 3. ワーク側の既存行を取得して、本テーブル側に存在しないものを特定
+                    string workSelectSql = $@"SELECT * FROM ""{targetWorkTable}"" WHERE {parentWhere};";
+                    var workRows = await DBcon.QueryAsync<IDictionary<string, object>>(workSelectSql, param, tran);
+
+                    foreach (var wRow in workRows) {
+                        bool existsInSrc = false;
+                        foreach (var sPkDict in srcPkValuesList) {
+                            bool match = true;
+                            foreach (var upk in uniquePKs) {
+                                if (!wRow.TryGetValue(upk, out var wVal) || !Equals(wVal, sPkDict[upk])) {
+                                    match = false; break;
+                                }
+                            }
+                            if (match) { existsInSrc = true; break; }
+                        }
+
+                        // 本テーブル側に残っていない行は、ワーク側からも物理削除する
+                        if (!existsInSrc) {
+                            var delWhereParts = new List<string>();
+                            var delParam = new Dictionary<string, object>();
+                            foreach (var pk in pkCols) {
+                                delWhereParts.Add($@"""{pk}"" = @del_{pk}");
+                                delParam[$"del_{pk}"] = wRow[pk];
+                            }
+                            string delSql = $@"DELETE FROM ""{targetWorkTable}"" WHERE {string.Join(" AND ", delWhereParts)};";
+                            await DBcon.ExecuteAsync(delSql, delParam, tran);
+                        }
+                    }
+                } else {
+                    // -----------------------------------------------------------------
+                    // パターンB: subTables が渡されている場合
+                    //   → 新しいサブテーブル群で丸ごと上書きするため、
+                    //      ワーク側の該当親に紐づく既存ディテール行を一度すべてクリアする
+                    // -----------------------------------------------------------------
+                    string deleteSql = $@"DELETE FROM ""{targetWorkTable}"" WHERE {parentWhere};";
+                    await DBcon.ExecuteAsync(deleteSql, param, tran);
+                }
+            }
+
+            return true;
+        }
+
+
+        // =======================================================
+        // ワークテーブルへの保存処理（メイン ＋ サブ一括実行）
+        // =======================================================
         public virtual async Task<bool> SaveWorkingAsync(
             Dictionary<string, object?> workingRaw,
-            List<(string TableName, List<Dictionary<string, object?>>)>? subTables,
-            IDbTransaction tran)
-        {
-            // ★ メインテーブル保存
+            List<(string TableName, List<Dictionary<string, object?>> Rows)>? subTables,
+            IDbTransaction tran) {
+
+            // 1. メインワークテーブル（_w_tblName）への保存
             if (!await SaveWorkingPrimaryAsync(workingRaw, tran))
                 return false;
 
-            // ★ サブテーブル保存（具象側で追加）
+            // 2. サブワークテーブル群（_w_detailTblList）への保存
             if (!await SaveWorkingDetailsAsync(subTables, workingRaw, tran))
                 return false;
 
             return true;
         }
-        // =======================================================
-        // メインテーブル保存（WorkingRaw → _w_tblName）
-        // =======================================================
 
+
+        // =======================================================
+        // メインワークテーブル保存（workingRaw → _w_tblName）
+        // （競合時は UPDATE、新規時は INSERT の Upsert 処理）
+        // =======================================================
         public virtual async Task<bool> SaveWorkingPrimaryAsync(
             Dictionary<string, object?> workingRaw,
             IDbTransaction tran) {
             try {
-                // ★ このメソッドはローカル書き込み用なのでとりあえずPC時間で
+                // ワーク保存時の更新日時をセット
                 workingRaw[_updateAtCol] = DateTime.UtcNow;
 
-                // ★ カラム名とパラメータ名を生成
                 var cols = new List<string>();
                 var vals = new List<string>();
                 var updates = new List<string>();
@@ -1154,29 +1515,24 @@ namespace NxRebuild.shared {
                     cols.Add($@"""{kv.Key}""");
                     vals.Add($@"@{kv.Key}");
 
-                    // ★ PK は UPDATE しない（複合 PK 対応）
+                    // PK カラム以外を UPDATE 対象として構築
                     if (!_primaryTblPKList.Contains(kv.Key)) {
                         updates.Add($@"""{kv.Key}"" = EXCLUDED.""{kv.Key}""");
                     }
                 }
 
-                // ★ ON CONFLICT の PK を動的生成
-                var pkClause = string.Join(", ",
-                    _primaryTblPKList.Select(pk => $@"""{pk}""")
-                );
+                var pkClause = string.Join(", ", _primaryTblPKList.Select(pk => $@"""{pk}"""));
 
-                // ★ UPSERT（INSERT → 衝突時 UPDATE）
                 string sql = $@"
-                                INSERT INTO ""{_w_tblName}""
-                                ({string.Join(", ", cols)})
-                                VALUES ({string.Join(", ", vals)})
-                                ON CONFLICT ({pkClause})
-                                DO UPDATE SET
-                                    {string.Join(", ", updates)};
-                            ";
+                    INSERT INTO ""{_w_tblName}""
+                    ({string.Join(", ", cols)})
+                    VALUES ({string.Join(", ", vals)})
+                    ON CONFLICT ({pkClause})
+                    DO UPDATE SET
+                        {string.Join(", ", updates)};
+                ";
 
                 var rows = await DBcon.ExecuteAsync(sql, workingRaw, tran);
-
                 if (rows != 1)
                     throw new Exception($"SaveWorkingPrimaryAsync ERROR: UPSERT affected {rows} rows");
 
@@ -1187,10 +1543,8 @@ namespace NxRebuild.shared {
         }
 
 
-
-
         // =======================================================
-        // サブテーブル保存（再構築）
+        // サブワークテーブル保存（subTables → _w_detailTblList）
         // =======================================================
         public virtual async Task<bool> SaveWorkingDetailsAsync(
             List<(string TableName, List<Dictionary<string, object?>> Rows)>? w_DetailTblList,
@@ -1199,29 +1553,37 @@ namespace NxRebuild.shared {
             if (w_DetailTblList == null || w_DetailTblList.Count == 0)
                 return true;
 
-            foreach (var (tableName, detailRows) in w_DetailTblList) {
-                if (!_detailTblPKList.TryGetValue(tableName, out var pkCols))
+            for (int i = 0; i < w_DetailTblList.Count; i++) {
+                if (i >= _w_detailTblList.Length) break; // 定義数を超えた場合は安全のため打ち切り
+
+                var tableName = _w_detailTblList[i]; // 保存先のワーク用ディテールテーブル名
+                var detailRows = w_DetailTblList[i].Rows;
+
+                // PK定義の取得（ワーク側にない場合は正本側から補完）
+                if (!_detailTblPKList.TryGetValue(tableName, out var pkCols)) {
+                    if (_detailTableList != null && i < _detailTableList.Length)
+                        _detailTblPKList.TryGetValue(_detailTableList[i], out pkCols);
+                }
+
+                if (pkCols == null)
                     throw new Exception($"SaveWorkingDetailsAsync ERROR: PK not defined for detail table '{tableName}'");
 
-                // ★ 親由来 PK
-                var parentPKs = pkCols.Where(pk =>
-                    pk == TenantCodeCol || pk == IdColName
-                ).ToArray();
+                var parentPKs = pkCols.Where(pk => pk == TenantCodeCol || pk == IdColName).ToArray();
 
                 foreach (var row in detailRows) {
-                    // ★ 親 PK を補完
+                    // 親の PK 情報を明細行に補完
                     foreach (var pk in parentPKs)
                         row[pk] = MainWorkingRaw[pk];
 
+                    // 派生クラス用のフック（必要に応じた行データの最終調整）
                     CompleteDetailRow(tableName, row, MainWorkingRaw);
 
-                    // ★ Detail 固有 PK は row に必須
+                    // 固有PKが確実に含まれているか検証
                     foreach (var pk in pkCols.Except(parentPKs)) {
                         if (!row.ContainsKey(pk))
                             throw new Exception($"Detail PK '{pk}' missing in row.");
                     }
 
-                    // ★ カラム名と値
                     var cols = new List<string>();
                     var vals = new List<string>();
                     var updates = new List<string>();
@@ -1230,22 +1592,21 @@ namespace NxRebuild.shared {
                         cols.Add($@"""{kv.Key}""");
                         vals.Add($@"@{kv.Key}");
 
-                        // ★ PK と update_at は UPDATE しない
+                        // PK および更新日時以外を UPDATE 対象にする
                         if (!pkCols.Contains(kv.Key) && kv.Key != _updateAtCol)
                             updates.Add($@"""{kv.Key}"" = EXCLUDED.""{kv.Key}""");
                     }
 
-                    // ★ ON CONFLICT の PK を動的生成
                     var pkClause = string.Join(", ", pkCols.Select(pk => $@"""{pk}"""));
 
                     string sql = $@"
-                                    INSERT INTO ""{tableName}""
-                                    ({string.Join(", ", cols)})
-                                    VALUES ({string.Join(", ", vals)})
-                                    ON CONFLICT ({pkClause})
-                                    DO UPDATE SET
-                                        {string.Join(", ", updates)};
-                                ";
+                        INSERT INTO ""{tableName}""
+                        ({string.Join(", ", cols)})
+                        VALUES ({string.Join(", ", vals)})
+                        ON CONFLICT ({pkClause})
+                        DO UPDATE SET
+                            {string.Join(", ", updates)};
+                    ";
 
                     var affected = await DBcon.ExecuteAsync(sql, row, tran);
                     if (affected != 1)
@@ -1255,9 +1616,162 @@ namespace NxRebuild.shared {
 
             return true;
         }
-
         protected virtual void CompleteDetailRow(
                                 string tableName, Dictionary<string, object?> row, Dictionary<string, object?> mainWorkingRaw) { }
+
+        // =======================================================
+        // ワークテーブルの内容を本テーブル（正本）へ反映・保存する
+        // （_InsertWorksAsync の逆処理：ワーク → 本テーブルへの Upsert 反映）
+        // =======================================================
+        public virtual async Task<bool> SaveQueryExec(IDbTransaction transaction) {
+            try {
+                // 1. メインテーブルの反映（_w_tblName → _primaryTableName）
+                if (!string.IsNullOrEmpty(_w_tblName) && !string.IsNullOrEmpty(_primaryTableName)) {
+                    // PK の WHERE 句を動的生成
+                    var priWhereClause = string.Join(" AND ",
+                        _primaryTblPKList.Select(pk => $@"""{pk}"" = @{pk}")
+                    );
+
+                    string selectWorkPriSql = $@"
+                        SELECT * FROM ""{_w_tblName}""
+                        WHERE {priWhereClause};
+                    ";
+
+                    var priParam = new Dictionary<string, object>();
+                    foreach (var pk in _primaryTblPKList) {
+                        if (PrimaryPKDict.TryGetValue(pk, out var val) && val != null) {
+                            priParam[pk] = val;
+                        } else if (_rawData.TryGetValue(pk, out var rawVal) && rawVal != null) {
+                            priParam[pk] = rawVal;
+                        } else {
+                            throw new Exception($"SaveQueryExec ERROR: Missing primary key value for '{pk}'");
+                        }
+                    }
+
+                    // ワーク側から該当レコードを取得
+                    var record = await DBcon.QueryFirstOrDefaultAsync<IDictionary<string, object>>(selectWorkPriSql, priParam, transaction);
+
+                    if (record != null) {
+                        // 本テーブルのスキーマに合わせて型を正規化
+                        var normalized = NxTypeMapper.ConvertRow(_primaryTableName, record);
+
+                        var cols = new List<string>();
+                        var vals = new List<string>();
+                        var updates = new List<string>();
+
+                        foreach (var kv in normalized) {
+                            cols.Add($@"""{kv.Key}""");
+                            vals.Add($@"@{kv.Key}");
+
+                            // PK 以外のカラムを UPDATE 対象にする
+                            if (!_primaryTblPKList.Contains(kv.Key)) {
+                                updates.Add($@"""{kv.Key}"" = EXCLUDED.""{kv.Key}""");
+                            }
+                        }
+
+                        var pkClause = string.Join(", ", _primaryTblPKList.Select(pk => $@"""{pk}"""));
+
+                        // 本テーブルへの Upsert 実行
+                        string upsertPriSql = $@"
+                            INSERT INTO ""{_primaryTableName}""
+                            ({string.Join(", ", cols)})
+                            VALUES ({string.Join(", ", vals)})
+                            ON CONFLICT ({pkClause})
+                            DO UPDATE SET
+                                {string.Join(", ", updates)};
+                        ";
+
+                        var affected = await DBcon.ExecuteAsync(upsertPriSql, normalized, transaction);
+                        if (affected != 1)
+                            throw new Exception($"SaveQueryExec ERROR: Primary UPSERT affected {affected} rows");
+                    }
+                }
+
+                // 2. 詳細テーブルの反映（_w_detailTblList から _detailTableList へ順次コピー＆Upsert）
+                if (_w_detailTblList != null && _w_detailTblList.Length > 0 &&
+                    _detailTableList != null && _detailTableList.Length > 0) {
+
+                    for (int i = 0; i < _w_detailTblList.Length; i++) {
+                        if (i >= _detailTableList.Length) break;
+
+                        var srcWorkTable = _w_detailTblList[i];
+                        var dstTable = _detailTableList[i];
+
+                        if (!_detailTblPKList.TryGetValue(dstTable, out var pkCols)) {
+                            _detailTblPKList.TryGetValue(srcWorkTable, out pkCols);
+                        }
+
+                        if (pkCols == null)
+                            throw new Exception($"SaveQueryExec ERROR: PK not defined for detail table '{dstTable}'");
+
+                        // 親由来の PK のみ抽出
+                        var parentPKs = pkCols.Where(pk => pk == TenantCodeCol || pk == IdColName).ToArray();
+
+                        var dtlWhereClause = string.Join(" AND ",
+                            parentPKs.Select(pk => $@"""{pk}"" = @{pk}")
+                        );
+
+                        string selectWorkDtlSql = $@"
+                            SELECT * FROM ""{srcWorkTable}""
+                            WHERE {dtlWhereClause};
+                        ";
+
+                        var dtlParam = new Dictionary<string, object>();
+                        foreach (var pk in parentPKs) {
+                            if (PrimaryPKDict.TryGetValue(pk, out var val) && val != null) {
+                                dtlParam[pk] = val;
+                            } else if (_rawData.TryGetValue(pk, out var rawVal) && rawVal != null) {
+                                dtlParam[pk] = rawVal;
+                            } else {
+                                throw new Exception($"SaveQueryExec ERROR: Missing primary key value for detail '{pk}'");
+                            }
+                        }
+
+                        // ワーク側の明細行を全取得
+                        var rows = await DBcon.QueryAsync<IDictionary<string, object>>(selectWorkDtlSql, dtlParam, transaction);
+
+                        foreach (var row in rows) {
+                            var normalizedDtl = NxTypeMapper.ConvertRow(dstTable, row);
+
+                            var dtlCols = new List<string>();
+                            var dtlVals = new List<string>();
+                            var dtlUpdates = new List<string>();
+
+                            foreach (var kv in normalizedDtl) {
+                                dtlCols.Add($@"""{kv.Key}""");
+                                dtlVals.Add($@"@{kv.Key}");
+
+                                // PK および update_at 以外のカラムを UPDATE 対象にする
+                                if (!pkCols.Contains(kv.Key) && kv.Key != _updateAtCol) {
+                                    dtlUpdates.Add($@"""{kv.Key}"" = EXCLUDED.""{kv.Key}""");
+                                }
+                            }
+
+                            var pkClause = string.Join(", ", pkCols.Select(pk => $@"""{pk}"""));
+
+                            // 本詳細テーブルへの Upsert 実行
+                            string upsertDtlSql = $@"
+                                INSERT INTO ""{dstTable}""
+                                ({string.Join(", ", dtlCols)})
+                                VALUES ({string.Join(", ", dtlVals)})
+                                ON CONFLICT ({pkClause})
+                                DO UPDATE SET
+                                    {string.Join(", ", dtlUpdates)};
+                            ";
+
+                            var affected = await DBcon.ExecuteAsync(upsertDtlSql, normalizedDtl, transaction);
+                            if (affected != 1)
+                                throw new Exception($"SaveQueryExec ERROR: Detail UPSERT affected {affected} rows");
+                        }
+                    }
+                }
+
+                return true;
+            } catch (Exception ex) {
+                // 例外を握りつぶさずに上位へスローし、SaveAsync 側のトランザクションロールバックを確実にする
+                throw new Exception($"SaveQueryExec failed: {ex.Message}", ex);
+            }
+        }
 
         // =======================================================
         // 正本 Raw に反映
@@ -1271,21 +1785,6 @@ namespace NxRebuild.shared {
         }
 
 
-        // =======================================================
-        // 継承先で必ず実装する確定処理
-        /// <summary>
-        /// 扱うエンティティが単一レコードが主になると思われる為、ピュアバーチャルではなく
-        /// virtual とし、デフォルト実装は true を返すだけとする。
-        /// 具象クラスが複数テーブル・複数レコードを扱う場合は、
-        /// ワークテーブルを同じスキーマで作成し、
-        /// そちらから本テーブルへ書き込む処理をここに記述する。
-        /// </summary>
-        /// 
-        // =======================================================
-        public virtual Task<bool> SaveQueryExec(IDbTransaction transaction)
-        {
-            return Task.FromResult(true);
-        }
 
         public virtual async Task<LockStatus> _SetLockAsync() {
 

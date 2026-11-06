@@ -45,18 +45,19 @@ namespace NxRebuild.shared {
         public string DetailTblPKJson { get; set; } = "{}";
 
         // その他メタ情報
-        public string NameCol { get; set; }
-        public string UpdateAtCol { get; set; }
-        public string LockedByCol { get; set; }
-        public string LockedAtCol { get; set; }
-        public string TenantCodeCol { get; set; }
-        public string IdCol { get; set; }
-        public string ParentIDCol { get; set; }
+        public string NameCol { get; set; } = "";
+        public string DataTypeCol { get; set; } = "";
+        public string UpdateAtCol { get; set; } = "";
+        public string LockedByCol { get; set; } = "";
+        public string LockedAtCol { get; set; } = "";
+        public string TenantCodeCol { get; set; } = "";
+        public string IdCol { get; set; } = "";
+        public string ParentIDCol { get; set; } = "";
         public int LockTimeOutSec { get; set; } = 600; // ロックタイムアウト時間（デフォルト10分）
-        public string RootName { get; set; }
-        public string WorkPriTable { get; set; }
+        public string RootName { get; set; } = "";
+        public string WorkPriTable { get; set; } = "";
         public string[] WorkDtlTblList { get; set; } = Array.Empty<string>();
-        public string InfoTable { get; set; }
+        public string InfoTable { get; set; } = "";
         public NxDataType DataType { get; set; }
 
     }

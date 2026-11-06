@@ -201,8 +201,8 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         // ===============================================================
 
         public virtual async Task<NxOperationResult<TKey>> SaveAsync(
-                            Dictionary<string, object?> workingRaw,
-                            List<(string, List<Dictionary<string, object?>>)>? subTables = null) {
+                                    Dictionary<string, object?> workingRaw,
+                                    List<(string, List<Dictionary<string, object?>>)>? subTables = null) {
             //SyncDataの一時停止
             using var _pause = await NxSyncControl.For(DBcon).PauseAsync();
 
@@ -225,20 +225,29 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                 if (subTables != null) {
                     foreach (var (tblName, rows) in subTables) {
                         foreach (var row in rows) {
-                            // 子テーブルの FK カラム名は親と同じ IdColName で OK（Zmst.LocalCode）
+                            // 子テーブルの FK カラム名は親と同じ IdColName で OK
                             row[IdColName] = newID;
                         }
                     }
                 }
-                if (!await _dataObj._DeleteDetailQueryExecAsync(tran)) {
+
+                // =======================================================
+                // ▼ ここを新しい差分整理 ＋ ワーク保存の流れに置き換え
+                // =======================================================
+
+                // 2. 【ワーク側ディテールの差分整理・削除】
+                // subTables != null の場合はワーク側明細を再構築用にクリア、
+                // subTables == null の場合は本テーブル側と比較して不要になったものをワーク側から削除
+                if (!await _dataObj._SyncAndDeleteWorkingDetailsAsync(subTables, tran)) {
                     tran.Rollback();
                     return new NxOperationResult<TKey> {
                         OperationErrorCode = NxOperationErrorCode.DbError,
-                        Message = "既存データの削除に失敗しました"
+                        Message = "ワーク側ディテールデータの整理に失敗しました"
                     };
                 }
 
-                // ★ Working 全体保存（メイン＋サブ）
+                // 3. 【ワークテーブルへの一括保存（メイン＋サブ）】
+                // ワークテーブルが存在しない場合はここで本テーブルに保存される（ワークテーブルと同じテーブル名の場合）
                 if (!await _dataObj.SaveWorkingAsync(workingRaw, subTables, tran)) {
                     tran.Rollback();
                     return new NxOperationResult<TKey> {
@@ -247,7 +256,23 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                     };
                 }
 
-                // ★ サーバーへ送る JSON を生成(
+                // 4. 【本テーブル（正本）への保存・反映】
+                // ワークテーブルに確定した内容を、本番の本テーブル（_primaryTableName / _detailTableList）へ書き込む
+                // ただし、ワークテーブルが存在しない設計の場合（本テーブルと同じテーブル名）の場合は保存済なので実行しない
+                if (_dataObj.W_TblName != _dataObj._primaryTableName) {
+
+                    if (!await _dataObj.SaveQueryExec(tran)) {
+                        tran.Rollback();
+                        return new NxOperationResult<TKey> {
+                            OperationErrorCode = NxOperationErrorCode.DbError,
+                            Message = "本テーブルへの保存に失敗しました"
+                        };
+                    }
+                }
+
+                // =======================================================
+
+                // ★ サーバーへ送る JSON を生成（ワークに保存された最新状態から作成）
                 var postJson = _dataObj.TblToJson(newID, tran);
                 var url = $"{ApiRoute}/Save/{SendID}";
 
@@ -269,13 +294,10 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                     };
                 }
 
-                
-
                 try {
                     // ★ 応答を読む（JSON パース）
                     op = await response.Content.ReadFromJsonAsync<NxOperationResult<TKey>>();
                 } catch (Exception ex) {
-                    // ★ JSON パース失敗（サーバー側の異常応答）
                     Console.WriteLine("SyncBaseDataObj.SaveAsync RESPONSE PARSE ERROR:");
                     Console.WriteLine(ex.Message);
                     tran.Rollback();
@@ -300,10 +322,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                 }
 
                 // ------------------------------------------------------
-                // 競合保存
-                //
-                // サーバーが別データとして保存した場合は
-                // ID変更をクライアントへ反映する。
+                // 競合保存の判定
                 // ------------------------------------------------------
                 bool isNewSave =
                     EqualityComparer<TKey>.Default.Equals(
@@ -327,18 +346,25 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                 // ★ Working → Raw 反映（ローカル正史）
                 ApplyWorkingToRaw(workingRaw);
 
-
-
                 // ★ サーバー正史の RawData をローカルへ反映
                 if (op.RawData != null) {
                     await UpdateDetailIDExec(newID, op.NewID, tran);
                     await UpdateRawDataToTbl(op.RawData, tran);
+
+                    // =======================================================
+                    // ★ 競合などでIDやデータが変わったため、ワーキングメモリを再構築
+                    // =======================================================
+                    await _dataObj._UpdatePropertiesFromTblAsync(tran); // DBの最新状態をオブジェクトに反映
+
+                    _dataObj.CreateWorkingMemory(workingRaw);          // workingRaw を最新状態で再生成
+                    if (subTables != null) {
+                        _dataObj.CreateWorkingDetailTables(subTables); // subTables も最新状態で再生成
+                    }
                 }
 
                 // ★ コミット（ローカル世界線の確定）
                 tran.Commit();
 
-                
             } catch (Exception ex) {
                 Console.WriteLine("SyncBaseDataObj.SaveAsync ERROR:");
                 Console.WriteLine(ex.Message);
@@ -349,8 +375,9 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                     Message = $"SaveAsync failed: {ex.Message}"
                 };
             }
-                // ★ サーバー正史のプロパティをオブジェクトに反映
-                await _dataObj._UpdatePropertiesFromTblAsync();
+
+            // ★ サーバー正史のプロパティをオブジェクトに反映
+            await _dataObj._UpdatePropertiesFromTblAsync();
 
             // ★ 正常終了
             return new NxOperationResult<TKey> {
@@ -358,9 +385,6 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                 NewID = op.NewID,
                 UpdateAt = op.UpdateAt,
                 DataBranched = conflictSaved,
-                Message = conflictSaved
-                    ? "他ユーザーによる更新を検出したため、新規データとして保存しました。"
-                    : "Save completed"
             };
         }
 
@@ -375,7 +399,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                 await DBcon.ExecuteAsync(sql, new { NewID = newID, OldID = oldID, TenantCode }, tran);
             }
         }
-        // 331行目: await UpdateDetailIDExec(newID, op.NewID, tran);
+        
 
 
         public async Task<NxOperationResult<TKey>> SetLockAsync() {

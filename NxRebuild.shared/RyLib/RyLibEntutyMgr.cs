@@ -15,7 +15,7 @@ namespace NxRebuild.shared {
 
         // マネージャー側での UUIDv7 採番実装
         public override Guid _GenerateDataID() {
-            return RyLibEntity.GenerateUuidV7();
+            return Guid.CreateVersion7();
         }
     }
 }
