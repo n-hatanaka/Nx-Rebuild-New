@@ -98,7 +98,7 @@
     </MudCard>
 </MudContainer>
 
-    @code {
+@code {
 
     HttpClient Http;
 
@@ -172,8 +172,6 @@
                 //デバッグ差し替え用GlobalState.ZmstEntityMgr = new ZmstEntityMgr(DbState.Connection, Http, customAuth, tenantGuid, currentUserGuid);
                 GlobalState.ZmstEntityMgr = new SyncZmstEntityMgr(DbState.Connection, Http, customAuth, tenantGuid, currentUserGuid);
 
-
-                //Zmstは一部カスタムしてあるためInitializeしてからSyncする。呼び出し順に注意
                 await GlobalState.ZmstEntityMgr.InitializeAsync(null);
                 await ((ISyncZmstEntityMgr)GlobalState.ZmstEntityMgr).SyncData();
 
@@ -187,8 +185,16 @@
 
                 initMessage = "料理ライブラリ初期化中...";
                 StateHasChanged();                
-                GlobalState.RyLibEntityMgr = new RyLibEntityMgr(DbState.Connection, tenantGuid, currentUserGuid);
+                //GlobalState.RyLibEntityMgr = new RyLibEntityMgr(DbState.Connection, tenantGuid, currentUserGuid);
+                //await GlobalState.RyLibEntityMgr.InitializeAsync(null);
+                GlobalState.RyLibEntityMgr = new SyncRyLibEntityMgr(DbState.Connection, Http, customAuth, tenantGuid, currentUserGuid);
                 await GlobalState.RyLibEntityMgr.InitializeAsync(null);
+                await  ((ISyncRyLibEntityMgr)GlobalState.RyLibEntityMgr).SyncData();
+                //定期同期開始
+                GlobalState.RyLibScheduler =
+                                new SyncScheduler<Guid>(
+                                    () => ((ISyncRyLibEntityMgr)GlobalState.RyLibEntityMgr).SyncData(),
+                                    30);
 
             }
             catch (Exception ex)

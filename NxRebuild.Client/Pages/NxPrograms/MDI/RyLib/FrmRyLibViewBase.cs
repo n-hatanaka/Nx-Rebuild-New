@@ -30,9 +30,9 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
             var item = GridDataItems.FirstOrDefault(x => x.IsSelected);
             if (item == null) return;
 
-            if (item.ItemData is RyLibEntity obj) {
-                // ソフトデリートで削除を実行
-                var failed = await DataMgr.DeleteDataAsync(new List<Guid> { obj.DataID }, true);
+            if (item.ItemData is IRyLibEntity obj) {
+                // ソフトデリートの扱いはサーバー側（コントローラー）で行うため、フラグは渡さない
+                var failed = await DataMgr.DeleteDataAsync(new List<Guid> { obj.DataID });
 
                 if (failed.FailedIds.Count > 0)
                     Console.WriteLine($"削除失敗: {failed.FailedIds[0]}");
@@ -47,7 +47,11 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
             if (SelectedFolder == null)
                 SelectedFolder = DataMgr.DataList.First();//必ずrootアイテムがあるはずなので、最初のアイテムを選択する
 
-            var newObj = (RyLibEntity)DataMgr.CreateNewDataObj(SelectedFolder.DataID);
+            // Sync でも Base でも IRyLibEntity として扱う
+            var newObj = (IRyLibEntity)DataMgr.CreateNewDataObj(SelectedFolder.DataID);
+
+            // 仮保存中は同期処理を止める（Sync の保存系と同じ作法）
+            using var _pause = await NxSyncControl.For(newObj.DBcon).PauseAsync();
 
             var working = new Dictionary<string, object?>();
             newObj.CreateWorkingMemory(working);
@@ -75,7 +79,6 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
                 {
                     { "Ry_Code", newObj.DataID },
                     { "IsNew", true },
-                    { "NewData", newObj },
                     { "OnSaved", EventCallback.Factory.Create(this, OnChildSaved) },
                     { "OnClose", EventCallback.Factory.Create(this, OnChildClosed) }
                 }
@@ -149,8 +152,15 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
             foreach (var obj in children) {
                 var row = new MyDataObj<Guid>(obj);
 
-                if (obj is BaseDataObj<Guid> baseObj) {
-                    foreach (var kv in baseObj._rawData) {
+                // Sync ラッパー経由でも生データを取れるようにする
+                var raw = obj switch {
+                    BaseDataObj<Guid> b => b._rawData,
+                    SyncBaseDataObj<Guid> s => s._rawData,
+                    _ => null
+                };
+
+                if (raw != null) {
+                    foreach (var kv in raw) {
                         string key = kv.Key;
 
                         if (key == obj.IdColName ||

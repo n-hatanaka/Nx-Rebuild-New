@@ -13,9 +13,11 @@ namespace NxRebuild.Client.Services
 
         public static IZmstEntityMgr? ZmstEntityMgr { get; set; }
 
+        public static SyncScheduler<int>? ZmstScheduler{ get; set; }
+
         public static IRyLibEntityMgr? RyLibEntityMgr { get; set; }
 
-        public static SyncScheduler<int>? ZmstScheduler{ get; set; }
+        public static SyncScheduler<Guid>? RyLibScheduler { get; set; }
 
         //MainWnd の初期化は、!DbState.IsInitialized のときだけ走ります。
         //ログアウト→再ログインをリロードなしで行うと、初期化が丸ごとスキップされて、
@@ -24,8 +26,10 @@ namespace NxRebuild.Client.Services
         public static void Reset() {
             NutPropScheduler?.Dispose(); NutPropScheduler = null;
             ZmstScheduler?.Dispose(); ZmstScheduler = null;
+            RyLibScheduler?.Dispose();RyLibScheduler = null;
             NutProperties = null;
             ZmstEntityMgr = null;
+            RyLibScheduler = null;
         }
     }
 }

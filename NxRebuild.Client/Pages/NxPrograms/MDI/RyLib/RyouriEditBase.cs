@@ -10,9 +10,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
         [Parameter] public Guid Ry_Code { get; set; }
         [Parameter] public bool IsNew { get; set; }
 
-        // 新規作成のとき、一覧(Mgr)にまだ入っていない仮保存済みオブジェクトを受け取る
-        [Parameter] public IRyLibEntity? NewData { get; set; }
-        private bool _committed;   // 新規料理を、初回のヘッダ保存で一覧に加えたか
+        private bool _committed;   // 新規料理を、初回のヘッダ保存で確定したか
         [Parameter] public EventCallback OnSaved { get; set; }
         [Parameter] public EventCallback OnClose { get; set; }
         [Inject] protected IJSRuntime JS { get; set; } = default!;
@@ -68,7 +66,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
             var rm = GlobalState.RyLibEntityMgr
                 ?? throw new Exception("RyLibEntityMgr が初期化されていません。");
 
-            RyData = (IsNew ? NewData : (IRyLibEntity?)rm.Get(Ry_Code))
+            RyData = (IRyLibEntity?)rm.Get(Ry_Code)
                 ?? throw new Exception($"Ry_Code={Ry_Code} の料理データがロードされていません。");
 
             RyData.CreateWorkingMemory(WorkingRaw);
@@ -315,9 +313,10 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
                     return;
                 }
 
-                // 新規料理は、初めて正本へ保存できた時点で一覧に加える
+                // 新規料理は、Sync の CreateNewDataObj で一覧に入っている。
+                // 初めて正本へ保存できた時点で、親子関係（フォルダとの紐付け）を確定する
                 if (IsNew && !_committed) {
-                    GlobalState.RyLibEntityMgr!.InsertNewDataItem(RyData);
+                    GlobalState.RyLibEntityMgr!.SetParent(RyData);
                     _committed = true;
                 }
 

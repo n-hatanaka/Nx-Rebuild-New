@@ -388,6 +388,13 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             };
         }
 
+        // ワークテーブルだけへの保存（正本・サーバーには触れない）
+        public virtual Task<bool> SaveWorkingAsync(
+                    Dictionary<string, object?> workingRaw,
+                    List<(string TableName, List<Dictionary<string, object?>> Rows)>? subTables,
+                    IDbTransaction tran)
+                        => _dataObj.SaveWorkingAsync(workingRaw, subTables, tran);
+
         // 子テーブルの親IDを更新する。DELETEしないのでFKが壊れない。
         // 抽象化は子テーブルが1つの場合のみまで、それ以上はオーバーライドして
         // 子テーブルのアップデートを実装する
@@ -897,7 +904,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         protected virtual async Task _UpdatePropertiesFromTblAsync()
                                     => await _dataObj._UpdatePropertiesFromTblAsync();
 
-        public void _SetProperties(IDictionary<string, object> record)
+        public void _SetProperties(IDictionary<string, object?> record)
                                     => _dataObj._SetProperties(record);
 
         public virtual NxOperationResult<TKey> _Validate(OperationType op, string? validData = null)

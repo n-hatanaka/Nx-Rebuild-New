@@ -103,8 +103,15 @@ namespace NxRebuild.shared {
         Task<NxOperationResult<TKey>> DataCloseAsync();
         Task<NxOperationResult<TKey>> ReNameAsync(string newName);
         Task<NxOperationResult<TKey>> SaveAsync(
-            Dictionary<string, object?> workingRaw,
-            List<(string, List<Dictionary<string, object?>>)>? subTables = null);
+                Dictionary<string, object?> workingRaw,
+                List<(string, List<Dictionary<string, object?>>)>? subTables = null);
+
+        Task<bool> SaveWorkingAsync(
+                Dictionary<string, object?> workingRaw,
+                List<(string TableName, List<Dictionary<string, object?>> Rows)>? subTables,
+                IDbTransaction tran);
+
+        void _SetProperties(IDictionary<string, object?> record);
 
         NxOperationResult<TKey> _Validate(OperationType op, string? arg = null);
     }
@@ -1383,9 +1390,9 @@ namespace NxRebuild.shared {
 
 
         // =======================================================
-        // ワーク側ディテールの整理・削除メソッド
-        // （subTables が null の時は _w_detailTblList と本テーブル側 _detailTableList を比較して、
-        //   本テーブル側に存在しなくなった不要な行をワーク側からピンポイントで削除する）
+        // ワーク側で削除され、本テーブルに残っているレコードを削除する
+        // detailの各行にカスケードが張られていた場合、必要なレコードのみ
+        // 残してアップサート出来る様配慮
         // =======================================================
         public virtual async Task<bool> _SyncAndDeleteWorkingDetailsAsync(
             List<(string TableName, List<Dictionary<string, object?>> Rows)>? subTables,
@@ -1420,21 +1427,6 @@ namespace NxRebuild.shared {
                     param[pk] = PrimaryPKDict.TryGetValue(pk, out var val) && val != null ? val : _rawData[pk];
                 }
 
-                // 修正（Dapperの DynamicParameters を使って型を明示する）
-                //var param = new DynamicParameters();
-                //foreach (var pk in parentPKs) {
-                //    var val = PrimaryPKDict.TryGetValue(pk, out var v) && v != null ? v : _rawData[pk];
-
-                //    // 型に合わせて明示的に追加する
-                //    if (val is Guid g)
-                //        param.Add(pk, g);
-                //    else if (val is int vali)
-                //        param.Add(pk, vali);
-                //    else if (val is long l)
-                //        param.Add(pk, l);
-                //    else
-                //        param.Add(pk, val?.ToString()); // 最悪文字列やそのまま
-                //}
                 // -----------------------------------------------------------------
                 // パターンA: subTables が null の場合
                 //   → ワーク側の既存行と、本テーブル（_detailTableList）側を比較し、
@@ -1444,79 +1436,72 @@ namespace NxRebuild.shared {
                     string targetSrcTable = (_detailTableList != null && i < _detailTableList.Length) ? _detailTableList[i] : targetWorkTable;
 
                     // 1. 本テーブル側から現在のレコードを全取得
-                    string srcSelectSql = $@"SELECT * FROM ""{targetSrcTable}"" WHERE {parentWhere};";
-                    var srcRows = await DBcon.QueryAsync<dynamic>(srcSelectSql, param, tran);
+                    // 本テーブル取得
+                    var srcRows = await DBcon.QueryAsync<dynamic>(
+                        $@"SELECT * FROM ""{targetSrcTable}"" WHERE {parentWhere};",
+                        param,
+                        tran);
 
-                    // 2. 本テーブル側の固有PKの組み合わせリストを抽出
-                    var srcPkValuesList = new List<Dictionary<string, object?>>();
-                    foreach (var sRow in srcRows) {
-                        var row = (IDictionary<string, object>)sRow;
+                    // ワークテーブル取得
+                    var workRows = await DBcon.QueryAsync<dynamic>(
+                        $@"SELECT * FROM ""{targetWorkTable}"" WHERE {parentWhere};",
+                        param,
+                        tran);
+
+                    // ワーク側PK一覧作成
+                    var workPkValuesList = new List<Dictionary<string, object?>>();
+
+                    foreach (var w in workRows) {
+                        var row = (IDictionary<string, object>)w;
 
                         var pkDict = new Dictionary<string, object?>();
-                        bool hasAll = true;
 
                         foreach (var upk in uniquePKs) {
-                            if (row.TryGetValue(upk, out object? v))
-                                pkDict[upk] = v;
-                            else {
-                                hasAll = false;
-                                break;
-                            }
+                            pkDict[upk] = row[upk];
                         }
 
-                        if (hasAll)
-                            srcPkValuesList.Add(pkDict);
+                        workPkValuesList.Add(pkDict);
                     }
 
-                    // 3. ワーク側の既存行を取得して、本テーブル側に存在しないものを特定
-                    string workSelectSql = $@"SELECT * FROM ""{targetWorkTable}"" WHERE {parentWhere};";
-                    var workRows = await DBcon.QueryAsync<dynamic>(workSelectSql, param, tran);
+                    // 本テーブルに存在するがワークに存在しない行を削除
+                    foreach (var srcObj in srcRows) {
+                        var srcRow = (IDictionary<string, object>)srcObj;
 
-                    foreach (var workRowObj in workRows) {
-                        try {
-                            var wRow = (IDictionary<string, object>)workRowObj;
-                            bool existsInSrc = false;
+                        bool existsInWork = false;
 
-                            Console.WriteLine("cast ok");
+                        foreach (var workPk in workPkValuesList) {
+                            bool match = true;
 
-                            foreach (var sPkDict in srcPkValuesList) {
-                                bool match = true;
-
-                                foreach (var upk in uniquePKs) {
-
-                                    Console.WriteLine($"upk={upk}");
-
-                                    if (!wRow.TryGetValue(upk, out object? wVal)
-                                        || !Equals(wVal, sPkDict[upk])) {
-                                        match = false;
-
-                                        Console.WriteLine($"value={wVal}");
-                                        break;
-                                    }
-                                }
-
-                                if (match) {
-                                    existsInSrc = true;
+                            foreach (var upk in uniquePKs) {
+                                if (!srcRow.TryGetValue(upk, out var srcVal)
+                                    || !Equals(srcVal, workPk[upk])) {
+                                    match = false;
                                     break;
                                 }
                             }
 
-                            // 本テーブル側に残っていない行は、ワーク側からも物理削除する
-                            if (!existsInSrc) {
-                                var delWhereParts = new List<string>();
-                                var delParam = new Dictionary<string, object>();
-                                foreach (var pk in pkCols) {
-                                    delWhereParts.Add($@"""{pk}"" = @del_{pk}");
-                                    delParam[$"del_{pk}"] = wRow[pk];
-                                }
-                                string delSql = $@"DELETE FROM ""{targetWorkTable}"" WHERE {string.Join(" AND ", delWhereParts)};";
-                                await DBcon.ExecuteAsync(delSql, delParam, tran);
+                            if (match) {
+                                existsInWork = true;
+                                break;
+                            }
+                        }
+
+                        if (!existsInWork) {
+                            var delWhereParts = new List<string>();
+                            var delParam = new Dictionary<string, object>();
+
+                            foreach (var pk in pkCols) {
+                                delWhereParts.Add($@"""{pk}"" = @del_{pk}");
+                                delParam[$"del_{pk}"] = srcRow[pk];
                             }
 
-                        } catch (Exception ex) {
-                            throw new Exception($"Error processing workRow: {ex.Message}", ex);
+                            string delSql =
+                                $@"DELETE FROM ""{targetSrcTable}""
+                                WHERE {string.Join(" AND ", delWhereParts)};";
+
+                            await DBcon.ExecuteAsync(delSql, delParam, tran);
                         }
-                    }
+                    }                    
                 } else {
                     // -----------------------------------------------------------------
                     // パターンB: subTables が渡されている場合
