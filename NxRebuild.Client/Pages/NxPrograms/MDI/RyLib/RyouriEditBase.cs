@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 using NxRebuild.Client.Pages.NxPrograms.DB.RyLib;
@@ -10,40 +10,36 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
         [Parameter] public Guid Ry_Code { get; set; }
         [Parameter] public bool IsNew { get; set; }
 
-        private bool _committed;   // 新規料理を、初回のヘッダ保存で確定したか
+        private bool _committed;
         [Parameter] public EventCallback OnSaved { get; set; }
         [Parameter] public EventCallback OnClose { get; set; }
         [Inject] protected IJSRuntime JS { get; set; } = default!;
 
-        // tan_m の単位名カラム
         protected const string TanNameKey = "tan_Name";
-
         public IRyLibEntity? RyData { get; set; }
 
-        // ヘッダ（w_Ry_Lib）のワーキングメモリ
+        // ヘッダのワーキングメモリ
         protected Dictionary<string, object?> WorkingRaw = new();
-
         protected RyLibRowEntityMgr? RowMgr { get; set; }
 
-        // 画面上の1行 = 正本エンティティ + その行のワーキングメモリ
-        protected class RowVm {
+        // 画面上の行モデル
+        protected class MaterialRowVm {
             public RyLibRowEntity Entity { get; init; } = default!;
-            public Dictionary<string, object?> Working { get; init; } = new();
+            public Dictionary<string, object> ExtraData { get; init; } = new();
             public bool Dirty { get; set; }
             public bool Saving { get; set; }
         }
 
-        protected List<RowVm> Rows { get; } = new();
+        protected List<MaterialRowVm> Rows { get; } = new();
+        
+        // ドラッグ中の行を保持する一時変数
+        protected MaterialRowVm? DraggingMaterialItem { get; set; }
 
-        // 材料ドロップダウンの選択肢
         protected record ZairyouOption(int LocalCode, string Code, string Label);
         protected List<ZairyouOption> ZairyouOptions { get; private set; } = new();
 
         protected bool _saving;
 
-        // ---------------------------------------------------------
-        // 基本情報（スキーマ: w_Ry_Lib の Name / Ninzu / Rymemo）
-        // ---------------------------------------------------------
         protected string RyName {
             get => WorkingRaw.TryGetValue("Name", out var v) ? v?.ToString() ?? "" : "";
             set => WorkingRaw["Name"] = value;
@@ -59,55 +55,45 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
             set => WorkingRaw["Rymemo"] = value;
         }
 
-        // ---------------------------------------------------------
-        // 初期化
-        // ---------------------------------------------------------
         protected override async Task OnInitializedAsync() {
-            var rm = GlobalState.RyLibEntityMgr
-                ?? throw new Exception("RyLibEntityMgr が初期化されていません。");
-
-            RyData = (IRyLibEntity?)rm.Get(Ry_Code)
-                ?? throw new Exception($"Ry_Code={Ry_Code} の料理データがロードされていません。");
+            var rm = GlobalState.RyLibEntityMgr ?? throw new Exception("RyLibEntityMgr が初期化されていません。");
+            RyData = (IRyLibEntity?)rm.Get(Ry_Code) ?? throw new Exception($"Ry_Code={Ry_Code} の料理データがロードされていません。");
 
             RyData.CreateWorkingMemory(WorkingRaw);
-
             BuildZairyouOptions();
 
             RowMgr = new RyLibRowEntityMgr(RyData.DBcon, RyData.TenantCode, RyData.CurrUsrID);
 
-            // 既存料理のときだけ、この料理(Ry_Code)の材料行を読み込む
-            // ※ BaseDataObjMgr._BuildSql は PK 辞書で絞らないため、Ry_Code 条件を明示する
             if (!IsNew) {
                 var q = new RecordQuery();
                 q.And.Add(new Condition { Column = "Ry_Code", Operator = "=", Value = Ry_Code });
                 await RowMgr.InitializeAsync(q);
 
                 foreach (var e in RowMgr.DataList.OfType<RyLibRowEntity>().OrderBy(r => r.SortNo)) {
-                    var vm = new RowVm { Entity = e };
-                    e.CreateWorkingMemory(vm.Working);
+                    var vm = new MaterialRowVm { Entity = e };
+                    var rawWorking = new Dictionary<string, object?>();
+                    e.CreateWorkingMemory(rawWorking);
+                    foreach (var kv in rawWorking) {
+                        if (kv.Value != null) vm.ExtraData[kv.Key] = kv.Value;
+                    }
                     Rows.Add(vm);
                 }
             }
         }
 
         private void BuildZairyouOptions() {
-            var zm = GlobalState.ZmstEntityMgr
-                ?? throw new Exception("ZmstEntityMgr が初期化されていません。");
-
+            var zm = GlobalState.ZmstEntityMgr ?? throw new Exception("ZmstEntityMgr が初期化されていません。");
             ZairyouOptions = zm.DataList
                 .OfType<IZmstEntity>()
                 .Where(z => z is not CategoryEntity && z.DataType == NxDataType.Zairyou)
-                .Select(z => {
-                    return new ZairyouOption(z.DataID, z.ZCode, $"{z.ZCode}　{z.DataName}");
-                })
+                .Select(z => new ZairyouOption(z.DataID, z.ZCode, $"{z.ZCode} {z.DataName}"))
                 .OrderBy(o => o.Code, StringComparer.Ordinal)
                 .ToList();
         }
 
-        // 正味量(g) = 準備量 × 単位重量(g/1単位) × (1 − 廃棄率/100) × (重量変化率/100)
-        // 単位重量は、選択中の単位(tan_cd)の tan_m.jyuuryou。材料・準備量・単位のどれかが変わったら再計算する
-        protected float CalcNetWeight(Dictionary<string, object?> row) {
-            var zmst = GlobalState.ZmstEntityMgr?.Get(IntOf(row, "LocalCode")) as IZmstEntity;
+        protected float CalcNetWeight(Dictionary<string, object> row) {
+            var localCode = IntOf(row, "LocalCode");
+            var zmst = GlobalState.ZmstEntityMgr?.Get(localCode) as IZmstEntity;
             if (zmst == null) return 0f;
 
             var tanCd = IntOf(row, "tan_cd");
@@ -122,32 +108,22 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
             return junbi * unitWeight * (1 - haiki / 100) * (henka / 100);
         }
 
-        // 計算した正味量をワーキングに入れる（保存対象の Syoumi 列）
-        protected void RecalcSyoumi(RowVm vm) {
-            vm.Working["Syoumi"] = CalcNetWeight(vm.Working);
+        protected void RecalcSyoumi(MaterialRowVm vm) {
+            vm.ExtraData["Syoumi"] = CalcNetWeight(vm.ExtraData);
         }
 
-        // ---------------------------------------------------------
-        // 行の表示ヘルパー（razor から使う）
-        // ---------------------------------------------------------
-        protected static int IntOf(Dictionary<string, object?> row, string key) =>
+        protected static int IntOf(Dictionary<string, object> row, string key) =>
             row.TryGetValue(key, out var v) && int.TryParse(v?.ToString(), out var n) ? n : 0;
 
-        protected static string junbiTxt(Dictionary<string, object?> row) =>
-            row.TryGetValue("Junbi", out var v) && float.TryParse(v?.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out var f)
-                ? f.ToString("0.###", CultureInfo.InvariantCulture)
-                : "";
-
-        protected static float FloatOf(Dictionary<string, object?> row, string key) {
+        protected static float FloatOf(Dictionary<string, object> row, string key) {
             var kv = row.FirstOrDefault(x => string.Equals(x.Key, key, StringComparison.OrdinalIgnoreCase));
             return kv.Value != null && float.TryParse(kv.Value.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out var f) ? f : 0f;
         }
 
-        protected static string SyoumiText(Dictionary<string, object?> row) =>
+        protected string SyoumiText(Dictionary<string, object> row) =>
             FloatOf(row, "Syoumi").ToString("0.##", CultureInfo.InvariantCulture);
 
-        // 選択中の材料の単位リスト（Zmst の TanList）
-        protected List<(int Code, string Label)> GetTanOptions(Dictionary<string, object?> row) {
+        protected List<(int Code, string Label)> GetTanOptions(Dictionary<string, object> row) {
             var localCode = IntOf(row, "LocalCode");
             if (localCode == 0) return new();
 
@@ -163,40 +139,55 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
                 .ToList();
         }
 
-        // ---------------------------------------------------------
-        // 行の編集（値を変えたら Dirty にするだけ。保存はロストフォーカス時）
-        // ---------------------------------------------------------
-        protected void OnZairyouChanged(RowVm vm, object? value) {
+        protected void OnZairyouChanged(MaterialRowVm vm, object? value) {
             int.TryParse(value?.ToString(), out var localCode);
             var opt = ZairyouOptions.FirstOrDefault(o => o.LocalCode == localCode);
 
-            vm.Working["LocalCode"] = localCode;
-            vm.Working["Z_code"] = opt?.Code ?? "";
+            vm.ExtraData["LocalCode"] = localCode;
+            vm.ExtraData["Z_code"] = opt?.Code ?? "";
 
-            // 材料が変わったら、その材料の最初の単位に合わせ直す
-            var tans = GetTanOptions(vm.Working);
-            vm.Working["tan_cd"] = tans.Count > 0 ? tans[0].Code : 0;
+            var tans = GetTanOptions(vm.ExtraData);
+            vm.ExtraData["tan_cd"] = tans.Count > 0 ? tans[0].Code : 0;
             RecalcSyoumi(vm);
             vm.Dirty = true;
         }
 
-        protected void OnJunbiChanged(RowVm vm, object? value) {
+        protected void OnJunbiChanged(MaterialRowVm vm, object? value) {
             float.TryParse(value?.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out var f);
-            vm.Working["Junbi"] = f;
+            vm.ExtraData["Junbi"] = f;
             RecalcSyoumi(vm);
             vm.Dirty = true;
         }
 
-        protected void OnTanChanged(RowVm vm, object? value) {
+        protected void OnTanChanged(MaterialRowVm vm, object? value) {
             int.TryParse(value?.ToString(), out var code);
-            vm.Working["tan_cd"] = code;
+            vm.ExtraData["tan_cd"] = code;
             RecalcSyoumi(vm);
             vm.Dirty = true;
         }
 
         // ---------------------------------------------------------
-        // 行の追加・削除
+        // ドラッグ＆ドロップ並び替え
         // ---------------------------------------------------------
+        protected void DropRow(int targetIndex) {
+            if (DraggingMaterialItem == null) return;
+
+            var sourceIndex = Rows.IndexOf(DraggingMaterialItem);
+            if (sourceIndex < 0 || sourceIndex == targetIndex) return;
+
+            Rows.RemoveAt(sourceIndex);
+            if (targetIndex > sourceIndex) targetIndex--;
+            Rows.Insert(targetIndex, DraggingMaterialItem);
+
+            // 順番が入れ替わったので全行の sort_no を更新して Dirty にする
+            for (int i = 0; i < Rows.Count; i++) {
+                Rows[i].ExtraData["sort_no"] = i + 1;
+                Rows[i].Dirty = true;
+            }
+
+            StateHasChanged();
+        }
+
         protected void AddRow() {
             if (RowMgr == null || RyData == null) return;
 
@@ -207,9 +198,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
                 CurrUsrID = RyData.CurrUsrID
             };
 
-            // 全カラムを既定値で初期化してから値を入れる（_rawData が空だと DataID の取得で落ちるため）
             e._SetProperties(NxTypeMapper.Current.CreateEmptyRow(RowMgr.TblName));
-
             e._SetProperties(new Dictionary<string, object?> {
                 ["tenant_code"] = RyData.TenantCode,
                 ["Ry_Code"] = Ry_Code,
@@ -223,43 +212,41 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
 
             RowMgr.InsertNewDataItem(e);
 
-            var vm = new RowVm { Entity = e };
-            e.CreateWorkingMemory(vm.Working);
+            var vm = new MaterialRowVm { Entity = e };
+            var rawWorking = new Dictionary<string, object?>();
+            e.CreateWorkingMemory(rawWorking);
+            foreach (var kv in rawWorking) {
+                if (kv.Value != null) vm.ExtraData[kv.Key] = kv.Value;
+            }
             Rows.Add(vm);
         }
 
-        protected async Task RemoveRowAsync(RowVm vm) {
+        protected async Task RemoveRowAsync(MaterialRowVm vm) {
             if (RowMgr == null) return;
 
             if (vm.Entity.DataID > 0) {
-                // 保存済みの行は DB からも削除（物理削除）
                 var r = await RowMgr.DeleteDataAsync(new List<int> { vm.Entity.DataID }, false);
                 if (r.FailedIds.Count > 0) {
                     await JS.InvokeVoidAsync("aknAlert", $"削除失敗: {r.Message}");
                     return;
                 }
             } else {
-                // 未保存の行はメモリ上から外すだけ
                 RowMgr._RemoveFromList(vm.Entity);
             }
 
             Rows.Remove(vm);
         }
 
-        // ---------------------------------------------------------
-        // 行の保存（RyLibRowEntity.SaveAsync）
-        // ---------------------------------------------------------
-        private async Task<bool> SaveRowAsync(RowVm vm) {
-            if (vm.Saving) return true;
-            if (RyData == null) return false;
-
+        private async Task<bool> SaveRowAsync(MaterialRowVm vm) {
+            if (vm.Saving || RyData == null) return true;
             vm.Saving = true;
             try {
-                vm.Working["Ry_Code"] = Ry_Code;
-                vm.Working["tenant_code"] = RyData.TenantCode;
-                vm.Working["sort_no"] = Rows.IndexOf(vm) + 1;
+                vm.ExtraData["Ry_Code"] = Ry_Code;
+                vm.ExtraData["tenant_code"] = RyData.TenantCode;
+                vm.ExtraData["sort_no"] = Rows.IndexOf(vm) + 1;
 
-                var result = await vm.Entity.SaveAsync(vm.Working);
+                var workingDict = vm.ExtraData.ToDictionary(k => k.Key, k => (object?)k.Value);
+                var result = await vm.Entity.SaveAsync(workingDict);
                 if (!result.Success) {
                     await JS.InvokeVoidAsync("aknAlert", $"行の保存失敗: {result.Message}");
                     return false;
@@ -272,61 +259,48 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
             }
         }
 
-        // 行からフォーカスが外れたとき（razor の <tr @onfocusout>）
-        protected async Task OnRowFocusOut(RowVm vm) {
+        protected async Task OnRowFocusOut(MaterialRowVm vm) {
             if (!vm.Dirty) return;
-
-            // 材料が未選択の行は保存しない（保存ボタン時に警告する）
-            if (IntOf(vm.Working, "LocalCode") == 0) return;
-
+            if (IntOf(vm.ExtraData, "LocalCode") == 0) return;
             await SaveRowAsync(vm);
         }
 
-        // 変更が残っている行をまとめて保存（行の削除で詰まった sort_no もここで反映）
         private async Task<bool> FlushRowsAsync() {
             for (int i = 0; i < Rows.Count; i++) {
                 var vm = Rows[i];
-                if (IntOf(vm.Working, "sort_no") != i + 1) vm.Dirty = true;
+                if (IntOf(vm.ExtraData, "sort_no") != i + 1) vm.Dirty = true;
                 if (!vm.Dirty) continue;
                 if (!await SaveRowAsync(vm)) return false;
             }
             return true;
         }
 
-        // ---------------------------------------------------------
-        // ヘッダ保存 / 閉じる
-        // ---------------------------------------------------------
         public async Task SaveAsync() {
             if (_saving || RyData == null) return;
 
-            if (Rows.Any(r => IntOf(r.Working, "LocalCode") == 0)) {
+            if (Rows.Any(r => IntOf(r.ExtraData, "LocalCode") == 0)) {
                 await JS.InvokeVoidAsync("aknAlert", "材料が未選択の行があります。");
                 return;
             }
 
             _saving = true;
             try {
-                // 1. ヘッダ（材料行はサブテーブルとして渡さない）
                 var result = await RyData.SaveAsync(WorkingRaw);
                 if (!result.Success) {
                     await JS.InvokeVoidAsync("aknAlert", $"保存失敗: {result.Message}");
                     return;
                 }
 
-                // 新規料理は、Sync の CreateNewDataObj で一覧に入っている。
-                // 初めて正本へ保存できた時点で、親子関係（フォルダとの紐付け）を確定する
                 if (IsNew && !_committed) {
                     GlobalState.RyLibEntityMgr!.SetParent(RyData);
                     _committed = true;
                 }
 
-                // 2. 未保存の材料行
                 if (!await FlushRowsAsync()) return;
 
                 await OnSaved.InvokeAsync();
                 await JS.InvokeVoidAsync("aknAlert", "保存しました。");
             } catch (Exception ex) {
-                Console.WriteLine($"RyouriEditBase.SaveAsync 例外: {ex.Message}");
                 await JS.InvokeVoidAsync("aknAlert", $"例外発生: {ex.Message}");
             } finally {
                 _saving = false;
@@ -334,7 +308,6 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
         }
 
         public async Task CloseAsync() {
-            // 未確定の新規料理は DataOpen していないので DataClose も呼ばない
             if (RyData != null && (!IsNew || _committed)) await RyData.DataCloseAsync();
             await OnClose.InvokeAsync();
         }

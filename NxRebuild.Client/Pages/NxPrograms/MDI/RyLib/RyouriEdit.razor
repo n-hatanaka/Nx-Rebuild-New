@@ -1,8 +1,38 @@
-﻿@page "/ryouri-edit"
+@page "/ryouri-edit"
 @inherits RyouriEditBase
 @using NxRebuild.Client.Services
 @using NxRebuild.shared
 @using NxRebuild.Client.Pages.NxPrograms.MDI
+@using MudBlazor
+
+<style>
+    .list-table { width: max-content; }
+    .list-row {
+        display: flex;
+        flex-wrap: nowrap;
+        width: max-content;
+        align-items: center;
+        border-bottom: 1px solid #eee;
+        cursor: default;
+    }
+    .drag-handle {
+        width: 30px;
+        text-align: center;
+        color: #ccc;
+        cursor: grab;
+        flex-shrink: 0;
+    }
+    .list-cell {
+        padding: 6px 8px;
+        flex-shrink: 0;
+        box-sizing: border-box;
+    }
+    .list-header {
+        font-weight: bold;
+        background-color: #eee;
+        border-bottom: 2px solid #ccc;
+    }
+</style>
 
 @if (RyData == null)
 {
@@ -32,24 +62,38 @@ else
 
             <h4 class="mt-4">材料一覧</h4>
 
-            <table class="table table-sm align-middle">
-                <thead>
-                    <tr>
-                        <th style="min-width:320px;">材料</th>
-                        <th style="width:120px;">準備量</th>
-                        <th style="width:140px;">単位</th>
-                        <th style="width:120px;">正味量(g)</th>
-                        <th style="width:60px;"></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var vm in Rows)
+            <div class="scroll-pane list-pane" style="overflow-x: auto;">
+                <div class="list-table" style="margin-top: 8px;">
+                    <!-- ヘッダー -->
+                    <div class="list-row list-header">
+                        <div style="width: 30px; flex-shrink: 0;"></div>
+                        <div class="list-cell" style="min-width: 320px;">材料</div>
+                        <div class="list-cell" style="width: 120px; text-align: right;">準備量</div>
+                        <div class="list-cell" style="width: 140px;">单位</div>
+                        <div class="list-cell" style="width: 120px; text-align: right;">正味量(g)</div>
+                        <div class="list-cell" style="width: 60px;"></div>
+                    </div>
+
+                    <!-- 明細行（ドラッグ＆ドロップ対応） -->
+                    @foreach (var (vm, index) in Rows.Select((v, i) => (v, i)))
                     {
-                        var tans = GetTanOptions(vm.Working);
-                        <tr @key="vm" @onfocusout="() => OnRowFocusOut(vm)">
-                            <td>
+                        var tans = GetTanOptions(vm.ExtraData);
+                        <div class="list-row"
+                             @key="vm"
+                             draggable="true"
+                             @ondragstart="() => DraggingMaterialItem = vm"
+                             @ondrop="() => DropRow(index)"
+                             @ondragover:preventDefault="true"
+                             @onfocusout="() => OnRowFocusOut(vm)">
+
+                            <!-- ドラッグハンドル -->
+                            <div class="drag-handle">
+                                <MudIcon Icon="@Icons.Material.Filled.DragIndicator" Size="Size.Small" />
+                            </div>
+
+                            <div class="list-cell" style="min-width: 320px;">
                                 <select class="form-select form-select-sm"
-                                        value="@IntOf(vm.Working, "LocalCode")"
+                                        value="@IntOf(vm.ExtraData, "LocalCode")"
                                         @onchange="e => OnZairyouChanged(vm, e.Value)">
                                     <option value="0">（材料を選択）</option>
                                     @foreach (var z in ZairyouOptions)
@@ -57,15 +101,17 @@ else
                                         <option value="@z.LocalCode">@z.Label</option>
                                     }
                                 </select>
-                            </td>
-                            <td>
+                            </div>
+
+                            <div class="list-cell" style="width: 120px;">
                                 <input type="text" inputmode="decimal" class="form-control form-control-sm text-end"
-                                       value="@junbiTxt(vm.Working)"
+                                       value="@(vm.ExtraData.TryGetValue("Junbi", out var jv) ? jv?.ToString() ?? "" : "")"
                                        @onchange="e => OnJunbiChanged(vm, e.Value)" />
-                            </td>
-                            <td>
+                            </div>
+
+                            <div class="list-cell" style="width: 140px;">
                                 <select class="form-select form-select-sm"
-                                        value="@IntOf(vm.Working, "tan_cd")"
+                                        value="@IntOf(vm.ExtraData, "tan_cd")"
                                         disabled="@(tans.Count == 0)"
                                         @onchange="e => OnTanChanged(vm, e.Value)">
                                     @foreach (var t in tans)
@@ -73,22 +119,24 @@ else
                                         <option value="@t.Code">@t.Label</option>
                                     }
                                 </select>
-                            </td>
-                            <td class="text-end">
-                                @SyoumiText(vm.Working)
-                            </td>
-                            <td>
+                            </div>
+
+                            <div class="list-cell text-end" style="width: 120px; line-height: 31px;">
+                                @SyoumiText(vm.ExtraData)
+                            </div>
+
+                            <div class="list-cell" style="width: 60px; text-align: center;">
                                 <button type="button" class="btn btn-outline-danger btn-sm"
                                         @onclick="() => RemoveRowAsync(vm)">
                                     削除
                                 </button>
-                            </td>
-                        </tr>
+                            </div>
+                        </div>
                     }
-                </tbody>
-            </table>
+                </div>
+            </div>
 
-            <button type="button" class="btn btn-outline-primary btn-sm" @onclick="AddRow">＋ 材料を追加</button>
+            <button type="button" class="btn btn-outline-primary btn-sm mt-2" @onclick="AddRow">＋ 材料を追加</button>
 
             <div class="mt-4">
                 <button class="btn btn-primary" disabled="@_saving">保存</button>
