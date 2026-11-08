@@ -12,7 +12,6 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
         //ドラッグドロップそれぞれの有効化、無効化
         [Parameter] public bool DisableNodeDrag { get; set; } = false;
         [Parameter] public bool DisableNodeDrop { get; set; } = false;
-
         // 外部からのイベント処理を受け取るパラメータ        
         [Parameter] public EventCallback<MyTreeData<TKey>> OnNodeSelected { get; set; }
         [Parameter] public EventCallback<(MyTreeData<TKey> Target, MyDataObj<TKey>? DroppedItem, MyTreeData<TKey>? DroppedNode)> OnNodeDropped { get; set; }
@@ -61,6 +60,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
             node.IsEditing = false;
             base.StateHasChanged();
         }
+
 
         public void HandleTreeKeyUp(KeyboardEventArgs e, MyTreeData<TKey> node) {
             if (e.Key == "Enter") StopEditingTreeNode(node, true);

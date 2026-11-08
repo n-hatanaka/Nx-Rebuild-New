@@ -1,0 +1,99 @@
+﻿@page "/ryouri-edit"
+@inherits RyouriEditBase
+@using NxRebuild.Client.Services
+@using NxRebuild.shared
+@using NxRebuild.Client.Pages.NxPrograms.MDI
+
+@if (RyData == null)
+{
+    <p>Loading...</p>
+}
+else
+{
+    <div class="edit-padding" style="padding: 16px;">
+        <EditForm Model="WorkingRaw" OnValidSubmit="SaveAsync">
+
+            <h4>基本情報</h4>
+
+            <div class="mb-3">
+                <label>料理名</label>
+                <InputText class="form-control" @bind-Value="RyName" />
+            </div>
+
+            <div class="mb-3">
+                <label>人数</label>
+                <InputNumber class="form-control" @bind-Value="Ninzu" />
+            </div>
+
+            <div class="mb-3">
+                <label>メモ</label>
+                <InputTextArea class="form-control" @bind-Value="RyNote" />
+            </div>
+
+            <h4 class="mt-4">材料一覧</h4>
+
+            <table class="table table-sm align-middle">
+                <thead>
+                    <tr>
+                        <th style="min-width:320px;">材料</th>
+                        <th style="width:120px;">準備量</th>
+                        <th style="width:140px;">単位</th>
+                        <th style="width:120px;">正味量(g)</th>
+                        <th style="width:60px;"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var vm in Rows)
+                    {
+                        var tans = GetTanOptions(vm.Working);
+                        <tr @key="vm" @onfocusout="() => OnRowFocusOut(vm)">
+                            <td>
+                                <select class="form-select form-select-sm"
+                                        value="@IntOf(vm.Working, "LocalCode")"
+                                        @onchange="e => OnZairyouChanged(vm, e.Value)">
+                                    <option value="0">（材料を選択）</option>
+                                    @foreach (var z in ZairyouOptions)
+                                    {
+                                        <option value="@z.LocalCode">@z.Label</option>
+                                    }
+                                </select>
+                            </td>
+                            <td>
+                                <input type="text" inputmode="decimal" class="form-control form-control-sm text-end"
+                                       value="@junbiTxt(vm.Working)"
+                                       @onchange="e => OnJunbiChanged(vm, e.Value)" />
+                            </td>
+                            <td>
+                                <select class="form-select form-select-sm"
+                                        value="@IntOf(vm.Working, "tan_cd")"
+                                        disabled="@(tans.Count == 0)"
+                                        @onchange="e => OnTanChanged(vm, e.Value)">
+                                    @foreach (var t in tans)
+                                    {
+                                        <option value="@t.Code">@t.Label</option>
+                                    }
+                                </select>
+                            </td>
+                            <td class="text-end">
+                                @SyoumiText(vm.Working)
+                            </td>
+                            <td>
+                                <button type="button" class="btn btn-outline-danger btn-sm"
+                                        @onclick="() => RemoveRowAsync(vm)">
+                                    削除
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+
+            <button type="button" class="btn btn-outline-primary btn-sm" @onclick="AddRow">＋ 材料を追加</button>
+
+            <div class="mt-4">
+                <button class="btn btn-primary" disabled="@_saving">保存</button>
+                <button type="button" class="btn btn-secondary ms-2" @onclick="CloseAsync">閉じる</button>
+            </div>
+        </EditForm>
+    </div>
+}

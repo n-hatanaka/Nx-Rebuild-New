@@ -101,29 +101,21 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         // 通信エラーが発生しても
         // スケジューラ自体は停止しない。
         // ===================================================
-        private async Task RunAsync(
-            CancellationToken token) {
+        private async Task RunAsync(CancellationToken token) {
+            // 起動直後のウェイトを少し置いて初期化競合を防ぐ
+            try { await Task.Delay(5000, token); } catch { return; }
 
             while (!token.IsCancellationRequested) {
-
                 try {
-
+                    // 同期処理を実行
                     await _syncFunc();
-
                 } catch (Exception ex) {
-
-                    Console.WriteLine(ex);
+                    Console.WriteLine($"[SyncScheduler Error]: {ex.Message}");
                 }
 
                 try {
-
-                    await Task.Delay(
-                        Interval,
-                        token);
-
+                    await Task.Delay(Interval, token);
                 } catch {
-
-                    // Stop() による終了
                     break;
                 }
             }

@@ -42,23 +42,44 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
         }
 
         public override async Task CreateNewItemAsync() {
-            if (DataMgr == null || SelectedFolder == null)
+            if (DataMgr == null)
                 return;
+            if (SelectedFolder == null)
+                SelectedFolder = DataMgr.DataList.First();//必ずrootアイテムがあるはずなので、最初のアイテムを選択する
 
-            var parentID = SelectedFolder.DataID;
-            var newObj = DataMgr.CreateNewDataObj(parentID);
+            var newObj = (RyLibEntity)DataMgr.CreateNewDataObj(SelectedFolder.DataID);
 
-            // 料理編集画面（例: RyLibEdit）をウィンドウで開く
-            //Manager.Open<RyLibEdit>(
-            //    $"新規作成: {newObj.DataName}",
-            //    new Dictionary<string, object>
-            //    {
-            //        { "LocalCode", newObj.DataID },
-            //        { "IsNew", true },
-            //        { "OnSaved", EventCallback.Factory.Create(this, OnChildSaved) },
-            //        { "OnClose", EventCallback.Factory.Create(this, OnChildClosed) }
-            //    }
-            //);
+            var working = new Dictionary<string, object?>();
+            newObj.CreateWorkingMemory(working);
+            working[newObj.NameColName] = "NewRyouri";
+            working["Ninzu"] = 1;
+
+            // 仮保存: ワークテーブル(w_Ry_Lib)だけに書く。正本(Ry_lib)へはヘッダ保存時に反映される
+            using (var tran = newObj.DBcon.BeginTransaction()) {
+                try {
+                    await newObj.SaveWorkingAsync(working, null, tran);
+                    tran.Commit();
+                } catch (Exception ex) {
+                    tran.Rollback();
+                    await JS.InvokeVoidAsync("aknAlert", $"新規作成失敗: {ex.Message}");
+                    return;
+                }
+            }
+
+            // 編集画面がフォームの初期値に使えるよう、正本にも仮の内容を反映しておく
+            newObj._SetProperties(working);
+
+            Manager.Open<RyouriEdit>(
+                $"新規作成: {newObj.DataName}",
+                new Dictionary<string, object>
+                {
+                    { "Ry_Code", newObj.DataID },
+                    { "IsNew", true },
+                    { "NewData", newObj },
+                    { "OnSaved", EventCallback.Factory.Create(this, OnChildSaved) },
+                    { "OnClose", EventCallback.Factory.Create(this, OnChildClosed) }
+                }
+            );
         }
 
         public override async Task BeginEditSelectedItem() {
@@ -68,25 +89,26 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
             if (item.ItemData.DataType != NxDataType.Ryouri)
                 return;
 
-            var baseObj = (RyLibEntity)item.ItemData;
-            var result = await baseObj.DataOpenAsync();
+            var baseObj = (IRyLibEntity)item.ItemData;
 
+            // ★ Zmst と同じ排他・オープン処理
+            var result = await baseObj.DataOpenAsync();
             if (!result.Success) {
                 Console.WriteLine(result.Message);
                 await JS.InvokeVoidAsync("aknAlert", $"編集開始失敗: {result.Message}");
                 return;
             }
 
-            //Manager.Open<RyLibEdit>(
-            //    $"料理編集: {baseObj.DataName}",
-            //    new Dictionary<string, object>
-            //    {
-            //        { "LocalCode", baseObj.DataID },
-            //        { "IsNew", false },
-            //        { "OnSaved", EventCallback.Factory.Create(this, OnChildSaved) },
-            //        { "OnClose", EventCallback.Factory.Create(this, OnChildClosed) }
-            //    }
-            //);
+            Manager.Open<RyouriEdit>(
+                $"料理編集: {baseObj.DataName}",
+                new Dictionary<string, object>
+                {
+                    { "Ry_Code", baseObj.DataID },
+                    { "IsNew", false },
+                    { "OnSaved", EventCallback.Factory.Create(this, OnChildSaved) },
+                    { "OnClose", EventCallback.Factory.Create(this, OnChildClosed) }
+                }
+            );
         }
 
         private async Task OnChildClosed() {

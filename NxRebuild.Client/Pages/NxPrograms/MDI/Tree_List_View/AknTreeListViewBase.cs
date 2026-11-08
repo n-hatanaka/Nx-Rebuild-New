@@ -154,7 +154,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
                     Console.WriteLine($"Rename failed: {result.Message}");
 
                     await JS.InvokeVoidAsync(
-                        "Alert",
+                        "alert",
                         $"リネーム失敗\r\n{result.Message}"
                     );
 
@@ -372,7 +372,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
                     Console.WriteLine($"削除失敗: {result.Message}");
 
                     await JS.InvokeVoidAsync(
-                        "Alert",
+                        "alert",
                         $"削除失敗\r\n{result.Message}"
                     );
 

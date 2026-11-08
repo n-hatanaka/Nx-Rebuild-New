@@ -12,6 +12,25 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         
         public override string ApiRoute => "Zmst";
 
+        public string ZCode {
+            get => ((IZmstEntity)_dataObj).ZCode;
+        }
+
+
+        public int LocalCode {
+            get => ((IZmstEntity)_dataObj).LocalCode;
+        }
+
+
+        public float lss {
+            get => ((IZmstEntity)_dataObj).lss;
+        }
+
+
+        public float Wca {
+            get => ((IZmstEntity)_dataObj).Wca;
+        }
+
 
         // --- ZmstEntity へのアクセスを簡略化するためのプロパティ ---
         private ZmstEntity Zmst => (ZmstEntity)_dataObj;

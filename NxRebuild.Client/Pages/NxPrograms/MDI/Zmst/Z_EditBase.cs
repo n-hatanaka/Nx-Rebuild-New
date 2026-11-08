@@ -203,7 +203,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
                 // ★ NxOperationResult に統一されたので Success / Message を見る
                 if (!result.Success) {
                     await JS.InvokeVoidAsync(
-                        "Alert",
+                        "alert",
                         $"保存失敗: {result.Message}"
                     );
                     return;
@@ -211,7 +211,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
 
                 if (result.DataBranched) {
                     await JS.InvokeVoidAsync(
-                        "Alert",
+                        "alert",
                         result.Message
                     );
                 }
@@ -220,7 +220,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
                 await OnSaved.InvokeAsync();   // ← これを Z_Edit に追加する
 
                 //  成功メッセージ（任意）
-                await JS.InvokeVoidAsync("Alert", "保存しました。");
+                await JS.InvokeVoidAsync("alert", "保存しました。");
 
                 var zm = GlobalState.ZmstEntityMgr;
                 zm.SetParent(Entity);//親子関係を登録
@@ -228,7 +228,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
             } catch (Exception ex) {
                 // エラー処理
                 Console.WriteLine($"Z_EditBase.SaveAsync:保存中にエラーが発生しました: {ex.Message}");
-                await JS.InvokeVoidAsync("Alert", $"例外発生: {ex.Message}");
+                await JS.InvokeVoidAsync("alert", $"例外発生: {ex.Message}");
                 throw;
             } finally {
                 _saving = false;

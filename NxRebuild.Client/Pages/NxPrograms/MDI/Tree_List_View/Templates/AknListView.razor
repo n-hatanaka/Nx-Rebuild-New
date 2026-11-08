@@ -1,7 +1,8 @@
-﻿@typeparam TKey
+﻿@typeparam TKey where TKey : notnull
 @inherits AknListViewBase<TKey>
-@using MudBlazor
 @namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View
+@using MudBlazor
+
 
 <style>
     .list-table { width: max-content; }

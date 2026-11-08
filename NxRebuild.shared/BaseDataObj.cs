@@ -1074,9 +1074,13 @@ namespace NxRebuild.shared {
                     }
 
                     // 正本からレコードを取得（DapperRow / 辞書 or 動的オブジェクト）
-                    var record = await DBcon.QueryFirstOrDefaultAsync<IDictionary<string, object>>(selectPriSql, priParam, transaction);
+                    var recordObj = await DBcon.QueryFirstOrDefaultAsync<dynamic>(
+                                                selectPriSql,
+                                                priParam,
+                                                transaction);
 
-                    if (record != null) {
+                    if (recordObj != null) {
+                        var record = (IDictionary<string, object>)recordObj;
                         // 型マッピング等を通して一応正規化しておく
                         var normalized = NxTypeMapper.ConvertRow(_w_tblName, record);
 
@@ -1138,10 +1142,17 @@ namespace NxRebuild.shared {
                             }
                         }
 
-                        var rows = await DBcon.QueryAsync<IDictionary<string, object>>(selectDtlSql, dtlParam, transaction);
+                        var rows = await DBcon.QueryAsync<dynamic>(
+                                                                    selectDtlSql,
+                                                                    dtlParam,
+                                                                    transaction);
 
-                        foreach (var row in rows) {
-                            var normalizedDtl = NxTypeMapper.ConvertRow(dstTable, row);
+                        foreach (var rowObj in rows) {
+                            var row = (IDictionary<string, object>)rowObj;
+
+                            var normalizedDtl = NxTypeMapper.ConvertRow(
+                                                                    dstTable,
+                                                                    row);
 
                             var dtlColNames = new List<string>();
                             var dtlValParams = new List<string>();
@@ -1409,6 +1420,21 @@ namespace NxRebuild.shared {
                     param[pk] = PrimaryPKDict.TryGetValue(pk, out var val) && val != null ? val : _rawData[pk];
                 }
 
+                // 修正（Dapperの DynamicParameters を使って型を明示する）
+                //var param = new DynamicParameters();
+                //foreach (var pk in parentPKs) {
+                //    var val = PrimaryPKDict.TryGetValue(pk, out var v) && v != null ? v : _rawData[pk];
+
+                //    // 型に合わせて明示的に追加する
+                //    if (val is Guid g)
+                //        param.Add(pk, g);
+                //    else if (val is int vali)
+                //        param.Add(pk, vali);
+                //    else if (val is long l)
+                //        param.Add(pk, l);
+                //    else
+                //        param.Add(pk, val?.ToString()); // 最悪文字列やそのまま
+                //}
                 // -----------------------------------------------------------------
                 // パターンA: subTables が null の場合
                 //   → ワーク側の既存行と、本テーブル（_detailTableList）側を比較し、
@@ -1419,46 +1445,76 @@ namespace NxRebuild.shared {
 
                     // 1. 本テーブル側から現在のレコードを全取得
                     string srcSelectSql = $@"SELECT * FROM ""{targetSrcTable}"" WHERE {parentWhere};";
-                    var srcRows = await DBcon.QueryAsync<IDictionary<string, object>>(srcSelectSql, param, tran);
+                    var srcRows = await DBcon.QueryAsync<dynamic>(srcSelectSql, param, tran);
 
                     // 2. 本テーブル側の固有PKの組み合わせリストを抽出
                     var srcPkValuesList = new List<Dictionary<string, object?>>();
                     foreach (var sRow in srcRows) {
+                        var row = (IDictionary<string, object>)sRow;
+
                         var pkDict = new Dictionary<string, object?>();
                         bool hasAll = true;
+
                         foreach (var upk in uniquePKs) {
-                            if (sRow.TryGetValue(upk, out var v)) pkDict[upk] = v;
-                            else { hasAll = false; break; }
+                            if (row.TryGetValue(upk, out object? v))
+                                pkDict[upk] = v;
+                            else {
+                                hasAll = false;
+                                break;
+                            }
                         }
-                        if (hasAll) srcPkValuesList.Add(pkDict);
+
+                        if (hasAll)
+                            srcPkValuesList.Add(pkDict);
                     }
 
                     // 3. ワーク側の既存行を取得して、本テーブル側に存在しないものを特定
                     string workSelectSql = $@"SELECT * FROM ""{targetWorkTable}"" WHERE {parentWhere};";
-                    var workRows = await DBcon.QueryAsync<IDictionary<string, object>>(workSelectSql, param, tran);
+                    var workRows = await DBcon.QueryAsync<dynamic>(workSelectSql, param, tran);
 
-                    foreach (var wRow in workRows) {
-                        bool existsInSrc = false;
-                        foreach (var sPkDict in srcPkValuesList) {
-                            bool match = true;
-                            foreach (var upk in uniquePKs) {
-                                if (!wRow.TryGetValue(upk, out var wVal) || !Equals(wVal, sPkDict[upk])) {
-                                    match = false; break;
+                    foreach (var workRowObj in workRows) {
+                        try {
+                            var wRow = (IDictionary<string, object>)workRowObj;
+                            bool existsInSrc = false;
+
+                            Console.WriteLine("cast ok");
+
+                            foreach (var sPkDict in srcPkValuesList) {
+                                bool match = true;
+
+                                foreach (var upk in uniquePKs) {
+
+                                    Console.WriteLine($"upk={upk}");
+
+                                    if (!wRow.TryGetValue(upk, out object? wVal)
+                                        || !Equals(wVal, sPkDict[upk])) {
+                                        match = false;
+
+                                        Console.WriteLine($"value={wVal}");
+                                        break;
+                                    }
+                                }
+
+                                if (match) {
+                                    existsInSrc = true;
+                                    break;
                                 }
                             }
-                            if (match) { existsInSrc = true; break; }
-                        }
 
-                        // 本テーブル側に残っていない行は、ワーク側からも物理削除する
-                        if (!existsInSrc) {
-                            var delWhereParts = new List<string>();
-                            var delParam = new Dictionary<string, object>();
-                            foreach (var pk in pkCols) {
-                                delWhereParts.Add($@"""{pk}"" = @del_{pk}");
-                                delParam[$"del_{pk}"] = wRow[pk];
+                            // 本テーブル側に残っていない行は、ワーク側からも物理削除する
+                            if (!existsInSrc) {
+                                var delWhereParts = new List<string>();
+                                var delParam = new Dictionary<string, object>();
+                                foreach (var pk in pkCols) {
+                                    delWhereParts.Add($@"""{pk}"" = @del_{pk}");
+                                    delParam[$"del_{pk}"] = wRow[pk];
+                                }
+                                string delSql = $@"DELETE FROM ""{targetWorkTable}"" WHERE {string.Join(" AND ", delWhereParts)};";
+                                await DBcon.ExecuteAsync(delSql, delParam, tran);
                             }
-                            string delSql = $@"DELETE FROM ""{targetWorkTable}"" WHERE {string.Join(" AND ", delWhereParts)};";
-                            await DBcon.ExecuteAsync(delSql, delParam, tran);
+
+                        } catch (Exception ex) {
+                            throw new Exception($"Error processing workRow: {ex.Message}", ex);
                         }
                     }
                 } else {
@@ -1649,9 +1705,13 @@ namespace NxRebuild.shared {
                     }
 
                     // ワーク側から該当レコードを取得
-                    var record = await DBcon.QueryFirstOrDefaultAsync<IDictionary<string, object>>(selectWorkPriSql, priParam, transaction);
+                    var recordObj = await DBcon.QueryFirstOrDefaultAsync<dynamic>(
+                                                    selectWorkPriSql,
+                                                    priParam,
+                                                    transaction);
 
-                    if (record != null) {
+                    if (recordObj != null) {
+                        var record = (IDictionary<string, object>)recordObj;
                         // 本テーブルのスキーマに合わせて型を正規化
                         var normalized = NxTypeMapper.ConvertRow(_primaryTableName, record);
 
@@ -1728,10 +1788,16 @@ namespace NxRebuild.shared {
                         }
 
                         // ワーク側の明細行を全取得
-                        var rows = await DBcon.QueryAsync<IDictionary<string, object>>(selectWorkDtlSql, dtlParam, transaction);
+                        var rows = await DBcon.QueryAsync<dynamic>(
+                            selectWorkDtlSql,
+                            dtlParam,
+                            transaction);
 
-                        foreach (var row in rows) {
-                            var normalizedDtl = NxTypeMapper.ConvertRow(dstTable, row);
+                        foreach (var rowObj in rows) {
+                            var row = (IDictionary<string, object>)rowObj;
+
+                            var normalizedDtl =
+                                NxTypeMapper.ConvertRow(dstTable, row);
 
                             var dtlCols = new List<string>();
                             var dtlVals = new List<string>();

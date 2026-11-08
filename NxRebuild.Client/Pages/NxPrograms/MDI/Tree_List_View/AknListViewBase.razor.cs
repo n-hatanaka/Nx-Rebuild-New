@@ -28,14 +28,14 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
         // 「項目名」の列配置を解決するメソッド
         // もし親で "Name" という DataKey のカラム定義が存在すればその配置クラスを使い、
         // なければデフォルトで "List-cell-left" を返す
-        public string GetNameAlignClass() {
+        public virtual string GetNameAlignClass() {
             var nameCol = Columns.FirstOrDefault(c => c.DataKey == "Name");
             return nameCol != null && !string.IsNullOrEmpty(nameCol.AlignClass)
                    ? nameCol.AlignClass
                    : "List-cell-left";
         }
 
-        public void Sort(string key) {
+        public virtual void Sort(string key) {
             if (!AllowSorting || ListDataItems == null || !ListDataItems.Any()) return; // ソートを許可されていない、またはデータが空なら何もしない
 
             if (_currentSortKey == key) {
@@ -82,12 +82,12 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
         }
 
 
-        public string GetSortIcon(string key) {
+        public virtual string GetSortIcon(string key) {
             if (!AllowSorting || _currentSortKey != key) return ""; // ソートを許可されていない、またはソート対象のキーと異なるなら空文字を返す
             return _isAscending ? " ▲" : " ▼"; // 昇順なら↑、降順なら↓のアイコンを返す
         }
 
-        public async Task HandleClick(MyDataObj<TKey> item, MouseEventArgs e) {
+        public virtual async Task HandleClick(MyDataObj<TKey> item, MouseEventArgs e) {
             var now = DateTime.Now;
 
             _lastClickTime = now; // 最終クリック時間を更新
@@ -109,7 +109,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
             });
         }
 
-        public async Task HandleDoubleClick(MyDataObj<TKey> item) {
+        public virtual async Task HandleDoubleClick(MyDataObj<TKey> item) {
             // ★ 保留中のシングルクリック処理(選択/リネーム開始)を無効化
             _lastClickedItem = null;
             _lastClickTime = DateTime.MinValue;
@@ -123,20 +123,20 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
             }
         }
 
-        public async Task HandleListEditKey(KeyboardEventArgs e, MyDataObj<TKey> item) {
+        public virtual async Task HandleListEditKey(KeyboardEventArgs e, MyDataObj<TKey> item) {
             if (e.Key == "Enter")
                 await OnRenameRequested.InvokeAsync(item);
             else if (e.Key == "Escape")
                 CancelRename(item);  // Cancel
         }
 
-        public async Task DropRow(int targetIndex) {
+        public virtual async Task DropRow(int targetIndex) {
             if (!DisableRowDragDrop && OnRowDropped.HasDelegate) { // 行ドラッグ・ドロップが有効で、ドロップイベントコールバックがあるなら
                 await OnRowDropped.InvokeAsync((targetIndex, DraggingState<TKey>.DraggingGridItem)); // ドロップイベントを呼び出す
             }
         }
 
-        public async Task StartEditingListItem(MyDataObj<TKey> item) {
+        public virtual async Task StartEditingListItem(MyDataObj<TKey> item) {
             foreach (var i in ListDataItems) i.IsEditing = false; // すべてのアイテムの編集モードをリセット
             item.IsEditing = true; // クリックされたアイテムの編集モードに設定
 
@@ -154,14 +154,14 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
             });
         }
 
-        public void CancelRename(MyDataObj<TKey> item) {
+        public virtual void CancelRename(MyDataObj<TKey> item) {
             item.IsEditing = false;
             item.EditingName = item.Name;
             // ★ 再描画は 1 回だけ
             _ = InvokeAsync(StateHasChanged);
         }
 
-        public string FormatValue(object val, string format) { // 値をフォーマットするメソッド
+        public virtual string FormatValue(object val, string format) { // 値をフォーマットするメソッド
             if (val == null) return "-"; // 値が空なら"-"
             if (string.IsNullOrEmpty(format)) return val.ToString(); // フォーマットが空なら元の値を返す
 

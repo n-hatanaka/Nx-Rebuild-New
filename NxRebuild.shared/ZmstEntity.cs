@@ -80,6 +80,12 @@ namespace NxRebuild.shared {
     //IZmstEntity インターフェース
     public interface IZmstEntity : IBaseDataObj<int> {
         List<Dictionary<string, object?>> TanList { get; }
+        string ZCode { get; }
+        int LocalCode { get; }
+
+        float lss { get; }
+
+        float Wca { get; }
         decimal? GetNutritionValue(string col);
         void SetNutritionValue(string col, decimal? value);
 
@@ -112,6 +118,22 @@ namespace NxRebuild.shared {
     )]
     public class ZmstEntity : BaseDataObj<int>, IZmstEntity {
         public ZmstEntity() : base() { }
+
+        public string ZCode {
+            get => _rawData.TryGetValue("Z_code", out var v) ? v?.ToString() ?? "" : "";
+        }
+
+        public int LocalCode {
+            get => _rawData.TryGetValue("LocalCode", out var v) ? Convert.ToInt32(v) : 0;
+        }
+
+        public float lss {
+            get => _rawData.TryGetValue("lss", out var v) ? Convert.ToSingle(v) : 0;
+        }
+
+        public float Wca {
+            get => _rawData.TryGetValue("Wca", out var v) ? Convert.ToSingle(v) : 0;
+        }
 
 
 
