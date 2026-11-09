@@ -2,6 +2,7 @@ using System.Globalization;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 using NxRebuild.Client.Pages.NxPrograms.DB.RyLib;
+using NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View;
 using NxRebuild.Client.Services;
 using NxRebuild.shared;
 
@@ -22,18 +23,8 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
         protected Dictionary<string, object?> WorkingRaw = new();
         protected RyLibRowEntityMgr? RowMgr { get; set; }
 
-        // 画面上の行モデル
-        protected class MaterialRowVm {
-            public RyLibRowEntity Entity { get; init; } = default!;
-            public Dictionary<string, object> ExtraData { get; init; } = new();
-            public bool Dirty { get; set; }
-            public bool Saving { get; set; }
-        }
-
-        protected List<MaterialRowVm> Rows { get; } = new();
-        
-        // ドラッグ中の行を保持する一時変数
-        protected MaterialRowVm? DraggingMaterialItem { get; set; }
+        // 標準の MyDataObj<Guid> を使用
+        protected List<MyDataObj<Guid>> Rows { get; } = new();
 
         protected record ZairyouOption(int LocalCode, string Code, string Label);
         protected List<ZairyouOption> ZairyouOptions { get; private set; } = new();
@@ -70,15 +61,23 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
                 await RowMgr.InitializeAsync(q);
 
                 foreach (var e in RowMgr.DataList.OfType<RyLibRowEntity>().OrderBy(r => r.SortNo)) {
-                    var vm = new MaterialRowVm { Entity = e };
-                    var rawWorking = new Dictionary<string, object?>();
-                    e.CreateWorkingMemory(rawWorking);
-                    foreach (var kv in rawWorking) {
-                        if (kv.Value != null) vm.ExtraData[kv.Key] = kv.Value;
-                    }
-                    Rows.Add(vm);
+                    var obj = CreateDataObjFromEntity(e);
+                    Rows.Add(obj);
                 }
             }
+        }
+
+        private MyDataObj<Guid> CreateDataObjFromEntity(RyLibRowEntity e) {
+            var obj = new MyDataObj<Guid>(e);
+            var rawWorking = new Dictionary<string, object?>();
+            e.CreateWorkingMemory(rawWorking);
+
+            foreach (var kv in rawWorking) {
+                if (kv.Value != null) obj.ExtraData[kv.Key] = kv.Value;
+            }
+            obj.ExtraData["Dirty"] = false;
+            obj.ExtraData["Saving"] = false;
+            return obj;
         }
 
         private void BuildZairyouOptions() {
@@ -108,8 +107,8 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
             return junbi * unitWeight * (1 - haiki / 100) * (henka / 100);
         }
 
-        protected void RecalcSyoumi(MaterialRowVm vm) {
-            vm.ExtraData["Syoumi"] = CalcNetWeight(vm.ExtraData);
+        protected void RecalcSyoumi(MyDataObj<Guid> obj) {
+            obj.ExtraData["Syoumi"] = CalcNetWeight(obj.ExtraData);
         }
 
         protected static int IntOf(Dictionary<string, object> row, string key) =>
@@ -119,6 +118,9 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
             var kv = row.FirstOrDefault(x => string.Equals(x.Key, key, StringComparison.OrdinalIgnoreCase));
             return kv.Value != null && float.TryParse(kv.Value.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out var f) ? f : 0f;
         }
+
+        protected static bool BoolOf(Dictionary<string, object> row, string key) =>
+            row.TryGetValue(key, out var v) && v is bool b && b;
 
         protected string SyoumiText(Dictionary<string, object> row) =>
             FloatOf(row, "Syoumi").ToString("0.##", CultureInfo.InvariantCulture);
@@ -139,52 +141,67 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
                 .ToList();
         }
 
-        protected void OnZairyouChanged(MaterialRowVm vm, object? value) {
+        protected void OnZairyouChanged(MyDataObj<Guid> obj, object? value) {
             int.TryParse(value?.ToString(), out var localCode);
             var opt = ZairyouOptions.FirstOrDefault(o => o.LocalCode == localCode);
 
-            vm.ExtraData["LocalCode"] = localCode;
-            vm.ExtraData["Z_code"] = opt?.Code ?? "";
+            obj.ExtraData["LocalCode"] = localCode;
+            obj.ExtraData["Z_code"] = opt?.Code ?? "";
+            if (opt != null) obj.Name = opt.Label;
 
-            var tans = GetTanOptions(vm.ExtraData);
-            vm.ExtraData["tan_cd"] = tans.Count > 0 ? tans[0].Code : 0;
-            RecalcSyoumi(vm);
-            vm.Dirty = true;
+            var tans = GetTanOptions(obj.ExtraData);
+            obj.ExtraData["tan_cd"] = tans.Count > 0 ? tans[0].Code : 0;
+            RecalcSyoumi(obj);
+            obj.ExtraData["Dirty"] = true;
         }
 
-        protected void OnJunbiChanged(MaterialRowVm vm, object? value) {
+        protected void OnJunbiChanged(MyDataObj<Guid> obj, object? value) {
             float.TryParse(value?.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out var f);
-            vm.ExtraData["Junbi"] = f;
-            RecalcSyoumi(vm);
-            vm.Dirty = true;
+            obj.ExtraData["Junbi"] = f;
+            RecalcSyoumi(obj);
+            obj.ExtraData["Dirty"] = true;
         }
 
-        protected void OnTanChanged(MaterialRowVm vm, object? value) {
+        protected void OnTanChanged(MyDataObj<Guid> obj, object? value) {
             int.TryParse(value?.ToString(), out var code);
-            vm.ExtraData["tan_cd"] = code;
-            RecalcSyoumi(vm);
-            vm.Dirty = true;
+            obj.ExtraData["tan_cd"] = code;
+            RecalcSyoumi(obj);
+            obj.ExtraData["Dirty"] = true;
         }
 
         // ---------------------------------------------------------
-        // ドラッグ＆ドロップ並び替え
+        // ドラッグ＆ドロップ（標準の DraggingState<Guid> を活用）
         // ---------------------------------------------------------
+        protected void OnDragStart(MyDataObj<Guid> item) {
+            DraggingState<Guid>.DraggingGridItem = item;
+        }
+
         protected void DropRow(int targetIndex) {
-            if (DraggingMaterialItem == null) return;
+            var dragged = DraggingState<Guid>.DraggingGridItem;
+            if (dragged == null) return;
 
-            var sourceIndex = Rows.IndexOf(DraggingMaterialItem);
-            if (sourceIndex < 0 || sourceIndex == targetIndex) return;
+            var sourceIndex = Rows.IndexOf(dragged);
 
-            Rows.RemoveAt(sourceIndex);
-            if (targetIndex > sourceIndex) targetIndex--;
-            Rows.Insert(targetIndex, DraggingMaterialItem);
-
-            // 順番が入れ替わったので全行の sort_no を更新して Dirty にする
-            for (int i = 0; i < Rows.Count; i++) {
-                Rows[i].ExtraData["sort_no"] = i + 1;
-                Rows[i].Dirty = true;
+            // 別エディタからのドラッグ（あるいは新規複製挿入）の場合
+            if (sourceIndex < 0) {
+                // 必要に応じて複製・新規 Entity への変換処理を行う
+                Rows.Insert(targetIndex, dragged);
+            } else {
+                // 同一画面内での並び替え
+                if (sourceIndex == targetIndex) return;
+                Rows.RemoveAt(sourceIndex);
+                if (targetIndex > sourceIndex) targetIndex--;
+                Rows.Insert(targetIndex, dragged);
             }
 
+            // sort_no を振り直して Dirty フラグを立てる
+            for (int i = 0; i < Rows.Count; i++) {
+                Rows[i].ExtraData["sort_no"] = i + 1;
+                Rows[i].ExtraData["Dirty"] = true;
+            }
+
+            // ドラッグ状態を解除
+            DraggingState<Guid>.DraggingGridItem = null;
             StateHasChanged();
         }
 
@@ -212,65 +229,62 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
 
             RowMgr.InsertNewDataItem(e);
 
-            var vm = new MaterialRowVm { Entity = e };
-            var rawWorking = new Dictionary<string, object?>();
-            e.CreateWorkingMemory(rawWorking);
-            foreach (var kv in rawWorking) {
-                if (kv.Value != null) vm.ExtraData[kv.Key] = kv.Value;
-            }
-            Rows.Add(vm);
+            var obj = CreateDataObjFromEntity(e);
+            Rows.Add(obj);
         }
 
-        protected async Task RemoveRowAsync(MaterialRowVm vm) {
+        protected async Task RemoveRowAsync(MyDataObj<Guid> obj) {
             if (RowMgr == null) return;
 
-            if (vm.Entity.DataID > 0) {
-                var r = await RowMgr.DeleteDataAsync(new List<int> { vm.Entity.DataID }, false);
+            if (obj.ItemData is RyLibRowEntity entity && entity.DataID > 0) {
+                var r = await RowMgr.DeleteDataAsync(new List<int> { entity.DataID }, false);
                 if (r.FailedIds.Count > 0) {
                     await JS.InvokeVoidAsync("aknAlert", $"削除失敗: {r.Message}");
                     return;
                 }
-            } else {
-                RowMgr._RemoveFromList(vm.Entity);
+            } else if (obj.ItemData is RyLibRowEntity e) {
+                RowMgr._RemoveFromList(e);
             }
 
-            Rows.Remove(vm);
+            Rows.Remove(obj);
         }
 
-        private async Task<bool> SaveRowAsync(MaterialRowVm vm) {
-            if (vm.Saving || RyData == null) return true;
-            vm.Saving = true;
-            try {
-                vm.ExtraData["Ry_Code"] = Ry_Code;
-                vm.ExtraData["tenant_code"] = RyData.TenantCode;
-                vm.ExtraData["sort_no"] = Rows.IndexOf(vm) + 1;
+        private async Task<bool> SaveRowAsync(MyDataObj<Guid> obj) {
+            if (BoolOf(obj.ExtraData, "Saving") || RyData == null) return true;
+            if (obj.ItemData is not RyLibRowEntity entity) return false;
 
-                var workingDict = vm.ExtraData.ToDictionary(k => k.Key, k => (object?)k.Value);
-                var result = await vm.Entity.SaveAsync(workingDict);
+            obj.ExtraData["Saving"] = true;
+            try {
+                obj.ExtraData["Ry_Code"] = Ry_Code;
+                obj.ExtraData["tenant_code"] = RyData.TenantCode;
+                obj.ExtraData["sort_no"] = Rows.IndexOf(obj) + 1;
+
+                var workingDict = obj.ExtraData.ToDictionary(k => k.Key, k => (object?)k.Value);
+                var result = await entity.SaveAsync(workingDict);
                 if (!result.Success) {
                     await JS.InvokeVoidAsync("aknAlert", $"行の保存失敗: {result.Message}");
                     return false;
                 }
 
-                vm.Dirty = false;
+                obj.ExtraData["Dirty"] = false;
                 return true;
             } finally {
-                vm.Saving = false;
+                obj.ExtraData["Saving"] = false;
             }
         }
 
-        protected async Task OnRowFocusOut(MaterialRowVm vm) {
-            if (!vm.Dirty) return;
-            if (IntOf(vm.ExtraData, "LocalCode") == 0) return;
-            await SaveRowAsync(vm);
+        protected async Task OnRowFocusOut(MyDataObj<Guid> obj) {
+            if (!BoolOf(obj.ExtraData, "Dirty")) return;
+            if (IntOf(obj.ExtraData, "LocalCode") == 0) return;
+            await SaveRowAsync(obj);
         }
 
         private async Task<bool> FlushRowsAsync() {
             for (int i = 0; i < Rows.Count; i++) {
-                var vm = Rows[i];
-                if (IntOf(vm.ExtraData, "sort_no") != i + 1) vm.Dirty = true;
-                if (!vm.Dirty) continue;
-                if (!await SaveRowAsync(vm)) return false;
+                var obj = Rows[i];
+                if (IntOf(obj.ExtraData, "sort_no") != i + 1) obj.ExtraData["Dirty"] = true;
+                if (!BoolOf(obj.ExtraData, "Dirty")) continue;
+                if (!await SaveRowAsync(obj)) return false;
             }
             return true;
         }
