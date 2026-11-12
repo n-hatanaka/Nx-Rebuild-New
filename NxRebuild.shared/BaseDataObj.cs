@@ -2076,7 +2076,137 @@ namespace NxRebuild.shared {
                 throw new Exception($"LockedChkfromTblAsync ERROR: {ex.Message}", ex);
             }
         }
+public virtual async Task<bool> ReceiveSqlExecAsync(
+    string primarySql,
+    List<(string TableName, string Sql)> detailSqls,
+    TKey newId,
+    IDbTransaction tran)
+{
+    try
+    {
+        // =====================================================
+        // Primary
+        // =====================================================
 
+        var primaryObj =
+            await DBcon.QueryFirstOrDefaultAsync<dynamic>(
+                primarySql,
+                transaction: tran);
+
+        if (primaryObj == null)
+            throw new Exception("Primary record not found.");
+
+        var primary =
+            new Dictionary<string, object?>(
+                (IDictionary<string, object>)primaryObj);
+
+        // PK差し替え
+        primary[IdColName] = newId;
+        primary[TenantCodeCol] = TenantCode;
+
+        await InsertRowAsync(
+            _primaryTableName,
+            primary,
+            tran);
+
+        // =====================================================
+        // Detail
+        // =====================================================
+
+        foreach (var (tableName, sql) in detailSqls)
+        {
+            var rows = await DBcon.QueryAsync<dynamic>(
+                sql,
+                transaction: tran);
+
+            foreach (var rowObj in rows)
+            {
+                var row =
+                    new Dictionary<string, object?>(
+                        (IDictionary<string, object>)rowObj);
+
+                // 親FK差し替え
+                row[IdColName] = newId;
+                row[TenantCodeCol] = TenantCode;
+
+                // 必要なら派生クラスでDetailPK再採番
+                CompleteReceivedDetailRow(
+                    tableName,
+                    row,
+                    newId);
+
+                await InsertRowAsync(
+                    tableName,
+                    row,
+                    tran);
+            }
+        }
+
+        // =====================================================
+        // 自分自身を新PKへ切り替え
+        // =====================================================
+
+        DataID = newId;
+
+        // DBから最新状態を読み込み
+        await _UpdatePropertiesFromTblAsync(tran);
+
+        return true;
+    }
+    catch (Exception ex)
+    {
+        throw new Exception(
+            $"ReceiveSqlExecAsync ERROR: {ex.Message}",
+            ex);
+    }
+}
+
+
+public virtual (string PrimarySql, List<string> DetailSqls) SendData()
+{
+    // Primary PK WHERE
+    var whereClause = string.Join(" AND ",
+        _primaryTblPKList.Select(pk => $"\"{pk}\" = @{pk}")
+    );
+
+    // Primary のカラム一覧取得
+    var priCols = NxTypeMapper.Current
+        .GetColumns(_primaryTableName)
+        .Where(c =>
+            !c.Equals(LockedAtCol, StringComparison.OrdinalIgnoreCase) &&
+            !c.Equals(LockedByCol, StringComparison.OrdinalIgnoreCase))
+        .Select(c => $"\"{c}\"");
+
+    string primarySql = $@"
+        SELECT {string.Join(", ", priCols)}
+        FROM ""{_primaryTableName}""
+        WHERE {whereClause};
+    ";
+
+    var detailSqls = new List<string>();
+
+    foreach (var dtl in _detailTableList)
+    {
+        if (!_detailTblPKList.TryGetValue(dtl, out var pkCols))
+            continue;
+
+        var parentPKs = pkCols
+            .Where(pk => PrimaryPKDict.ContainsKey(pk))
+            .ToArray();
+
+        var detailWhere = string.Join(" AND ",
+            parentPKs.Select(pk => $"\"{pk}\" = @{pk}")
+        );
+
+        detailSqls.Add($@"
+            SELECT *
+            FROM ""{dtl}""
+            WHERE {detailWhere};
+        ");
+    }
+
+    return (primarySql, detailSqls);
+}
 
     }
 }

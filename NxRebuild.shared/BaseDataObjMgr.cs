@@ -1020,5 +1020,70 @@ namespace NxRebuild.shared {
                 throw new Exception("Failed to distribute JSON data.", ex);
             }
         }
+      public virtual async Task<bool> ReceiveDataAsync(
+    IBaseDataObj<TKey> sourceObj,
+    TKey? parentID = default)
+{
+    try
+    {
+        // =====================================
+        // 型チェック
+        // =====================================
+
+        if (sourceObj.DataType != this.DataType)
+            return false;
+
+        // =====================================
+        // 新規作成
+        // =====================================
+
+        var newObj = CreateNewDataObj(parentID);
+
+        // =====================================
+        // 送信データ取得
+        // =====================================
+
+        var sendData = sourceObj.SendData();
+
+        // =====================================
+        // 受信処理
+        // =====================================
+
+        using var tran = DBcon.BeginTransaction();
+
+        var result =
+            await newObj.ReceiveDataAsync(
+                sendData.PrimarySql,
+                sendData.DetailSqls,
+                tran);
+
+        if (!result)
+        {
+            tran.Rollback();
+            return false;
+        }
+
+        tran.Commit();
+
+        // =====================================
+        // Managerへ登録
+        // =====================================
+
+        InsertNewDataItem(newObj);
+
+        // =====================================
+        // 親子関係設定
+        // =====================================
+
+        SetParent(newObj);
+
+        return true;
+    }
+    catch
+    {
+        return false;
+    }
+}
+
     }
 }
