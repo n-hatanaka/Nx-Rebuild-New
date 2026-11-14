@@ -39,7 +39,11 @@ namespace NxRebuild.shared {
         Task DistributeJsonDataAsync(string json);
         Task InitializeAsync(RecordQuery? query);
         string LoadMultipleDataAsJson(List<TKey> idList);
-        
+        Task<NxOperationResult<TKey>> ReceiveDataAsync(
+                                    IBaseDataObj<TKey> sourceObj,
+                                    TKey? parentID = default);
+
+
     }
 
     // サーバー向けマネージャの機能だけを外出しするインターフェース
@@ -630,7 +634,22 @@ namespace NxRebuild.shared {
             dataObj.TenantCode = TenantCode;
             dataObj.CurrUsrID = CurrentUserID;
             dataObj.DataID = _GenerateDataID();
-            dataObj.DataType = this.DataType;
+
+            if (_priymaryTableName == "Ry_lib") {
+                Console.WriteLine(dataObj.DataType);
+                Console.WriteLine(dataObj.DataID);
+
+                Console.WriteLine($"[DBG] Mgr={this.GetType().Name} Mgr.DataType={DataType} (set前)");
+                Console.WriteLine($"[DBG] HasColumn({_priymaryTableName},Type)={NxTypeMapper.HasColumn(_priymaryTableName, "Type")}");
+                Console.WriteLine($"[DBG] set前 obj.DataType={dataObj.DataType} raw[Type]={(dataObj._rawData.TryGetValue("Type", out var b) ? b?.ToString() + " (" + b?.GetType().Name + ")" : "キー無し")}");
+
+
+                dataObj.DataType = DataType;
+
+                Console.WriteLine($"[DBG] set後 obj.DataType={dataObj.DataType} raw[Type]={(dataObj._rawData.TryGetValue("Type", out var a) ? a?.ToString() + " (" + a?.GetType().Name + ")" : "キー無し")}");
+            } else {
+                dataObj.DataType = DataType;
+            }
             // ここではまだ _dataList に入れない
             // DataID は仮で OK（保存時に確定でもいい）
             return dataObj;
@@ -1020,70 +1039,64 @@ namespace NxRebuild.shared {
                 throw new Exception("Failed to distribute JSON data.", ex);
             }
         }
-      public virtual async Task<bool> ReceiveDataAsync(
-    IBaseDataObj<TKey> sourceObj,
-    TKey? parentID = default)
-{
-    try
-    {
-        // =====================================
-        // 型チェック
-        // =====================================
+        public virtual async Task<NxOperationResult<TKey>> ReceiveDataAsync(
+                                    IBaseDataObj<TKey> sourceObj,
+                                    TKey? parentID = default) {
+            try
+            {
+                // =====================================
+                // 型チェック
+                // =====================================
 
-        if (sourceObj.DataType != this.DataType)
-            return false;
+                if (sourceObj.DataType != this.DataType)
+                    return new NxOperationResult<TKey> {
+                        OperationErrorCode = NxOperationErrorCode.DataTypeMismatch,
+                        FailedIds = new List<TKey> { sourceObj.DataID },
+                        Message = "Data type mismatch"
+                    };
 
-        // =====================================
-        // 新規作成
-        // =====================================
+                // =====================================
+                // 新規作成
+                // =====================================
 
-        var newObj = CreateNewDataObj(parentID);
+                var newObj = CreateNewDataObj(parentID);
 
-        // =====================================
-        // 送信データ取得
-        // =====================================
+                // =====================================
+                // 送信データ取得
+                // =====================================
 
-        var sendData = sourceObj.SendData();
+                var sendData = sourceObj.SendData();
 
-        // =====================================
-        // 受信処理
-        // =====================================
+                // =====================================
+                // 受信処理
+                // =====================================
 
-        using var tran = DBcon.BeginTransaction();
+                var receiveResult = await newObj.ReceiveExecAsync(sendData);
+                if (!receiveResult.Success) {
+                    return receiveResult;
+                }
 
-        var result =
-            await newObj.ReceiveDataAsync(
-                sendData.PrimarySql,
-                sendData.DetailSqls,
-                tran);
+                // =====================================
+                // Managerへ登録、親子関係設定
+                // =====================================
 
-        if (!result)
-        {
-            tran.Rollback();
-            return false;
+                InsertNewDataItem(newObj);
+
+
+                return new NxOperationResult<TKey> {
+                    OperationErrorCode = NxOperationErrorCode.None,
+                    FailedIds = new List<TKey>()
+                };
+            }
+            catch(Exception ex)
+            {
+                return new NxOperationResult<TKey> {
+                    OperationErrorCode = NxOperationErrorCode.Unknown,
+                    FailedIds = new List<TKey> { sourceObj.DataID },
+                    Message = $"An unknown error occurred: {ex.Message}"
+                };
+            }
         }
-
-        tran.Commit();
-
-        // =====================================
-        // Managerへ登録
-        // =====================================
-
-        InsertNewDataItem(newObj);
-
-        // =====================================
-        // 親子関係設定
-        // =====================================
-
-        SetParent(newObj);
-
-        return true;
-    }
-    catch
-    {
-        return false;
-    }
-}
 
     }
 }

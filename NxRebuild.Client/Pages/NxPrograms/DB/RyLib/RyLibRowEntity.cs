@@ -46,6 +46,12 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB.RyLib {
 
         public Dictionary<string, object?> RawData => _rawData!;
 
+        public Guid Ry_Code {
+            get => _rawData.TryGetValue("Ry_Code", out var v)
+                ? (v is Guid g ? g : Guid.Parse(v.ToString()!))
+                : Guid.Empty;  
+        }
+
         public int SortNo {
             get => _rawData.TryGetValue("sort_no", out var v) ? Convert.ToInt32(v) : 0;
             set => _SetProperties(new Dictionary<string, object?> { ["sort_no"] = value });
@@ -134,6 +140,76 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB.RyLib {
                 return new NxOperationResult<int> {
                     OperationErrorCode = NxOperationErrorCode.ServerException,
                     Message = $"SaveAsync failed: {ex.Message}"
+                };
+            }
+        }
+
+        public override object SendData() {
+            return $@"
+                    ""sort_no"",
+                    ""Z_code"",
+                    ""LocalCode"",
+                    ""Syoumi"",
+                    ""Junbi"",
+                    ""tan_cd""
+                FROM ""{_primaryTableName}""
+                WHERE ""id"" = {DataID}";
+        }
+
+        public override async Task<NxOperationResult<int>>
+        ReceiveExecAsync(object? sendData) {
+            using var tran = DBcon.BeginTransaction();
+
+            try {
+                string selectBody = sendData?.ToString()
+                    ?? throw new Exception("SendData is null.");
+
+                string sql = $@"
+                        INSERT INTO ""{_primaryTableName}""
+                        (
+                            ""id"",
+                            ""tenant_code"",
+                            ""Ry_Code"",
+                            ""sort_no"",
+                            ""Z_code"",
+                            ""LocalCode"",
+                            ""Syoumi"",
+                            ""Junbi"",
+                            ""tan_cd""
+                        )
+                        SELECT
+                            @id,
+                            @tenant_code,
+                            @Ry_Code,
+                            ""sort_no"",
+                            ""Z_code"",
+                            ""LocalCode"",
+                            ""Syoumi"",
+                            ""Junbi"",
+                            ""tan_cd""
+                        {selectBody};";
+
+                await DBcon.ExecuteAsync(
+                    sql,
+                    new {
+                        id = DataID,
+                        tenant_code = TenantCode,
+                        Ry_Code = PrimaryPKDict["Ry_Code"]
+                    },
+                    tran);
+
+                tran.Commit();
+
+                return new NxOperationResult<int> {
+                    Message = "Receive completed"
+                };
+            } catch (Exception ex) {
+                tran.Rollback();
+
+                return new NxOperationResult<int> {
+                    OperationErrorCode =
+                        NxOperationErrorCode.ServerException,
+                    Message = ex.Message
                 };
             }
         }

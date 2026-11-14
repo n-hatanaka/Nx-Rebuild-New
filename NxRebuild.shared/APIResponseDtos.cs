@@ -17,6 +17,11 @@ namespace NxRebuild.shared {
         // API
         ServerException,
 
+        //BaseDataObjMgr間のデータコピー
+        DataTypeMismatch,
+        ReceiveFailed,
+
+
         // その他
         Unknown
     }

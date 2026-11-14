@@ -914,5 +914,20 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                                                 => await _dataObj._DeleteQueryExecAsync(transaction, softDelete);
 
 
+        //クライアント内でのDataObj間のデータコピー。
+        //実装は具象クラスで行う。サーバーへの保存を忘れないように。
+        public virtual async Task<NxOperationResult<TKey>> ReceiveExecAsync(object ReceiveData) {
+            return new NxOperationResult<TKey> {
+                OperationErrorCode = NxOperationErrorCode.None,
+                FailedIds = new List<TKey>()
+            };
+        }
+
+        //クライアントローカル内でデータのコピーを行う。
+        //コピーするデータを作成する。
+        public virtual object? SendData() {
+            return null;
+        }
+
     }
 }

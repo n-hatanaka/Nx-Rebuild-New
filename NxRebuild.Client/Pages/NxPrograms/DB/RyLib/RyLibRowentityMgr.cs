@@ -9,7 +9,6 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB.RyLib {
     public class RyLibRowEntityMgr
         : BaseDataObjMgr<RyLibRowEntity, int>,
           IRyLibRowEntityMgr {
-        private int _nextId = -1;
 
         public RyLibRowEntityMgr(
             IDbConnection db,
@@ -19,7 +18,10 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB.RyLib {
         }
 
         public override int _GenerateDataID() {
-            return _nextId--;
+            for (int id = -1; ; id--) {
+                if (!_dataList.Any(x => x.DataID == id))
+                    return id;
+            }
         }
     }
 }

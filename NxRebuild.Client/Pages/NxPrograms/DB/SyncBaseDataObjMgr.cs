@@ -443,5 +443,64 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
             return NxTypeMapper.Current.CreateEmptyRow(TblName);
         }
+
+        public virtual async Task<NxOperationResult<TKey>> ReceiveDataAsync(
+                                    IBaseDataObj<TKey> sourceObj,
+                                    TKey? parentID = default) {
+            try {
+                // =====================================
+                // 型チェック
+                // =====================================
+
+                if (sourceObj.DataType != this.DataType) {
+                    return new NxOperationResult<TKey> {
+                        OperationErrorCode = NxOperationErrorCode.DataTypeMismatch,
+                        FailedIds = new List<TKey> { sourceObj.DataID },
+                        Message = "Data type mismatch"
+                    };
+                }
+
+                // =====================================
+                // 新規作成
+                // =====================================
+
+                var newObj = CreateNewDataObj(parentID);
+
+                // =====================================
+                // 送信データ取得
+                // =====================================
+
+                var sendData = sourceObj.SendData();
+
+                // =====================================
+                // 受信処理
+                // =====================================
+
+                var receiveResult = await newObj.ReceiveExecAsync(sendData);
+                if (!receiveResult.Success) {
+                    return receiveResult;
+                }
+                             
+                
+
+                // =====================================
+                // Managerへ登録、親子関係設定
+                // =====================================
+
+                InsertNewDataItem(newObj);
+
+
+                return new NxOperationResult<TKey> {
+                    OperationErrorCode = NxOperationErrorCode.None,
+                    FailedIds = new List<TKey>()
+                };
+            } catch (Exception ex) {
+                return new NxOperationResult<TKey> {
+                    OperationErrorCode = NxOperationErrorCode.Unknown,
+                    FailedIds = new List<TKey> { sourceObj.DataID },
+                    Message = $"An unknown error occurred: {ex.Message}"
+                };
+            }
+        }
     }
 }

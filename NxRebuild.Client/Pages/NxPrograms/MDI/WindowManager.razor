@@ -8,7 +8,7 @@
 
 @foreach (var w in Manager.Windows)
 {
-    <WindowComponent Info="w" Manager="Manager" />
+    <WindowComponent @key="w" Info="w" Manager="Manager" />
 }
 
 

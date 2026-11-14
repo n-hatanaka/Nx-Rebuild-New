@@ -6,8 +6,8 @@
 @using MudBlazor
 
 <style>
-    .list-table { width: max-content; }
-    .list-row {
+    .ry-table { width: max-content; }
+    .ry-row {
         display: flex;
         flex-wrap: nowrap;
         width: max-content;
@@ -15,22 +15,28 @@
         border-bottom: 1px solid #eee;
         cursor: default;
     }
-    .drag-handle {
+    .ry-drag-handle {
         width: 30px;
         text-align: center;
         color: #ccc;
         cursor: grab;
         flex-shrink: 0;
     }
-    .list-cell {
+    .ry-list-cell {
         padding: 6px 8px;
         flex-shrink: 0;
         box-sizing: border-box;
     }
-    .list-header {
+    .ry-list-header {
         font-weight: bold;
         background-color: #eee;
         border-bottom: 2px solid #ccc;
+
+    }
+
+    
+    .ry-row .ry-list-cell {
+        pointer-events: auto !important;
     }
 </style>
 
@@ -42,8 +48,6 @@ else
 {
     <div class="edit-padding" style="padding: 16px;">
         <EditForm Model="WorkingRaw" OnValidSubmit="SaveAsync">
-
-            <h4>基本情報</h4>
 
             <div class="mb-3">
                 <label>料理名</label>
@@ -60,38 +64,36 @@ else
                 <InputTextArea class="form-control" @bind-Value="RyNote" />
             </div>
 
-            <h4 class="mt-4">材料一覧</h4>
-
-            <div class="scroll-pane list-pane" style="overflow-x: auto;">
-                <div class="list-table" style="margin-top: 8px;">
+            <div class=".scroll-pane list-pane" style="overflow-x: auto;">
+                <div class="ry-table" style="margin-top: 8px;">
                     <!-- ヘッダー -->
-                    <div class="list-row list-header">
+                    <div class="ry-row ry-list-header">
                         <div style="width: 30px; flex-shrink: 0;"></div>
-                        <div class="list-cell" style="min-width: 320px;">材料</div>
-                        <div class="list-cell" style="width: 120px; text-align: right;">準備量</div>
-                        <div class="list-cell" style="width: 140px;">单位</div>
-                        <div class="list-cell" style="width: 120px; text-align: right;">正味量(g)</div>
-                        <div class="list-cell" style="width: 60px;"></div>
+                        <div class="ry-list-cell" style="width: 320px;">材料</div>
+                        <div class="ry-list-cell" style="width: 120px; text-align: right;">準備量</div>
+                        <div class="ry-list-cell" style="width: 140px;">単位</div>
+                        <div class="ry-list-cell" style="width: 120px; text-align: right;">正味量(g)</div>
+                        <div class="ry-list-cell" style="width: 80px;"></div>
                     </div>
 
                     <!-- 明細行（ドラッグ＆ドロップ対応） -->
                     @foreach (var (vm, index) in Rows.Select((v, i) => (v, i)))
                     {
                         var tans = GetTanOptions(vm.ExtraData);
-                        <div class="list-row"
-                             @key="vm"
+                        <div class="ry-row"
                              draggable="true"
                              @ondragstart="() => DraggingMaterialItem = vm"
+                             @key="vm"
                              @ondrop="() => DropRow(index)"
                              @ondragover:preventDefault="true"
                              @onfocusout="() => OnRowFocusOut(vm)">
 
                             <!-- ドラッグハンドル -->
-                            <div class="drag-handle">
+                            <div class="ry-drag-handle">
                                 <MudIcon Icon="@Icons.Material.Filled.DragIndicator" Size="Size.Small" />
                             </div>
 
-                            <div class="list-cell" style="min-width: 320px;">
+                            <div class="ry-list-cell" style="width: 320px;">
                                 <select class="form-select form-select-sm"
                                         value="@IntOf(vm.ExtraData, "LocalCode")"
                                         @onchange="e => OnZairyouChanged(vm, e.Value)">
@@ -103,13 +105,13 @@ else
                                 </select>
                             </div>
 
-                            <div class="list-cell" style="width: 120px;">
+                            <div class="ry-list-cell" style="width: 120px;">
                                 <input type="text" inputmode="decimal" class="form-control form-control-sm text-end"
                                        value="@(vm.ExtraData.TryGetValue("Junbi", out var jv) ? jv?.ToString() ?? "" : "")"
                                        @onchange="e => OnJunbiChanged(vm, e.Value)" />
                             </div>
 
-                            <div class="list-cell" style="width: 140px;">
+                            <div class="ry-list-cell" style="width: 140px;">
                                 <select class="form-select form-select-sm"
                                         value="@IntOf(vm.ExtraData, "tan_cd")"
                                         disabled="@(tans.Count == 0)"
@@ -121,11 +123,11 @@ else
                                 </select>
                             </div>
 
-                            <div class="list-cell text-end" style="width: 120px; line-height: 31px;">
+                            <div class="ry-list-cell text-end" style="width: 120px; line-height: 31px;">
                                 @SyoumiText(vm.ExtraData)
                             </div>
 
-                            <div class="list-cell" style="width: 60px; text-align: center;">
+                            <div class="ry-list-cell" style="width: 80px; text-align: center;">
                                 <button type="button" class="btn btn-outline-danger btn-sm"
                                         @onclick="() => RemoveRowAsync(vm)">
                                     削除

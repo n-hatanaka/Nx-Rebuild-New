@@ -1,10 +1,11 @@
-using System.Globalization;
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.JSInterop;
 using NxRebuild.Client.Pages.NxPrograms.DB.RyLib;
 using NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View;
 using NxRebuild.Client.Services;
 using NxRebuild.shared;
+using System.Globalization;
 
 namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
     public class RyouriEditBase : ComponentBase {
@@ -24,7 +25,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
         protected RyLibRowEntityMgr? RowMgr { get; set; }
 
         // 標準の MyDataObj<Guid> を使用
-        protected List<MyDataObj<Guid>> Rows { get; } = new();
+        protected List<MyDataObj<int>> Rows { get; } = new();
 
         protected record ZairyouOption(int LocalCode, string Code, string Label);
         protected List<ZairyouOption> ZairyouOptions { get; private set; } = new();
@@ -67,8 +68,16 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
             }
         }
 
-        private MyDataObj<Guid> CreateDataObjFromEntity(RyLibRowEntity e) {
-            var obj = new MyDataObj<Guid>(e);
+        // ---------------------------------------------------------
+        // ドラッグ＆ドロップ（Razor側から参照されるプロパティ）
+        // ---------------------------------------------------------
+        protected MyDataObj<int>? DraggingMaterialItem {
+            get => DraggingState<int>.DraggingGridItem;
+            set => DraggingState<int>.DraggingGridItem = value;
+        }
+
+        private MyDataObj<int> CreateDataObjFromEntity(RyLibRowEntity e) {
+            var obj = new MyDataObj<int>(e);
             var rawWorking = new Dictionary<string, object?>();
             e.CreateWorkingMemory(rawWorking);
 
@@ -82,12 +91,15 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
 
         private void BuildZairyouOptions() {
             var zm = GlobalState.ZmstEntityMgr ?? throw new Exception("ZmstEntityMgr が初期化されていません。");
+
+
             ZairyouOptions = zm.DataList
                 .OfType<IZmstEntity>()
                 .Where(z => z is not CategoryEntity && z.DataType == NxDataType.Zairyou)
                 .Select(z => new ZairyouOption(z.DataID, z.ZCode, $"{z.ZCode} {z.DataName}"))
                 .OrderBy(o => o.Code, StringComparer.Ordinal)
                 .ToList();
+
         }
 
         protected float CalcNetWeight(Dictionary<string, object> row) {
@@ -103,11 +115,14 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
             float unitWeight = FloatOf(tan, "jyuuryou");
             float haiki = Convert.ToSingle(zmst.lss);
             float henka = Convert.ToSingle(zmst.Wca);
+            float weightRate = henka == 0 ? 100 : henka;
 
-            return junbi * unitWeight * (1 - haiki / 100) * (henka / 100);
+            return junbi * unitWeight
+                         * (1f - haiki / 100f)
+                         * (weightRate / 100f);
         }
 
-        protected void RecalcSyoumi(MyDataObj<Guid> obj) {
+        protected void RecalcSyoumi(MyDataObj<int> obj) {
             obj.ExtraData["Syoumi"] = CalcNetWeight(obj.ExtraData);
         }
 
@@ -141,7 +156,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
                 .ToList();
         }
 
-        protected void OnZairyouChanged(MyDataObj<Guid> obj, object? value) {
+        protected void OnZairyouChanged(MyDataObj<int> obj, object? value) {
             int.TryParse(value?.ToString(), out var localCode);
             var opt = ZairyouOptions.FirstOrDefault(o => o.LocalCode == localCode);
 
@@ -155,14 +170,14 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
             obj.ExtraData["Dirty"] = true;
         }
 
-        protected void OnJunbiChanged(MyDataObj<Guid> obj, object? value) {
+        protected void OnJunbiChanged(MyDataObj<int> obj, object? value) {
             float.TryParse(value?.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out var f);
             obj.ExtraData["Junbi"] = f;
             RecalcSyoumi(obj);
             obj.ExtraData["Dirty"] = true;
         }
 
-        protected void OnTanChanged(MyDataObj<Guid> obj, object? value) {
+        protected void OnTanChanged(MyDataObj<int> obj, object? value) {
             int.TryParse(value?.ToString(), out var code);
             obj.ExtraData["tan_cd"] = code;
             RecalcSyoumi(obj);
@@ -172,12 +187,12 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
         // ---------------------------------------------------------
         // ドラッグ＆ドロップ（標準の DraggingState<Guid> を活用）
         // ---------------------------------------------------------
-        protected void OnDragStart(MyDataObj<Guid> item) {
-            DraggingState<Guid>.DraggingGridItem = item;
+        protected void OnDragStart(MyDataObj<int> item) {
+            DraggingState<int>.DraggingGridItem = item;
         }
 
         protected void DropRow(int targetIndex) {
-            var dragged = DraggingState<Guid>.DraggingGridItem;
+            var dragged = DraggingState<int>.DraggingGridItem;
             if (dragged == null) return;
 
             var sourceIndex = Rows.IndexOf(dragged);
@@ -201,7 +216,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
             }
 
             // ドラッグ状態を解除
-            DraggingState<Guid>.DraggingGridItem = null;
+            DraggingState<int>.DraggingGridItem = null;
             StateHasChanged();
         }
 
@@ -233,7 +248,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
             Rows.Add(obj);
         }
 
-        protected async Task RemoveRowAsync(MyDataObj<Guid> obj) {
+        protected async Task RemoveRowAsync(MyDataObj<int> obj) {
             if (RowMgr == null) return;
 
             if (obj.ItemData is RyLibRowEntity entity && entity.DataID > 0) {
@@ -249,7 +264,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
             Rows.Remove(obj);
         }
 
-        private async Task<bool> SaveRowAsync(MyDataObj<Guid> obj) {
+        private async Task<bool> SaveRowAsync(MyDataObj<int> obj) {
             if (BoolOf(obj.ExtraData, "Saving") || RyData == null) return true;
             if (obj.ItemData is not RyLibRowEntity entity) return false;
 
@@ -273,7 +288,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
             }
         }
 
-        protected async Task OnRowFocusOut(MyDataObj<Guid> obj) {
+        protected async Task OnRowFocusOut(MyDataObj<int> obj) {
             if (!BoolOf(obj.ExtraData, "Dirty")) return;
             if (IntOf(obj.ExtraData, "LocalCode") == 0) return;
             await SaveRowAsync(obj);
@@ -289,7 +304,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
             return true;
         }
 
-        public async Task SaveAsync() {
+        public async Task SaveAsync(EditContext context) {
             if (_saving || RyData == null) return;
 
             if (Rows.Any(r => IntOf(r.ExtraData, "LocalCode") == 0)) {
