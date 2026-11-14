@@ -100,16 +100,14 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
 
             var parentID = SelectedFolder.DataID;
 
-            //  1. 孤立オブジェクト生成
-            var newObj = DataMgr.CreateNewDataObj(parentID);
 
-            //  2. 編集画面を開く（閉じたら保存済み）
+            //  2. 編集画面を開く
             Manager.Open<Z_Edit>(
-                $"新規作成: {newObj.DataName}",
+                $"新規作成",
                 new Dictionary<string, object>
                 {
-                    { "LocalCode", newObj.DataID },
-                    { "IsNew", true },
+                    { "LocalCode", 0 },
+                    { "ParentID", SelectedFolder.DataID },
                     { "OnSaved", EventCallback.Factory.Create(this, OnChildSaved) },
                     { "OnClose", EventCallback.Factory.Create(this, OnChildClosed) }
                 }
@@ -148,7 +146,6 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
                 new Dictionary<string, object>
                 {
                     { "LocalCode", baseObj.DataID },
-                    { "IsNew", false },
                     { "OnSaved", EventCallback.Factory.Create(this, OnChildSaved) },
                     { "OnClose", EventCallback.Factory.Create(this, OnChildClosed) }
                 }

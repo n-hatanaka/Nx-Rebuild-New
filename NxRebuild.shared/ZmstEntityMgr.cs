@@ -71,6 +71,15 @@ namespace NxRebuild.shared {
             return null;
         }
 
+        // ZmstEntityMgr(Get と同じ判定条件に合わせる)
+        public override Dictionary<int, IBaseDataObj<int>> BuildGetIndex() {
+            var index = new Dictionary<int, IBaseDataObj<int>>();
+            foreach (var x in _dataList)
+                if (x is IZmstEntity && x is not CategoryEntity && x.DataType == NxDataType.Zairyou)
+                    index.TryAdd(x.DataID, x);
+            return index;
+        }
+
         public override IBaseDataObj<int> CreateNewDataObj(int parentID) {
             var obj = base.CreateNewDataObj(parentID);
             obj.DataType = NxDataType.Zairyou;
@@ -184,9 +193,8 @@ namespace NxRebuild.shared {
                     _dataList.Add(obj);
                 }
 
-                foreach (var obj in _dataList) {
-                    SetParent((ZmstEntity)obj);
-                }
+                SetParentAll();
+
             } catch (Exception ex) {
                 Console.WriteLine("=== Initialize Exception ===");
                 Console.WriteLine(ex.Message);

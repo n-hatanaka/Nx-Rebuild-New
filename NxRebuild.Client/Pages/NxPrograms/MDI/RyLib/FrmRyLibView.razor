@@ -97,9 +97,11 @@
 
 <div class="zmst-view-root">
     <div class="top-bar">
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="HandleCreate">新規作成</MudButton>
-        <MudButton Variant="Variant.Outlined" Color="Color.Info" OnClick="HandleEdit">編集</MudButton>
-        <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="HandleDelete">削除</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="HandleCreate">データ新規作成</MudButton>
+        <MudButton Variant="Variant.Outlined" Color="Color.Info" OnClick="HandleEdit">データ編集</MudButton>
+        <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="HandleDelete">データ削除</MudButton>
+        <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="HandleCreateFolder">フォルダ作成</MudButton>
+        <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="HandleDeleteFolder">フォルダ削除</MudButton>
     </div>
 
     <div class="app-container">
@@ -132,6 +134,9 @@
 
 @code {
     private bool _initialized = false;
+
+    private async Task HandleCreateFolder() => await CreateFolderAsync();
+    private async Task HandleDeleteFolder() => await DeleteFolderAsync();
 
     protected override async Task OnInitializedAsync()
     {

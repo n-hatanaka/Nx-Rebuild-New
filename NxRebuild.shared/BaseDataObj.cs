@@ -915,8 +915,7 @@ namespace NxRebuild.shared {
 
             string sql = $@"
                             UPDATE ""{_primaryTableName}""
-                            SET ""deleted"" = 1,
-                                ""{UpdateAtCol}"" = @UpdateAt,
+                            SET ""{UpdateAtCol}"" = @UpdateAt,
                                 ""{LockedAtCol}"" = @LockedAt
                             WHERE {whereClause};
                         ";
@@ -928,8 +927,8 @@ namespace NxRebuild.shared {
                 param[pk] = PrimaryPKDict[pk]!;   // rawData から正本化済み PK を取得
 
             // SoftDelete 固有の値
-            param[UpdateAtCol] = DateTime.MaxValue;
-            param[LockedAtCol] = DateTime.MinValue;
+            param["UpdateAt"] = DateTime.MaxValue;
+            param["LockedAt"] = DateTime.MinValue;
 
             var rows = await DBcon.ExecuteAsync(sql, param, transaction);
 
@@ -1255,8 +1254,8 @@ namespace NxRebuild.shared {
 
                 // ★ PK パラメータ辞書を作成（PrimaryPKDict を使う）
                 var param = new Dictionary<string, object> {
-                    [NameColName] = newName,
-                    [UpdateAtCol] = updateAt
+                    ["name"] = newName,
+                    ["update_at"] = updateAt
                 };
 
                 foreach (var pk in _primaryTblPKList)

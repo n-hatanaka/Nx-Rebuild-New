@@ -52,7 +52,7 @@ namespace NxRebuild.shared {
         protected string _idColName;//テーブルのIDカラムのカラム名
         public string _parentIDColName;//テーブルの親IDカラムのカラム名
         public string _primaryTableName; //データ名等基本データが格納されるテーブル名
-
+        protected string _dataTypeColName;   // テーブルのデータ種別カラムのカラム名
         public string[] _primaryTblPKList;
         public string[] _detailTableList;//材料など詳細データが格納されるテーブル名
         public Dictionary<string, string[]> _detailTblPKList;//詳細テーブルのPKカラム名リスト>
@@ -113,6 +113,8 @@ namespace NxRebuild.shared {
 
             _primaryTblPKList = meta.PriTblPKColList;
 
+            _dataTypeColName = meta.DataTypeCol;
+
             _detailTableList = meta.DetailTableList;
             //DetailテーブルのPKカラム名リストをDictionaryに変換
             _detailTblPKList = new Dictionary<string, string[]>();
@@ -167,12 +169,27 @@ namespace NxRebuild.shared {
                 }
 
                 //データ名の確認
+                //データ名の確認
                 var row = mst.Rows[0];
                 var result = ValidateRename(
                     row[_nameColName]?.ToString() ?? string.Empty);
 
                 if (!result.Success)
                     return result;
+
+                // 保存しようとしているデータ自身の種別を JSON から読む。
+                // サーバーの新規オブジェクトは Mgr の DataType で生成されるため、
+                // obj.DataType(= this.DataType)は新規フォルダでは当てにならない。
+                var savingType = DataType;
+                if (!string.IsNullOrEmpty(_dataTypeColName)
+                    && row.TryGetValue(_dataTypeColName, out var typeVal)
+                    && typeVal != null
+                    && Enum.TryParse<NxDataType>(typeVal.ToString(), out var parsed))
+                    savingType = parsed;
+
+                // フォルダ(とルート)は明細を持たないので、明細テーブルの確認は行わない
+                if (savingType == NxDataType.Folder || savingType == NxDataType.root)
+                    return new NxOperationResult<TKey>();
 
                 // 明細テーブル確認
                 foreach (var tblName in _detailTableList) {

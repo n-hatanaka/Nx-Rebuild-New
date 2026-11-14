@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.JSInterop;
+using NxRebuild.Client.Pages.NxPrograms.DB;
 using NxRebuild.Client.Pages.NxPrograms.DB.RyLib;
 using NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View;
 using NxRebuild.Client.Services;
@@ -9,10 +10,12 @@ using System.Globalization;
 
 namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
     public class RyouriEditBase : ComponentBase {
-        [Parameter] public Guid Ry_Code { get; set; }
-        [Parameter] public bool IsNew { get; set; }
-
+        [Parameter] public Guid Ry_Code { get; set; }     // Guid.Empty = 新規
+        [Parameter] public Guid ParentID { get; set; }
+        public bool IsNew { get; private set; }           // [Parameter] ではなくなる
         private bool _committed;
+
+        protected Guid CurrentRyCode => RyData!.DataID;   // 以後はこれを使う
         [Parameter] public EventCallback OnSaved { get; set; }
         [Parameter] public EventCallback OnClose { get; set; }
         [Inject] protected IJSRuntime JS { get; set; } = default!;
@@ -49,11 +52,14 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
 
         protected override async Task OnInitializedAsync() {
             var rm = GlobalState.RyLibEntityMgr ?? throw new Exception("RyLibEntityMgr が初期化されていません。");
-            RyData = (IRyLibEntity?)rm.Get(Ry_Code) ?? throw new Exception($"Ry_Code={Ry_Code} の料理データがロードされていません。");
+            IsNew = Ry_Code == Guid.Empty;
+
+            RyData = IsNew
+                ? await CreateNewRyouriAsync(rm)
+                : (IRyLibEntity?)rm.Get(Ry_Code) ?? throw new Exception($"Ry_Code={Ry_Code} の料理データがロードされていません。");
 
             RyData.CreateWorkingMemory(WorkingRaw);
             BuildZairyouOptions();
-
             RowMgr = new RyLibRowEntityMgr(RyData.DBcon, RyData.TenantCode, RyData.CurrUsrID);
 
             if (!IsNew) {
@@ -68,6 +74,29 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
             }
         }
 
+        // FrmRyLibViewBase にあった処理をそのまま移設(登録はしない)
+        private async Task<IRyLibEntity> CreateNewRyouriAsync(IRyLibEntityMgr rm) {
+            var newObj = (IRyLibEntity)rm.CreateNewDataObj(ParentID);   // AddList=false
+
+            using var _pause = await NxSyncControl.For(newObj.DBcon).PauseAsync();
+
+            var working = new Dictionary<string, object?>();
+            newObj.CreateWorkingMemory(working);
+            working[newObj.NameColName] = "NewRyouri";
+            working["Ninzu"] = 1;
+
+            using (var tran = newObj.DBcon.BeginTransaction()) {
+                try {
+                    await newObj.SaveWorkingAsync(working, null, tran);
+                    tran.Commit();
+                } catch {
+                    tran.Rollback();
+                    throw;
+                }
+            }
+            newObj._SetProperties(working);
+            return newObj;
+        }
         // ---------------------------------------------------------
         // ドラッグ＆ドロップ（Razor側から参照されるプロパティ）
         // ---------------------------------------------------------
@@ -233,7 +262,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
             e._SetProperties(NxTypeMapper.Current.CreateEmptyRow(RowMgr.TblName));
             e._SetProperties(new Dictionary<string, object?> {
                 ["tenant_code"] = RyData.TenantCode,
-                ["Ry_Code"] = Ry_Code,
+                ["Ry_Code"] = CurrentRyCode,
                 ["sort_no"] = Rows.Count + 1,
                 ["Z_code"] = "",
                 ["LocalCode"] = 0,
@@ -270,7 +299,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
 
             obj.ExtraData["Saving"] = true;
             try {
-                obj.ExtraData["Ry_Code"] = Ry_Code;
+                obj.ExtraData["Ry_Code"] = CurrentRyCode;
                 obj.ExtraData["tenant_code"] = RyData.TenantCode;
                 obj.ExtraData["sort_no"] = Rows.IndexOf(obj) + 1;
 
@@ -321,7 +350,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
                 }
 
                 if (IsNew && !_committed) {
-                    GlobalState.RyLibEntityMgr!.SetParent(RyData);
+                    GlobalState.RyLibEntityMgr!.InsertNewDataItem(RyData);   // リスト登録 + 親子設定
                     _committed = true;
                 }
 

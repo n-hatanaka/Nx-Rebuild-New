@@ -21,6 +21,7 @@ namespace NxRebuild.Api.Controllers {
     [ApiController]
     [Route("RyLib")]
     public class RyLibController : NxDataController<RyLibEntity, Guid> {
+
         protected override async Task CreateObjMgrAsync(RecordQuery q) {
 
             await SetUserInfo();
@@ -30,7 +31,7 @@ namespace NxRebuild.Api.Controllers {
             Guid uid;
 
             if (_userID == null || _userID == Guid.Empty) {
-                uid = Guid.Empty;   // anonymous 世界線
+                uid = Guid.Empty;   // anonymous 
             } else {
                 uid = _userID.Value; // Guid? → Guid
             }
@@ -46,6 +47,20 @@ namespace NxRebuild.Api.Controllers {
             await _dataObjMgr.InitializeAsync(q);
 
             await Task.CompletedTask;
+        }
+        protected override async Task<NxOperationResult<Guid>> BeforeDeleteProcess(
+        IBaseDataObj<Guid> obj, IDbTransaction tran) {
+            if (obj.DataType == NxDataType.Folder) {
+                var cnt = await _db.ExecuteScalarAsync<long>(
+                    @"SELECT COUNT(*) FROM ""Ry_lib"" WHERE ""tenant_code"" = @t AND ""Parent"" = @id /* + 削除済みの除外条件 */",
+                    new { t = obj.TenantCode, id = obj.DataID }, tran);
+                if (cnt > 0)
+                    return new NxOperationResult<Guid> {
+                        ValidationErrorCode = NxValidationErrorCode.Unknown,
+                        Message = "フォルダが空ではありません"
+                    };
+            }
+            return await base.BeforeDeleteProcess(obj, tran);
         }
 
         public RyLibController(

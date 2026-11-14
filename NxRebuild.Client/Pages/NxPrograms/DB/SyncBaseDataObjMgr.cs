@@ -76,6 +76,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         public virtual IBaseDataObj<TKey>? Get(TKey id) => _baseDataObjMgr.Get(id);
 
 
+
         // =======================================================
         // 非同期でフォルダを生成・保存し、成功したらリストに追加する（Base側と同一の安全な流れ）
         // =======================================================
@@ -116,8 +117,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             }
 
             // 4. 保存が完全に成功したので、ここで初めてリストに追加し親子関係を確定させる
-            _baseDataObjMgr._dataList.Add(syncObj);
-            _baseDataObjMgr.SetParent(syncObj);
+            _baseDataObjMgr.InsertNewDataItem(syncObj);
 
             return syncObj;
         }
@@ -134,7 +134,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             syncObj.DBcon = DBcon;
             syncObj.TenantCode = TenantCode;
             syncObj.CurrUsrID = CurrentUserID;
-            _baseDataObjMgr._dataList.Add(syncObj);//親の登録（Setparent）はまだしない
+            //_baseDataObjMgr._dataList.Add(syncObj);//親の登録（Setparent）はまだしない
             return syncObj;
         }
 
@@ -143,6 +143,9 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             _baseDataObjMgr.SetParent(obj);
         }
 
+        public virtual void SetParentAll() {
+            _baseDataObjMgr.SetParentAll();
+        }
 
 
         public virtual void InsertNewDataItem(IBaseDataObj<TKey> obj) {
@@ -179,9 +182,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             if (syncList != null) {
                 _baseDataObjMgr._dataList = syncList;
 
-                foreach (var obj in _baseDataObjMgr._dataList) {
-                    SetParent(obj);
-                }
+                SetParentAll();
             }
         }
 
@@ -267,29 +268,31 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             using var tran = DBcon.BeginTransaction();
 
             try {
-                int index = 0;
+                var index = _baseDataObjMgr.BuildGetIndex();      // ループの前に1回だけ
+
                 foreach (var item in syncResult.SyncItems) {
-
-                    var dataId = item.DataId;
-                    var dataJson = item.Data;
-
-                    var target = _baseDataObjMgr.Get(dataId);
-
-                    index++;
+                    index.TryGetValue(item.DataId, out var target);
 
                     if (target != null) {
-                        await target.JsonToTblAsync(dataJson, tran);
+                        await target.JsonToTblAsync(item.Data, tran);
                     } else {
-                        if (dataJson == null) {
-                            continue;
-                        }
-
+                        if (item.Data == null) continue;
                         target = CreateNewDataObj(default(TKey));
-                        target.DataID = dataId;
-                        await target.JsonToTblAsync(dataJson, tran);
+                        target.DataID = item.DataId;
+                        await target.JsonToTblAsync(item.Data, tran);
 
 
+                        //ここは InsertNewDataItem にしないでください
+                        //InsertNewDataItem は内部で SetParent を呼びます。
+                        //SetParent は親がリストに無いと ParentID を最小値に上書きします。
+                        //同期では子が親より先に届くことがあるので、
+                        //受信途中に呼ぶと親子情報が壊れます。リストへ追加するだけにして、
+                        //親子の設定は後ろにある foreach (var obj in DataList) SetParent(obj); に
+                        _baseDataObjMgr._dataList.Add(target);
+
+                        index[item.DataId] = target;               // 後続の照会にも効くよう索引へ
                     }
+
 
                     // =======================================================
                     // 削除済みデータの扱い
@@ -317,10 +320,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             // 親子関係の再構築
             // =======================================================
 
-            foreach (var obj in DataList) {
-
-                SetParent(obj);
-            }
+            SetParentAll();
 
 
             try { 

@@ -36,6 +36,8 @@ namespace NxRebuild.shared {
 
         Task<NxOperationResult<TKey>> DeleteDataAsync(IEnumerable<TKey> dataIDs, bool softDelete = false, IDbTransaction tran = null);
         void SetParent(IBaseDataObj<TKey> obj);
+        void SetParentAll();
+
         Task DistributeJsonDataAsync(string json);
         Task InitializeAsync(RecordQuery? query);
         string LoadMultipleDataAsJson(List<TKey> idList);
@@ -531,6 +533,12 @@ namespace NxRebuild.shared {
                 .FirstOrDefault(x => EqualityComparer<TKey>.Default.Equals(x.DataID, id));
         }
 
+        // BaseDataObjMgr(既定:全件)
+        public virtual Dictionary<TKey, IBaseDataObj<TKey>> BuildGetIndex() {
+            var index = new Dictionary<TKey, IBaseDataObj<TKey>>(_dataList.Count);
+            foreach (var x in _dataList) index.TryAdd(x.DataID, x);
+            return index;
+        }
 
         public BaseDataObjMgr(IDbConnection db , Guid tenantCode , Guid currUserID) {
             DBcon = db;
@@ -635,22 +643,22 @@ namespace NxRebuild.shared {
             dataObj.CurrUsrID = CurrentUserID;
             dataObj.DataID = _GenerateDataID();
 
-            if (_priymaryTableName == "Ry_lib") {
-                Console.WriteLine(dataObj.DataType);
-                Console.WriteLine(dataObj.DataID);
+            //if (_priymaryTableName == "Ry_lib") {
+            //    Console.WriteLine(dataObj.DataType);
+            //    Console.WriteLine(dataObj.DataID);
 
-                Console.WriteLine($"[DBG] Mgr={this.GetType().Name} Mgr.DataType={DataType} (set前)");
-                Console.WriteLine($"[DBG] HasColumn({_priymaryTableName},Type)={NxTypeMapper.HasColumn(_priymaryTableName, "Type")}");
-                Console.WriteLine($"[DBG] set前 obj.DataType={dataObj.DataType} raw[Type]={(dataObj._rawData.TryGetValue("Type", out var b) ? b?.ToString() + " (" + b?.GetType().Name + ")" : "キー無し")}");
+            //    Console.WriteLine($"[DBG] Mgr={this.GetType().Name} Mgr.DataType={DataType} (set前)");
+            //    Console.WriteLine($"[DBG] HasColumn({_priymaryTableName},Type)={NxTypeMapper.HasColumn(_priymaryTableName, "Type")}");
+            //    Console.WriteLine($"[DBG] set前 obj.DataType={dataObj.DataType} raw[Type]={(dataObj._rawData.TryGetValue("Type", out var b) ? b?.ToString() + " (" + b?.GetType().Name + ")" : "キー無し")}");
 
 
+            //    dataObj.DataType = DataType;
+
+            //    Console.WriteLine($"[DBG] set後 obj.DataType={dataObj.DataType} raw[Type]={(dataObj._rawData.TryGetValue("Type", out var a) ? a?.ToString() + " (" + a?.GetType().Name + ")" : "キー無し")}");
+            //} else {
                 dataObj.DataType = DataType;
+            //}
 
-                Console.WriteLine($"[DBG] set後 obj.DataType={dataObj.DataType} raw[Type]={(dataObj._rawData.TryGetValue("Type", out var a) ? a?.ToString() + " (" + a?.GetType().Name + ")" : "キー無し")}");
-            } else {
-                dataObj.DataType = DataType;
-            }
-            // ここではまだ _dataList に入れない
             // DataID は仮で OK（保存時に確定でもいい）
             return dataObj;
         }
@@ -848,30 +856,29 @@ namespace NxRebuild.shared {
 
 
         // 親子関係を設定する（新規作成の場合はUIがここに新しいDataObjを渡す。
-        public virtual void SetParent(IBaseDataObj<TKey> obj) {
-            // 親ID列が存在しない世界線
-            if (string.IsNullOrEmpty(obj.ParentIDColName)) {
-                obj.ParentDataObj = null;
-                return;
-            }
+        public virtual void SetParentAll() {
+            var index = new Dictionary<TKey, IBaseDataObj<TKey>>(_dataList.Count);
+            foreach (var x in _dataList)
+                index.TryAdd(x.DataID, x);        // 重複IDは先勝ち(FirstOrDefault と同じ挙動)
+
+            foreach (var obj in _dataList)
+                _SetParentCore(obj, id => index.TryGetValue(id, out var p) ? p : null);
+        }
+        public virtual void SetParent(IBaseDataObj<TKey> obj) =>      // 単発用(従来どおり)
+            _SetParentCore(obj, id => _dataList.FirstOrDefault(
+                x => EqualityComparer<TKey>.Default.Equals(x.DataID, id)));
+
+        private void _SetParentCore(IBaseDataObj<TKey> obj, Func<TKey, IBaseDataObj<TKey>?> find) {
+            if (string.IsNullOrEmpty(obj.ParentIDColName)) { obj.ParentDataObj = null; return; }
 
             var pid = obj.ParentID;
+            if (pid == null || obj.DataType == NxDataType.root) { obj.ParentDataObj = null; return; }
 
-            // 親IDが未設定（null）または属性がroot → 親オブジェクトをNULLに
-            if (pid == null || obj.DataType == NxDataType.root) {
-                obj.ParentDataObj = null;
-                return;
-            }
-
-            // 親を検索
-            var parent = _dataList.FirstOrDefault(x =>
-                EqualityComparer<TKey>.Default.Equals(x.DataID, pid));
-
+            var parent = find(pid);
             if (parent != null) {
                 obj.ParentDataObj = parent;
             } else {
-                // ★ 親が存在しない世界線 → 最小値をセット
-                obj.ParentDataObj = null; // 親オブジェクトは null
+                obj.ParentDataObj = null;
                 obj.ParentID = GetMinValue<TKey>();
             }
         }

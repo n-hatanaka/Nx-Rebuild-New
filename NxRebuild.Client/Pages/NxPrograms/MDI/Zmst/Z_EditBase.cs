@@ -3,6 +3,7 @@ using Microsoft.JSInterop;
 using NxRebuild.Client.Pages.NxPrograms.DB;
 using NxRebuild.Client.Services;
 using NxRebuild.shared;
+using System.Xml.Linq;
 
 namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
     // 栄養素値を動的に保持するモデルクラス
@@ -41,8 +42,10 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
     }
 
     public partial class Z_EditBase : ComponentBase {
-        [Parameter] public bool IsNew { get; set; }
+        public bool IsNew { get; set; }
+        private bool _committed;
         [Parameter] public int LocalCode { get; set; }
+        [Parameter] public int ParentID { get; set; }
         [Parameter] public EventCallback OnSaved { get; set; }
         [Inject] IJSRuntime JS { get; set; } = default!;
         [Parameter] public EventCallback OnClose { get; set; }
@@ -117,9 +120,12 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
                 ?? throw new Exception("NutProperties が初期化されていません。");
 
             // すでにロード済みの読み出すだけ
-            Entity = (IZmstEntity)zm.Get(LocalCode)
-                ?? throw new Exception($"LocalCode={LocalCode} の Zmst がロードされていません。");
-                        
+            IsNew = LocalCode == 0;
+
+            Entity = IsNew
+                ? (IZmstEntity)zm.CreateNewDataObj(ParentID)
+                : (IZmstEntity)zm.Get(LocalCode) ?? throw new Exception($"LocalCode={LocalCode} の Zmst がロードされていません。");
+            
             // ★ DeepCopy を Entity にやらせる
             Entity.CreateWorkingMemory(WorkingRaw);
 
@@ -216,14 +222,20 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
                     );
                 }
 
+                if (IsNew && !_committed) {
+                    GlobalState.ZmstEntityMgr!.InsertNewDataItem(Entity);   // リスト登録 + 親子設定
+                    _committed = true;
+                } else {
+                    //  既存データの更新 → 親子関係の再設定
+                    GlobalState.ZmstEntityMgr!.SetParent(Entity);
+                }
+
                 //  保存成功 → 親画面を更新（Window は閉じない）
                 await OnSaved.InvokeAsync();   // ← これを Z_Edit に追加する
 
                 //  成功メッセージ（任意）
                 await JS.InvokeVoidAsync("alert", "保存しました。");
 
-                var zm = GlobalState.ZmstEntityMgr;
-                zm.SetParent(Entity);//親子関係を登録
 
             } catch (Exception ex) {
                 // エラー処理
@@ -241,7 +253,8 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
         }
         public async Task OnCloseHandler() {
             // ★ ZmstEntity のクローズ処理を呼ぶ
-            Entity?.DataCloseAsync();
+            if (Entity != null && (!IsNew || _committed)) 
+                await Entity.DataCloseAsync();
 
             Console.WriteLine($"Z_Edit(LocalCode={LocalCode}) が親により閉じられました。");
 

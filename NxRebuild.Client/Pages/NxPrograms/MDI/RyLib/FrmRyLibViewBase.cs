@@ -23,66 +23,20 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
 
         protected IRyLibEntityMgr? RyLibMgr { get; set; }
 
-        public override async Task DeleteSelectedItemAsync() {
-            if (DataMgr == null)
-                return;
-
-            var item = GridDataItems.FirstOrDefault(x => x.IsSelected);
-            if (item == null) return;
-
-            if (item.ItemData is IRyLibEntity obj) {
-                // ソフトデリートの扱いはサーバー側（コントローラー）で行うため、フラグは渡さない
-                var failed = await DataMgr.DeleteDataAsync(new List<Guid> { obj.DataID });
-
-                if (failed.FailedIds.Count > 0)
-                    Console.WriteLine($"削除失敗: {failed.FailedIds[0]}");
-
-                BuildGridFromFolder(SelectedFolder);
-            }
-        }
 
         public override async Task CreateNewItemAsync() {
-            if (DataMgr == null)
-                return;
+            if (DataMgr == null) return;
             if (SelectedFolder == null)
-                SelectedFolder = DataMgr.DataList.First();//必ずrootアイテムがあるはずなので、最初のアイテムを選択する
-
-            // Sync でも Base でも IRyLibEntity として扱う
-            var newObj = (IRyLibEntity)DataMgr.CreateNewDataObj(SelectedFolder.DataID);
-
-            // 仮保存中は同期処理を止める（Sync の保存系と同じ作法）
-            using var _pause = await NxSyncControl.For(newObj.DBcon).PauseAsync();
-
-            var working = new Dictionary<string, object?>();
-            newObj.CreateWorkingMemory(working);
-            working[newObj.NameColName] = "NewRyouri";
-            working["Ninzu"] = 1;
-
-            // 仮保存: ワークテーブル(w_Ry_Lib)だけに書く。正本(Ry_lib)へはヘッダ保存時に反映される
-            using (var tran = newObj.DBcon.BeginTransaction()) {
-                try {
-                    await newObj.SaveWorkingAsync(working, null, tran);
-                    tran.Commit();
-                } catch (Exception ex) {
-                    tran.Rollback();
-                    await JS.InvokeVoidAsync("aknAlert", $"新規作成失敗: {ex.Message}");
-                    return;
-                }
-            }
-
-            // 編集画面がフォームの初期値に使えるよう、正本にも仮の内容を反映しておく
-            newObj._SetProperties(working);
+                SelectedFolder = DataMgr.DataList.First();   // root
 
             Manager.Open<RyouriEdit>(
-                $"新規作成: {newObj.DataName}",
-                new Dictionary<string, object>
-                {
-                    { "Ry_Code", newObj.DataID },
-                    { "IsNew", true },
+                "新規作成",
+                new Dictionary<string, object> {
+                    { "Ry_Code", Guid.Empty },                 // Empty = 新規
+                    { "ParentID", SelectedFolder.DataID },
                     { "OnSaved", EventCallback.Factory.Create(this, OnChildSaved) },
                     { "OnClose", EventCallback.Factory.Create(this, OnChildClosed) }
-                }
-            );
+                });
         }
 
         public override async Task BeginEditSelectedItem() {
@@ -107,7 +61,6 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
                 new Dictionary<string, object>
                 {
                     { "Ry_Code", baseObj.DataID },
-                    { "IsNew", false },
                     { "OnSaved", EventCallback.Factory.Create(this, OnChildSaved) },
                     { "OnClose", EventCallback.Factory.Create(this, OnChildClosed) }
                 }

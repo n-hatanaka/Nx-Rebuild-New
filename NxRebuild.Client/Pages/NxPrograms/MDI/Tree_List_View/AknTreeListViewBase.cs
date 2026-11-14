@@ -172,7 +172,74 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
                 BuildGridFromFolder(SelectedFolder);
         }
 
+        // ---------------------------------------------------------
+        // フォルダ操作
+        // ---------------------------------------------------------
+        protected IBaseDataObj<TKey>? FindRoot() =>
+            DataMgr?.DataList.FirstOrDefault(x => x.DataType == NxDataType.root);
 
+        // 選択中のフォルダ(未選択ならルート)の下に新しいフォルダを作る
+        public virtual async Task CreateFolderAsync() {
+            if (DataMgr == null) return;
+
+            var parent = SelectedFolder ?? FindRoot();
+            if (parent == null) return;
+
+            var name = await JS.InvokeAsync<string?>("prompt", "フォルダ名を入力してください", "新しいフォルダ");
+            if (string.IsNullOrWhiteSpace(name)) return;          // キャンセルまたは空
+            name = name.Trim();
+
+            try {
+                // 保存に成功してからリストへ登録される(失敗時は例外)
+                await DataMgr.CreateNewFolderAsync(parent.DataID, name);
+            } catch (Exception ex) {
+                await JS.InvokeVoidAsync("aknAlert", $"フォルダ作成失敗: {ex.Message}");
+                return;
+            }
+
+            SelectedFolder = parent;
+            BuildTreeFromMgr();
+            BuildGridFromFolder(parent);
+        }
+
+        // 選択中のフォルダを削除する(中身が空のときだけ)
+        public virtual async Task DeleteFolderAsync() {
+            if (DataMgr == null) return;
+
+            var folder = SelectedFolder;
+            if (folder == null) {
+                await JS.InvokeVoidAsync("aknAlert", "削除するフォルダを選択してください。");
+                return;
+            }
+            if (folder.DataType != NxDataType.Folder) {            // ルートは削除不可
+                await JS.InvokeVoidAsync("aknAlert", "ルートは削除できません。");
+                return;
+            }
+
+            // サブフォルダ・料理が残っていたら削除しない
+            bool hasChildren = DataMgr.DataList.Any(x =>
+                EqualityComparer<TKey>.Default.Equals(x.ParentID, folder.DataID));
+            if (hasChildren) {
+                await JS.InvokeVoidAsync("aknAlert",
+                    "フォルダが空ではありません。中身を移動または削除してから削除してください。");
+                return;
+            }
+
+            if (!await JS.InvokeAsync<bool>("confirm", $"フォルダ「{folder.DataName}」を削除しますか？"))
+                return;
+
+            var parent = folder.ParentDataObj ?? FindRoot();       // 削除前に退避しておく
+
+            var result = await DataMgr.DeleteDataAsync(new List<TKey> { folder.DataID });
+            if (!result.Success || result.FailedIds?.Count > 0) {
+                await JS.InvokeVoidAsync("aknAlert", $"フォルダ削除失敗: {result.Message}");
+                return;
+            }
+
+            SelectedFolder = parent;
+            BuildTreeFromMgr();
+            if (parent != null) BuildGridFromFolder(parent);
+        }
 
         public void AddDefaultColumns() {
             Columns.Clear();
@@ -367,7 +434,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
                 var result = await DataMgr.DeleteDataAsync(new List<TKey> { obj.DataID });
 
                 // ★ NxOperationResult に統一されたので Success / FailedIds を見る
-                if (!result.Success) {
+                if (!result.Success || result.FailedIds?.Count > 0) {
 
                     Console.WriteLine($"削除失敗: {result.Message}");
 
