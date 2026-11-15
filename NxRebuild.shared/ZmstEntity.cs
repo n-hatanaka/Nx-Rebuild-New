@@ -233,25 +233,31 @@ namespace NxRebuild.shared {
         // ---------------------------------------------------------
         public override object SendData() {
             return $@"
-                FROM (
-                    SELECT 
-                        1 AS sort_no,
-                        ""Z_code"",
-                        ""LocalCode"",
-                        0.0 AS Syoumi,
-                        0.0 AS Junbi,
-                        COALESCE((
-                            SELECT ""tan_cd"" 
-                            FROM ""tan_m"" 
-                            WHERE ""tan_m"".""tenant_code"" = ""Zmst"".""tenant_code"" 
-                              AND ""tan_m"".""LocalCode"" = ""Zmst"".""LocalCode"" 
-                            ORDER BY ""tan_cd"" 
-                            LIMIT 1
-                        ), 0) AS tan_cd
-                    FROM ""{_primaryTableName}""
-                    WHERE ""LocalCode"" = {LocalCode}
-                      AND ""{_tenantCodeCol}"" = '{TenantCode}'
-                ) AS src";
+                            src.""sort_no"",
+                            src.""Z_code"",
+                            src.""LocalCode"",
+                            src.""Syoumi"",
+                            src.""Junbi"",
+                            src.""tan_cd""
+                        FROM (
+                            SELECT 
+                                1 AS sort_no,
+                                ""Z_code"",
+                                ""LocalCode"",
+                                0.0 AS Syoumi,
+                                0.0 AS Junbi,
+                                COALESCE((
+                                    SELECT ""tan_cd"" 
+                                    FROM ""tan_m"" 
+                                    WHERE ""tan_m"".""tenant_code"" = ""Zmst"".""tenant_code"" 
+                                      AND ""tan_m"".""LocalCode"" = ""Zmst"".""LocalCode"" 
+                                    ORDER BY ""tan_cd"" 
+                                    LIMIT 1
+                                ), 0) AS tan_cd
+                            FROM ""Zmst""
+                            WHERE ""LocalCode"" = {LocalCode}
+                              AND ""{_tenantCodeCol}"" = '{TenantCode}'
+                        ) AS src";
         }
 
         // ZmstEntity

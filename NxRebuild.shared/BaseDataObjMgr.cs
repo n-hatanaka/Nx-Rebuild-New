@@ -740,6 +740,12 @@ namespace NxRebuild.shared {
                 if (kv.Value != null)
                     param[kv.Key] = kv.Value;
             }
+            
+            // 確定済みFK（Initialize 前に設定されている前提）
+            foreach (var kv in ForeignKeys) {
+                if (kv.Value != null)
+                    param[kv.Key] = kv.Value;
+            }
 
             if (query != null) {
                 foreach (var c in query.And)
@@ -780,6 +786,11 @@ namespace NxRebuild.shared {
 
             // 世界線境界（必ず入れる）
             sql.Add($"AND \"{TenantCodeCol}\" = @TenantCode");
+
+            foreach (var fk in ForeignKeys) {
+                if (fk.Value != null)
+                    sql.Add($"AND \"{fk.Key}\" = @{fk.Key}");
+            }
 
             // null → 全件取得
             if (q == null)
@@ -1109,10 +1120,7 @@ namespace NxRebuild.shared {
                 InsertNewDataItem(newObj);
 
 
-                return new NxOperationResult<TKey> {
-                    OperationErrorCode = NxOperationErrorCode.None,
-                    FailedIds = new List<TKey>()
-                };
+                return receiveResult;
             }
             catch(Exception ex)
             {

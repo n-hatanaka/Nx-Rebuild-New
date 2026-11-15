@@ -126,6 +126,24 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
         }
 
+        // ★ FK（Mgr から CreateNewDataObj / Initialize 時に渡される）。
+        //   値の保持と _rawData への書き込みは内側の BaseDataObj が行うので、ここは委譲のみ
+        public Dictionary<string, object?> ForeignKeys {
+            get {
+                if (_dataObj == null)
+                    throw new Exception("ForeignKeys GET ERROR: _dataObj is null.");
+
+                return _dataObj.ForeignKeys;
+            }
+
+            set {
+                if (_dataObj == null)
+                    throw new Exception("ForeignKeys SET ERROR: _dataObj is null.");
+
+                _dataObj.ForeignKeys = value;
+            }
+        }
+
 
         public string DataName {
 
@@ -406,7 +424,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                 await DBcon.ExecuteAsync(sql, new { NewID = newID, OldID = oldID, TenantCode }, tran);
             }
         }
-        
+
 
 
         public async Task<NxOperationResult<TKey>> SetLockAsync() {
@@ -495,7 +513,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                                         => await _dataObj._ReWriteLockInfoAsync(tran, Locked_by, Locked_at);
 
         public async Task<NxOperationResult<TKey>> SetUnLockAsync() {
-                        //SyncDataの一時停止
+            //SyncDataの一時停止
             using var _pause = await NxSyncControl.For(DBcon).PauseAsync();
 
             // ① Auth から UserID と UserName を取得
@@ -926,7 +944,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         //クライアントローカル内でデータのコピーを行う。
         //コピーするデータを作成する。
         public virtual object? SendData() {
-            return null;
+            return _dataObj.SendData();
         }
 
     }

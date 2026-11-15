@@ -19,11 +19,15 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB.RyLib {
             : base(db, tenantCode, currentUserId) {
         }
 
+        //想定100件未満なのでこの実装で充分
         public override int _GenerateDataID() {
-            for (int id = -1; ; id--) {
-                if (!_dataList.Any(x => x.DataID == id))
-                    return id;
+            var existingIds = new HashSet<int>(_dataList.Select(x => x.DataID));
+
+            int id = 1;
+            while (existingIds.Contains(id)) {
+                id++;
             }
+            return id;
         }
 
         protected override bool CanReceive(IBaseDataObj<int> sourceObj) {

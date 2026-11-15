@@ -31,7 +31,8 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB.RyLib {
         ParentIDCol = "",
 
         // 正本テーブルと同じ = ワークテーブルを介さず w_Ry_Lib_s を直接CRUDする
-        WorkPriTable = "w_Ry_Lib_s",
+        WorkPriTable = "w_Ry_Lib",
+        WorkDtlTblList = new string[] {"w_Ry_Lib_s"},
 
         InfoTable = ""
 
@@ -144,15 +145,19 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB.RyLib {
         }
 
         public override object SendData() {
+            var pk = PrimaryPKDict;
+            var where = string.Join(" AND ", _primaryTblPKList.Select(c =>
+                pk[c] is Guid ? $@"""{c}"" = '{pk[c]}'" : $@"""{c}"" = {pk[c]}"));
+
             return $@"
-                    ""sort_no"",
-                    ""Z_code"",
-                    ""LocalCode"",
-                    ""Syoumi"",
-                    ""Junbi"",
-                    ""tan_cd""
-                FROM ""{_primaryTableName}""
-                WHERE ""id"" = {DataID}";
+                            ""sort_no"",
+                            ""Z_code"",
+                            ""LocalCode"",
+                            ""Syoumi"",
+                            ""Junbi"",
+                            ""tan_cd""
+                        FROM ""{_primaryTableName}""
+                        WHERE {where}";
         }
 
         public override async Task<NxOperationResult<int>>
@@ -192,6 +197,8 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB.RyLib {
                     tran);
 
                 tran.Commit();
+
+                await _UpdatePropertiesFromTblAsync();
 
                 return new NxOperationResult<int> {
                     NewID = DataID,

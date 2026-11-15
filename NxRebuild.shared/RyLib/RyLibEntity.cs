@@ -15,8 +15,13 @@ namespace NxRebuild.shared {
         PriTblPKColList = new[] { "tenant_code", "Ry_Code" },
 
         DetailTableList = new[] { "Ry_lib_s" },
+
+        WorkPriTable = "w_Ry_Lib",
+        WorkDtlTblList = new[] { "w_Ry_Lib_s" },
+
         DetailTblPKJson = @"{
-            ""Ry_lib_s"": [""id"", ""tenant_code"", ""Ry_Code""]
+            ""Ry_lib_s"": [""id"", ""tenant_code"", ""Ry_Code""],
+            ""w_Ry_Lib_s"": [""id"", ""tenant_code"", ""Ry_Code""]
         }",
 
         NameCol = "Name",
@@ -28,8 +33,6 @@ namespace NxRebuild.shared {
         LockTimeOutSec = 600,
         TenantCodeCol = "tenant_code",
         ParentIDCol = "Parent",
-        WorkPriTable = "w_Ry_Lib",
-        WorkDtlTblList = new[] { "w_Ry_Lib_s" },
         
         InfoTable = "",
         DataType = NxDataType.Ryouri,

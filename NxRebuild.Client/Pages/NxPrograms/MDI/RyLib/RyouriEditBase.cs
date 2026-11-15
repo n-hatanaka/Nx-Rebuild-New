@@ -232,8 +232,9 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
 
             var sourceIndex = Rows.IndexOf(dragged);
 
+            var isSharedSource = dragged.ItemData.ParentDataObj == RowMgr;
             // ★ 別エディタや別コンテキストからのドロップ（ItemData が別エンティティの場合など）
-            if (sourceIndex < 0) {
+            if (!isSharedSource) {
 
                 // 2. RowMgr (RyLibRowEntityMgr) の ReceiveExecAsync() を実行して新しいエンティティを取り込む
                 if (RowMgr != null) {
@@ -281,24 +282,26 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
         protected void AddRow() {
             if (RowMgr == null || RyData == null) return;
 
-            var e = new RyLibRowEntity {
-                DBcon = RowMgr.DBcon,
-                SelfObjMgr = RowMgr,
-                TenantCode = RyData.TenantCode,
-                CurrUsrID = RyData.CurrUsrID
-            };
+            var e = (RyLibRowEntity)RowMgr.CreateNewDataObj(0);
 
-            e._SetProperties(NxTypeMapper.Current.CreateEmptyRow(RowMgr.TblName));
-            e._SetProperties(new Dictionary<string, object?> {
-                ["tenant_code"] = RyData.TenantCode,
-                ["Ry_Code"] = CurrentRyCode,
-                ["sort_no"] = Rows.Count + 1,
-                ["Z_code"] = "",
-                ["LocalCode"] = 0,
-                ["Syoumi"] = 0f,
-                ["Junbi"] = 0f,
-                ["tan_cd"] = 0
-            });
+            //var e = new RyLibRowEntity {
+            //    DBcon = RowMgr.DBcon,
+            //    SelfObjMgr = RowMgr,
+            //    TenantCode = RyData.TenantCode,
+            //    CurrUsrID = RyData.CurrUsrID
+            //};
+
+            //e._SetProperties(NxTypeMapper.Current.CreateEmptyRow(RowMgr.TblName));
+            //e._SetProperties(new Dictionary<string, object?> {
+            //    ["tenant_code"] = RyData.TenantCode,
+            //    ["Ry_Code"] = CurrentRyCode,
+            //    ["sort_no"] = Rows.Count + 1,
+            //    ["Z_code"] = "",
+            //    ["LocalCode"] = 0,
+            //    ["Syoumi"] = 0f,
+            //    ["Junbi"] = 0f,
+            //    ["tan_cd"] = 0
+            //});
 
             RowMgr.InsertNewDataItem(e);
 
@@ -332,7 +335,11 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
                 obj.ExtraData["tenant_code"] = RyData.TenantCode;
                 obj.ExtraData["sort_no"] = Rows.IndexOf(obj) + 1;
 
-                var workingDict = obj.ExtraData.ToDictionary(k => k.Key, k => (object?)k.Value);
+                // "Dirty" と "Saving" はUI管理用のため、DB保存用の辞書から除外する
+                var workingDict = obj.ExtraData
+                    .Where(kv => kv.Key != "Dirty" && kv.Key != "Saving")
+                    .ToDictionary(k => k.Key, k => (object?)k.Value);
+
                 var result = await entity.SaveAsync(workingDict);
                 if (!result.Success) {
                     await JS.InvokeVoidAsync("aknAlert", $"行の保存失敗: {result.Message}");

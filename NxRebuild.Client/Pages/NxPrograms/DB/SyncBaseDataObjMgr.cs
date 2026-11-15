@@ -47,6 +47,11 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         public string W_TblName => _baseDataObjMgr.W_TblName;
         public string[] W_DetailTblList => _baseDataObjMgr.W_DetailTblList;
 
+        public Dictionary<string, object?> ForeignKeys {
+            get => _baseDataObjMgr.ForeignKeys;
+            set => _baseDataObjMgr.ForeignKeys = value;
+        }
+
         public NxDataType DataType { get => _baseDataObjMgr.DataType; set => _baseDataObjMgr.DataType = value; }
         public DateTime Refreshed_at => _baseDataObjMgr.Refreshed_at;
 
