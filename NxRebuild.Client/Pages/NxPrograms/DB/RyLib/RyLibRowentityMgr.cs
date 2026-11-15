@@ -1,5 +1,7 @@
 ﻿using NxRebuild.shared;
 using System.Data;
+using System.Net.Http.Headers;
+using System.Runtime.CompilerServices;
 
 namespace NxRebuild.Client.Pages.NxPrograms.DB.RyLib {
     public interface IRyLibRowEntityMgr
@@ -22,6 +24,14 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB.RyLib {
                 if (!_dataList.Any(x => x.DataID == id))
                     return id;
             }
+        }
+
+        protected override bool CanReceive(IBaseDataObj<int> sourceObj) {
+            if (sourceObj.DataType == NxDataType.RyouriRow
+                || sourceObj.DataType == NxDataType.Zairyou)
+                return true;
+            else
+                return false;
         }
     }
 }

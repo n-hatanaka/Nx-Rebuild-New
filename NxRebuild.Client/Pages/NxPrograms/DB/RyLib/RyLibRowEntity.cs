@@ -19,7 +19,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB.RyLib {
         PrimaryTable = "w_Ry_Lib_s",
         PriTblPKColList = new[] { "id", "tenant_code", "Ry_Code" },
         DetailTblPKJson = "{}",
-
+        DataType = NxDataType.RyouriRow,
         NameCol = "Z_code",
         IdCol = "id",
 
@@ -33,9 +33,8 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB.RyLib {
         // 正本テーブルと同じ = ワークテーブルを介さず w_Ry_Lib_s を直接CRUDする
         WorkPriTable = "w_Ry_Lib_s",
 
-        InfoTable = "",
+        InfoTable = ""
 
-        DataType = NxDataType.Ryouri
     )]
     public class RyLibRowEntity : BaseDataObj<int>, IRyLibRowEntity {
 
@@ -181,12 +180,6 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB.RyLib {
                             @id,
                             @tenant_code,
                             @Ry_Code,
-                            ""sort_no"",
-                            ""Z_code"",
-                            ""LocalCode"",
-                            ""Syoumi"",
-                            ""Junbi"",
-                            ""tan_cd""
                         {selectBody};";
 
                 await DBcon.ExecuteAsync(
@@ -201,6 +194,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB.RyLib {
                 tran.Commit();
 
                 return new NxOperationResult<int> {
+                    NewID = DataID,
                     Message = "Receive completed"
                 };
             } catch (Exception ex) {

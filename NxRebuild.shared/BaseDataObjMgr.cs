@@ -20,6 +20,7 @@ namespace NxRebuild.shared {
 
         string TblName { get; }
         Dictionary<string, object?> PrimaryPKDict { get; set; }
+        Dictionary<string, object?> ForeignKeys { get; set; }
 
         string[] DetailTableList { get; }
         string InfoTbl { get;  }
@@ -414,6 +415,15 @@ namespace NxRebuild.shared {
         protected string _infoTbl;
         protected string _w_tblName;
         protected string[] _w_detailTblList;
+
+
+        protected Dictionary<string, object?> _foreignKeys = new();
+
+        public Dictionary<string, object?> ForeignKeys {
+            get => _foreignKeys;
+            set => _foreignKeys = value ?? new();
+        }
+
         public string TblName { get => _priymaryTableName; }//データ名等基本データが格納されるテーブル名
         public string[] DetailTableList { get => _detailTableList; }//明細データが格納されるサブテーブル名
         public string InfoTbl { get => _infoTbl; }//TblNameに加え栄養素などの集計結果が入っているテーブル(プロパティをビューから取得したいときはこれを使う
@@ -424,7 +434,6 @@ namespace NxRebuild.shared {
         protected string RootName { get; set; }//rootNodeの表示名。空の場合はInitializeメソッドでRootNodeオブジェクトは作成されない
 
         string IdColName { get => _idColName; }
-        string NameColName { get => _nameColName; }
         public NxDataType DataType { get; set; }
 
         public Guid TenantCode { get; set; }
@@ -558,7 +567,7 @@ namespace NxRebuild.shared {
             _infoTbl = meta.InfoTable;
             _w_tblName = meta.WorkPriTable;
             _w_detailTblList = meta.WorkDtlTblList;
-            //_datatype = meta.DataType;
+            DataType = meta.DataType;
             _updateAtCol = meta.UpdateAtCol;
             _lockedByCol = meta.LockedByCol;
             _lockedAtCol = meta.LockedAtCol;
@@ -642,6 +651,7 @@ namespace NxRebuild.shared {
             dataObj.TenantCode = TenantCode;
             dataObj.CurrUsrID = CurrentUserID;
             dataObj.DataID = _GenerateDataID();
+            dataObj.ForeignKeys = ForeignKeys;
 
             //if (_priymaryTableName == "Ry_lib") {
             //    Console.WriteLine(dataObj.DataType);
@@ -846,7 +856,7 @@ namespace NxRebuild.shared {
                 obj._SetProperties((IDictionary<string, object>)record);
                 obj.TenantCode = TenantCode;
                 obj.CurrUsrID = CurrentUserID;
-
+                obj.ForeignKeys = ForeignKeys;
                 _dataList.Add(obj);
             }
 
@@ -1046,6 +1056,13 @@ namespace NxRebuild.shared {
                 throw new Exception("Failed to distribute JSON data.", ex);
             }
         }
+
+        protected virtual bool CanReceive(IBaseDataObj<TKey> sourceObj) {
+            //具象クラス独自の条件をここで自由に書ける
+            //複数の受け入れを行う場合やデータタイプが存在しない場合に具象側でカスタムする事
+            return sourceObj.DataType == this.DataType;
+        }
+
         public virtual async Task<NxOperationResult<TKey>> ReceiveDataAsync(
                                     IBaseDataObj<TKey> sourceObj,
                                     TKey? parentID = default) {
@@ -1054,13 +1071,15 @@ namespace NxRebuild.shared {
                 // =====================================
                 // 型チェック
                 // =====================================
-
-                if (sourceObj.DataType != this.DataType)
+                // マネージャーや基底側での呼び出しイメージ
+                if (!CanReceive(sourceObj)) {
                     return new NxOperationResult<TKey> {
                         OperationErrorCode = NxOperationErrorCode.DataTypeMismatch,
                         FailedIds = new List<TKey> { sourceObj.DataID },
-                        Message = "Data type mismatch"
+                        Message = "型チェックによりドロップが拒否されました"
                     };
+                }
+
 
                 // =====================================
                 // 新規作成

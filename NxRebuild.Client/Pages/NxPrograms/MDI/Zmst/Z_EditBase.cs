@@ -41,7 +41,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
         }
     }
 
-    public partial class Z_EditBase : ComponentBase {
+    public partial class Z_EditBase : ComponentBase, IAsyncDisposable {
         public bool IsNew { get; set; }
         private bool _committed;
         [Parameter] public int LocalCode { get; set; }
@@ -125,7 +125,10 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
             Entity = IsNew
                 ? (IZmstEntity)zm.CreateNewDataObj(ParentID)
                 : (IZmstEntity)zm.Get(LocalCode) ?? throw new Exception($"LocalCode={LocalCode} の Zmst がロードされていません。");
-            
+
+
+            await Entity.DataOpenAsync();
+
             // ★ DeepCopy を Entity にやらせる
             Entity.CreateWorkingMemory(WorkingRaw);
 
@@ -251,14 +254,18 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
         public async Task CloseAsync() {
             await OnClose.InvokeAsync();
         }
-        public async Task OnCloseHandler() {
-            // ★ ZmstEntity のクローズ処理を呼ぶ
-            if (Entity != null && (!IsNew || _committed)) 
+
+        private bool _closed; // 二重実行防止フラグ
+
+        public async ValueTask DisposeAsync() {
+            if (_closed) return;
+            _closed = true;
+
+            if (Entity != null && (!IsNew || _committed)) {
                 await Entity.DataCloseAsync();
+            }
 
-            Console.WriteLine($"Z_Edit(LocalCode={LocalCode}) が親により閉じられました。");
-
-            // 必要なら UI の後処理もここに書ける
+            Console.WriteLine($"Z_Edit(LocalCode={LocalCode}) が破棄（DisposeAsync）されました。");
         }
 
     }

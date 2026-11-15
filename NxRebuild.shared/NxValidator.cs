@@ -144,6 +144,7 @@ namespace NxRebuild.shared {
             return _workingRaw;
         }
 
+
         // ---------------------------------------------------------
         // Save
         // ---------------------------------------------------------
@@ -168,7 +169,6 @@ namespace NxRebuild.shared {
                     };
                 }
 
-                //データ名の確認
                 //データ名の確認
                 var row = mst.Rows[0];
                 var result = ValidateRename(

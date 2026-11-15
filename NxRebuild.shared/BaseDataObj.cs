@@ -211,6 +211,12 @@ namespace NxRebuild.shared {
         public string InfoTbl => _infoTbl;
         public string W_TblName => _w_tblName;
         public string[] W_DetailTblList => _w_detailTblList;
+        protected Dictionary<string, object?> _foreignKeys = new();
+
+        public Dictionary<string, object?> ForeignKeys {
+            get => _foreignKeys;
+            set => _foreignKeys = value ?? new();
+        }
 
         protected NxDataType _datatype;
         protected DateTime _update_at;
@@ -557,6 +563,45 @@ namespace NxRebuild.shared {
             }
         }
 
+
+        protected (
+            string WhereClause,
+            Dictionary<string, object> Param
+        )
+        BuildWhere(
+            IEnumerable<string>? cols = null) {
+            var param = new Dictionary<string, object>();
+
+            cols ??= _primaryTblPKList;
+
+            foreach (var col in cols.Distinct()) {
+                if (PrimaryPKDict.TryGetValue(col, out var pkVal)
+                    && pkVal != null) {
+                    param[col] = pkVal;
+                } else if (_rawData.TryGetValue(col, out var rawVal)
+                           && rawVal != null) {
+                    param[col] = rawVal;
+                } else {
+                    throw new Exception(
+                        $"BuildWhere ERROR: Missing value for '{col}'");
+                }
+            }
+
+            foreach (var fk in ForeignKeys) {
+                if (fk.Value != null)
+                    param[fk.Key] = fk.Value;
+            }
+
+            return (
+                string.Join(
+                    " AND ",
+                    param.Keys.Select(x => $@"""{x}"" = @{x}")
+                ),
+                param
+            );
+        }
+
+
         // ---------------------------------------------------------
         // サブテーブルの読み込み
         // （メモリ上にサブテーブルを保持したいときだけ使う。通常は使わない）
@@ -572,12 +617,12 @@ namespace NxRebuild.shared {
 
                 // ★ 親由来 PK のみ WHERE に使う
                 var parentPKs = pkCols.Where(pk =>
-                    PrimaryPKDict.ContainsKey(pk)   // ← これが最適解
+                    PrimaryPKDict.ContainsKey(pk)
                 ).ToArray();
 
-                var whereClause = string.Join(" AND ",
-                    parentPKs.Select(pk => $@"""{pk}"" = @{pk}")
-                );
+                var (whereClause, param) =
+                    BuildWhere(
+                        parentPKs);
 
                 string sql = $@"
                                 SELECT *
@@ -586,9 +631,9 @@ namespace NxRebuild.shared {
                             ";
 
                 // ★ PrimaryPKDict をそのまま使う（最適解）
-                var param = new Dictionary<string, object>();
-                foreach (var pk in parentPKs)
-                    param[pk] = PrimaryPKDict[pk]!;
+                //param = new Dictionary<string, object>();
+                //foreach (var pk in parentPKs)
+                //    param[pk] = PrimaryPKDict[pk]!;
 
                 // ★ 実行
                 var rawRows = await DBcon.QueryAsync<dynamic>(sql, param);
@@ -673,17 +718,17 @@ namespace NxRebuild.shared {
 
                 // ★ 親由来 PK のみ
                 var parentPKs = pkCols.Where(pk =>
-                    PrimaryPKDict.ContainsKey(pk)   
+                    PrimaryPKDict.ContainsKey(pk)
                 ).ToArray();
 
-                var dtlWhere = string.Join(" AND ",
-                    parentPKs.Select(pk => $@"""{pk}"" = @{pk}")
-                );
+                var (whereClause, _) =
+                    BuildWhere(parentPKs);
+
 
                 yield return (
                     dtl,
                     $@"SELECT * FROM ""{dtl}""
-                WHERE {dtlWhere}"
+                WHERE {whereClause}"
                 );
             }
         }
@@ -866,20 +911,15 @@ namespace NxRebuild.shared {
 
         protected virtual async Task<bool> _DeletePrimaryQueryExecAsync(IDbTransaction transaction) {
             try {
-                // ★ PK の WHERE 句を動的生成
-                var whereClause = string.Join(" AND ",
-                    _primaryTblPKList.Select(pk => $@"""{pk}"" = @{pk}")
-                );
+                // ★ PK FK の WHERE 句を動的生成
+                var (whereClause, param) =
+                    BuildWhere();
 
                 string sql = $@"
                                 DELETE FROM ""{_primaryTableName}""
                                 WHERE {whereClause};
                             ";
 
-                // ★ PrimaryPKDict をそのまま使う（最適解）
-                var param = new Dictionary<string, object>();
-                foreach (var pk in _primaryTblPKList)
-                    param[pk] = PrimaryPKDict[pk]!;
 
                 var rows = await DBcon.ExecuteAsync(sql, param, transaction);
 
@@ -909,9 +949,12 @@ namespace NxRebuild.shared {
         // 実装時は挙動に注意すること。
         protected virtual async Task<bool> _SoftDeletePrimaryQueryExecAsync(IDbTransaction transaction) {
             // ★ PK の WHERE 句を動的生成
-            var whereClause = string.Join(" AND ",
-                _primaryTblPKList.Select(pk => $@"""{pk}"" = @{pk}")
-            );
+            var (whereClause, param) =
+                BuildWhere();
+
+            // SoftDelete 固有の値
+            param["UpdateAt"] = DateTime.MaxValue;
+            param["LockedAt"] = DateTime.MinValue;
 
             string sql = $@"
                             UPDATE ""{_primaryTableName}""
@@ -920,15 +963,6 @@ namespace NxRebuild.shared {
                             WHERE {whereClause};
                         ";
 
-            // ★ PrimaryPKDict をそのまま使う（最適解）
-            var param = new Dictionary<string, object>();
-
-            foreach (var pk in _primaryTblPKList)
-                param[pk] = PrimaryPKDict[pk]!;   // rawData から正本化済み PK を取得
-
-            // SoftDelete 固有の値
-            param["UpdateAt"] = DateTime.MaxValue;
-            param["LockedAt"] = DateTime.MinValue;
 
             var rows = await DBcon.ExecuteAsync(sql, param, transaction);
 
@@ -962,13 +996,12 @@ namespace NxRebuild.shared {
 
                     // ★ 親由来 PK のみ抽出
                     var parentPKs = pkCols.Where(pk =>
-                        pk == TenantCodeCol || pk == IdColName
+                        pk == TenantCodeCol ||
+                        pk == IdColName
                     ).ToArray();
 
-                    // ★ WHERE は親 PK のみ
-                    var whereClause = string.Join(" AND ",
-                        parentPKs.Select(pk => $@"""{pk}"" = @{pk}")
-                    );
+                    var (whereClause, param) =
+                        BuildWhere(parentPKs);
 
                     string sql = $@"
                                         DELETE FROM ""{dtl}""
@@ -976,9 +1009,9 @@ namespace NxRebuild.shared {
                                     ";
 
                     // ★ PrimaryPKDict をそのまま使う（最適解）
-                    var param = new Dictionary<string, object>();
-                    foreach (var pk in parentPKs)
-                        param[pk] = PrimaryPKDict[pk]!;
+                    //var param = new Dictionary<string, object>();
+                    //foreach (var pk in parentPKs)
+                    //    param[pk] = PrimaryPKDict[pk]!;
 
                     await DBcon.ExecuteAsync(sql, param, transaction);
                 }
@@ -996,36 +1029,37 @@ namespace NxRebuild.shared {
             try {
                 // 1. サブテーブル（_w_detailTblList）の物理削除
                 if (_w_detailTblList != null && _w_detailTblList.Length > 0) {
-                    foreach (var dtl in _w_detailTblList) {
-                        if (!_detailTblPKList.TryGetValue(dtl, out var pkCols))
-                            throw new Exception($"_DeleteWorksAsync ERROR: PK not defined for detail table '{dtl}'");
+                    for (int i = 0; i < _w_detailTblList.Length; i++) {
+                        var dtl = _w_detailTblList[i];
 
+                        //  ワークテーブル名で引けない場合は正本側のテーブル名からフォールバック取得する
+                        if (!_detailTblPKList.TryGetValue(dtl, out var pkCols)) {
+                            if (_detailTableList != null && i < _detailTableList.Length) {
+                                _detailTblPKList.TryGetValue(_detailTableList[i], out pkCols);
+                            }
+                        }
+
+                        if (pkCols == null)
+                            throw new Exception($"_DeleteWorksAsync ERROR: PK not defined for detail table '{dtl}'");
                         // 親由来 PK のみ抽出（TenantCode または IdColName）
                         var parentPKs = pkCols.Where(pk =>
                             pk == TenantCodeCol || pk == IdColName
                         ).ToArray();
 
-                        var whereClause = string.Join(" AND ",
-                            parentPKs.Select(pk => $@"""{pk}"" = @{pk}")
-                        );
+
+                        var (whereClause, dtlParam) =
+                            BuildWhere(parentPKs);
 
                         string dtlSql = $@"
-                            DELETE FROM ""{dtl}""
-                            WHERE {whereClause}
-                        ";
+                                DELETE FROM ""{dtl}""
+                                WHERE {whereClause}
+                            ";
 
-                        var dtlParam = new Dictionary<string, object>();
-                        foreach (var pk in parentPKs) {
-                            if (PrimaryPKDict.TryGetValue(pk, out var val) && val != null) {
-                                dtlParam[pk] = val;
-                            } else if (_rawData.TryGetValue(pk, out var rawVal) && rawVal != null) {
-                                dtlParam[pk] = rawVal;
-                            } else {
-                                throw new Exception($"_DeleteWorksAsync ERROR: Missing primary key value for '{pk}'");
-                            }
-                        }
+                        await DBcon.ExecuteAsync(
+                            dtlSql,
+                            dtlParam,
+                            transaction);
 
-                        await DBcon.ExecuteAsync(dtlSql, dtlParam, transaction);
                     }
                 }
 
@@ -1070,26 +1104,13 @@ namespace NxRebuild.shared {
                 // 1. メインテーブルの複製（_primaryTableName → _w_tblName）
                 if (!string.IsNullOrEmpty(_primaryTableName) && !string.IsNullOrEmpty(_w_tblName)) {
                     // PK の WHERE 句を動的生成
-                    var priWhereClause = string.Join(" AND ",
-                        _primaryTblPKList.Select(pk => $@"""{pk}"" = @{pk}")
-                    );
+                    var (priWhereClause, priParam) = BuildWhere();
 
                     // 正本から該当レコードを全カラム取得するSQL
                     string selectPriSql = $@"
                         SELECT* FROM ""{ _primaryTableName}""
                         WHERE { priWhereClause};
                     ";
-
-                    var priParam = new Dictionary<string, object>();
-                    foreach (var pk in _primaryTblPKList) {
-                        if (PrimaryPKDict.TryGetValue(pk, out var val) && val != null) {
-                            priParam[pk] = val;
-                        } else if (_rawData.TryGetValue(pk, out var rawVal) && rawVal != null) {
-                            priParam[pk] = rawVal;
-                        } else {
-                            throw new Exception($"_InsertWorksAsync ERROR: Missing primary key value for '{pk}'");
-                        }
-                    }
 
                     // 正本からレコードを取得（DapperRow / 辞書 or 動的オブジェクト）
                     var recordObj = await DBcon.QueryFirstOrDefaultAsync<dynamic>(
@@ -1140,25 +1161,24 @@ namespace NxRebuild.shared {
                             pk == TenantCodeCol || pk == IdColName
                         ).ToArray();
 
-                        var dtlWhereClause = string.Join(" AND ",
-                            parentPKs.Select(pk => $@"""{pk}"" = @{pk}")
-                        );
+
+                        var (dtlWhereClause, dtlParam) =
+                            BuildWhere(parentPKs);
 
                         string selectDtlSql = $@"
                             SELECT* FROM ""{ srcTable}""
                             WHERE { dtlWhereClause};
                         ";
-
-                        var dtlParam = new Dictionary<string, object>();
-                        foreach (var pk in parentPKs) {
-                            if (PrimaryPKDict.TryGetValue(pk, out var val) && val != null) {
-                                dtlParam[pk] = val;
-                            } else if (_rawData.TryGetValue(pk, out var rawVal) && rawVal != null) {
-                                dtlParam[pk] = rawVal;
-                            } else {
-                                throw new Exception($"_InsertWorksAsync ERROR: Missing primary key value for detail '{pk}'");
-                            }
-                        }
+                        
+                        //foreach (var pk in parentPKs) {
+                        //    if (PrimaryPKDict.TryGetValue(pk, out var val) && val != null) {
+                        //        dtlParam[pk] = val;
+                        //    } else if (_rawData.TryGetValue(pk, out var rawVal) && rawVal != null) {
+                        //        dtlParam[pk] = rawVal;
+                        //    } else {
+                        //        throw new Exception($"_InsertWorksAsync ERROR: Missing primary key value for detail '{pk}'");
+                        //    }
+                        //}
 
                         var rows = await DBcon.QueryAsync<dynamic>(
                                                                     selectDtlSql,
@@ -1241,9 +1261,13 @@ namespace NxRebuild.shared {
                 var updateAt = DateTime.UtcNow;
 
                 // ★ PK の WHERE 句を動的生成
-                var whereClause = string.Join(" AND ",
-                    _primaryTblPKList.Select(pk => $@"""{pk}"" = @{pk}")
-                );
+                var (whereClause, pkParam) =
+                    BuildWhere();
+
+                var param = new Dictionary<string, object>(pkParam) {
+                    ["name"] = newName,
+                    ["update_at"] = updateAt
+                };
 
                 string sql = $@"
                                 UPDATE ""{_primaryTableName}""
@@ -1252,14 +1276,8 @@ namespace NxRebuild.shared {
                                 WHERE {whereClause};
                             ";
 
-                // ★ PK パラメータ辞書を作成（PrimaryPKDict を使う）
-                var param = new Dictionary<string, object> {
-                    ["name"] = newName,
-                    ["update_at"] = updateAt
-                };
 
-                foreach (var pk in _primaryTblPKList)
-                    param[pk] = PrimaryPKDict[pk]!;
+
 
                 var rows = await DBcon.ExecuteAsync(sql, param, dbTransaction);
 
@@ -1283,9 +1301,8 @@ namespace NxRebuild.shared {
         public virtual async Task _UpdatePropertiesFromTblAsync(IDbTransaction tran = null) {
             try {
                 // ★ PK の WHERE 句を動的生成
-                var whereClause = string.Join(" AND ",
-                    _primaryTblPKList.Select(pk => $@"""{pk}"" = @{pk}")
-                );
+                var (whereClause, param) =
+                    BuildWhere();
 
                 string sql = $@"
                                 SELECT *
@@ -1293,10 +1310,6 @@ namespace NxRebuild.shared {
                                 WHERE {whereClause};
                             ";
 
-                // ★ PrimaryPKDict をそのまま使う（最適解）
-                var param = new Dictionary<string, object>();
-                foreach (var pk in _primaryTblPKList)
-                    param[pk] = PrimaryPKDict[pk]!;
 
                 var record = await DBcon.QueryFirstOrDefaultAsync<dynamic>(sql, param, tran);
 
@@ -1432,11 +1445,8 @@ namespace NxRebuild.shared {
                 var uniquePKs = pkCols.Except(parentPKs).ToArray();
 
                 // 親ID等で絞り込むための WHERE 条件を構築
-                var parentWhere = string.Join(" AND ", parentPKs.Select(pk => $@"""{pk}"" = @{pk}"));
-                var param = new Dictionary<string, object>();
-                foreach (var pk in parentPKs) {
-                    param[pk] = PrimaryPKDict.TryGetValue(pk, out var val) && val != null ? val : _rawData[pk];
-                }
+                var (parentWhere, param) =
+                    BuildWhere(parentPKs);
 
                 // -----------------------------------------------------------------
                 // パターンA: subTables が null の場合
@@ -1680,25 +1690,12 @@ namespace NxRebuild.shared {
                 // 1. メインテーブルの反映（_w_tblName → _primaryTableName）
                 if (!string.IsNullOrEmpty(_w_tblName) && !string.IsNullOrEmpty(_primaryTableName)) {
                     // PK の WHERE 句を動的生成
-                    var priWhereClause = string.Join(" AND ",
-                        _primaryTblPKList.Select(pk => $@"""{pk}"" = @{pk}")
-                    );
+                    var (priWhereClause, priParam) = BuildWhere();
 
                     string selectWorkPriSql = $@"
                         SELECT * FROM ""{_w_tblName}""
                         WHERE {priWhereClause};
                     ";
-
-                    var priParam = new Dictionary<string, object>();
-                    foreach (var pk in _primaryTblPKList) {
-                        if (PrimaryPKDict.TryGetValue(pk, out var val) && val != null) {
-                            priParam[pk] = val;
-                        } else if (_rawData.TryGetValue(pk, out var rawVal) && rawVal != null) {
-                            priParam[pk] = rawVal;
-                        } else {
-                            throw new Exception($"SaveQueryExec ERROR: Missing primary key value for '{pk}'");
-                        }
-                    }
 
                     // ワーク側から該当レコードを取得
                     var recordObj = await DBcon.QueryFirstOrDefaultAsync<dynamic>(
@@ -1763,25 +1760,24 @@ namespace NxRebuild.shared {
                         // 親由来の PK のみ抽出
                         var parentPKs = pkCols.Where(pk => pk == TenantCodeCol || pk == IdColName).ToArray();
 
-                        var dtlWhereClause = string.Join(" AND ",
-                            parentPKs.Select(pk => $@"""{pk}"" = @{pk}")
-                        );
+                        var (dtlWhereClause, dtlParam) =
+                            BuildWhere(parentPKs);
 
                         string selectWorkDtlSql = $@"
                             SELECT * FROM ""{srcWorkTable}""
                             WHERE {dtlWhereClause};
                         ";
 
-                        var dtlParam = new Dictionary<string, object>();
-                        foreach (var pk in parentPKs) {
-                            if (PrimaryPKDict.TryGetValue(pk, out var val) && val != null) {
-                                dtlParam[pk] = val;
-                            } else if (_rawData.TryGetValue(pk, out var rawVal) && rawVal != null) {
-                                dtlParam[pk] = rawVal;
-                            } else {
-                                throw new Exception($"SaveQueryExec ERROR: Missing primary key value for detail '{pk}'");
-                            }
-                        }
+                        //var dtlParam = new Dictionary<string, object>();
+                        //foreach (var pk in parentPKs) {
+                        //    if (PrimaryPKDict.TryGetValue(pk, out var val) && val != null) {
+                        //        dtlParam[pk] = val;
+                        //    } else if (_rawData.TryGetValue(pk, out var rawVal) && rawVal != null) {
+                        //        dtlParam[pk] = rawVal;
+                        //    } else {
+                        //        throw new Exception($"SaveQueryExec ERROR: Missing primary key value for detail '{pk}'");
+                        //    }
+                        //}
 
                         // ワーク側の明細行を全取得
                         var rows = await DBcon.QueryAsync<dynamic>(
@@ -1922,14 +1918,7 @@ namespace NxRebuild.shared {
 
             try {
                 // ★ PK WHERE 句を動的生成
-                var whereClause = string.Join(" AND ",
-                    _primaryTblPKList.Select(pk => $@"""{pk}"" = @{pk}")
-                );
-
-                // ★ PrimaryPKDict をそのまま使う（最適解）
-                var pkParams = new Dictionary<string, object>();
-                foreach (var pk in _primaryTblPKList)
-                    pkParams[pk] = PrimaryPKDict[pk]!;
+                var (whereClause, pkParams) = BuildWhere();
 
                 // ============================================================
                 // ① doLock == true → ロック要求
@@ -2027,9 +2016,7 @@ namespace NxRebuild.shared {
         protected virtual async Task<LockStatus> LockedChkfromTblAsync() {
             try {
                 // ★ PK WHERE 句を動的生成
-                var whereClause = string.Join(" AND ",
-                    _primaryTblPKList.Select(pk => $@"""{pk}"" = @{pk}")
-                );
+                var (whereClause, param) = BuildWhere();
 
                 string sql = $@"
                                 SELECT
@@ -2040,10 +2027,6 @@ namespace NxRebuild.shared {
                                 WHERE {whereClause};
                             ";
 
-                // ★ PrimaryPKDict をそのまま使う（最適解）
-                var param = new Dictionary<string, object>();
-                foreach (var pk in _primaryTblPKList)
-                    param[pk] = PrimaryPKDict[pk]!;
 
                 var result = await DBcon.QueryFirstOrDefaultAsync<dynamic>(sql, param);
 

@@ -7,9 +7,11 @@ using NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View;
 using NxRebuild.Client.Services;
 using NxRebuild.shared;
 using System.Globalization;
+using System.Reflection.Metadata;
+using static Dapper.SqlMapper;
 
 namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
-    public class RyouriEditBase : ComponentBase {
+    public class RyouriEditBase : ComponentBase, IAsyncDisposable {
         [Parameter] public Guid Ry_Code { get; set; }     // Guid.Empty = 新規
         [Parameter] public Guid ParentID { get; set; }
         public bool IsNew { get; private set; }           // [Parameter] ではなくなる
@@ -57,11 +59,15 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
             RyData = IsNew
                 ? await CreateNewRyouriAsync(rm)
                 : (IRyLibEntity?)rm.Get(Ry_Code) ?? throw new Exception($"Ry_Code={Ry_Code} の料理データがロードされていません。");
-
+            
+            await RyData.DataOpenAsync();
+            
             RyData.CreateWorkingMemory(WorkingRaw);
             BuildZairyouOptions();
             RowMgr = new RyLibRowEntityMgr(RyData.DBcon, RyData.TenantCode, RyData.CurrUsrID);
-
+            RowMgr.ForeignKeys = new() {
+                ["Ry_Code"] = RyData.DataID
+            };
             if (!IsNew) {
                 var q = new RecordQuery();
                 q.And.Add(new Condition { Column = "Ry_Code", Operator = "=", Value = Ry_Code });
@@ -220,15 +226,34 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
             DraggingState<int>.DraggingGridItem = item;
         }
 
-        protected void DropRow(int targetIndex) {
+        protected async Task DropRow(int targetIndex) {
             var dragged = DraggingState<int>.DraggingGridItem;
             if (dragged == null) return;
 
             var sourceIndex = Rows.IndexOf(dragged);
 
-            // 別エディタからのドラッグ（あるいは新規複製挿入）の場合
+            // ★ 別エディタや別コンテキストからのドロップ（ItemData が別エンティティの場合など）
             if (sourceIndex < 0) {
-                // 必要に応じて複製・新規 Entity への変換処理を行う
+
+                // 2. RowMgr (RyLibRowEntityMgr) の ReceiveExecAsync() を実行して新しいエンティティを取り込む
+                if (RowMgr != null) {
+                    var receiveResult = await RowMgr.ReceiveDataAsync(dragged.ItemData);
+
+                    // ReceiveExecAsync で追加された、あるいは RowMgr の管理下に入った新しい Entity を取得して紐づけ直す
+                    // ※直近で追加された、あるいは該当する Entity を RowMgr.DataList から特定または新規生成して結びつける
+
+                    if (!receiveResult.Success)
+                        return;
+
+                    RyLibRowEntity newEntity = (RyLibRowEntity)RowMgr.Get(receiveResult.NewID);
+
+                    // または、RowMgr.DataList の末尾（あるいは適切な位置）に追加された最新のエンティティを紐づける場合：
+                    if (newEntity != null) {                        
+                        dragged = CreateDataObjFromEntity(newEntity);
+                        
+                    }
+                }
+
                 Rows.Insert(targetIndex, dragged);
             } else {
                 // 同一画面内での並び替え
@@ -246,6 +271,10 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
 
             // ドラッグ状態を解除
             DraggingState<int>.DraggingGridItem = null;
+
+            // 即DB反映（Flush）
+            await FlushRowsAsync();
+
             StateHasChanged();
         }
 
@@ -317,7 +346,17 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
             }
         }
 
+
         protected async Task OnRowFocusOut(MyDataObj<int> obj) {
+            if (_saving)
+                return;
+
+            if (!BoolOf(obj.ExtraData, "Dirty"))
+                return;
+
+            if (IntOf(obj.ExtraData, "LocalCode") == 0)
+                return;
+
             if (!BoolOf(obj.ExtraData, "Dirty")) return;
             if (IntOf(obj.ExtraData, "LocalCode") == 0) return;
             await SaveRowAsync(obj);
@@ -368,6 +407,19 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
         public async Task CloseAsync() {
             if (RyData != null && (!IsNew || _committed)) await RyData.DataCloseAsync();
             await OnClose.InvokeAsync();
+        }
+
+
+        private bool _closed; // 二重実行防止フラグ
+        public async ValueTask DisposeAsync() {
+            if (_closed) return;
+            _closed = true;
+
+            if (RyData != null && (!IsNew || _committed)) {
+                await RyData.DataCloseAsync();
+            }
+
+            Console.WriteLine($"RyouriEdit(RyCode={CurrentRyCode}) が破棄（DisposeAsync）されました。");
         }
     }
 }
