@@ -1,4 +1,4 @@
-﻿using System.Data;
+using System.Data;
 using Dapper;
 using NxRebuild.shared;
 
@@ -145,20 +145,24 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB.RyLib {
         }
 
         public override object SendData() {
-            var pk = PrimaryPKDict;
-            var where = string.Join(" AND ", _primaryTblPKList.Select(c =>
-                pk[c] is Guid ? $@"""{c}"" = '{pk[c]}'" : $@"""{c}"" = {pk[c]}"));
-
             return $@"
-                            ""sort_no"",
-                            ""Z_code"",
-                            ""LocalCode"",
-                            ""Syoumi"",
-                            ""Junbi"",
-                            ""tan_cd""
-                        FROM ""{_primaryTableName}""
-                        WHERE {where}";
+                            src.""sort_no"",
+                            src.""Z_code"",
+                            src.""LocalCode"",
+                            src.""Syoumi"",
+                            src.""Junbi"",
+                            src.""tan_cd""
+                        FROM (
+                            SELECT 
+                                {_rawData["sort_no"]} AS ""sort_no"",
+                                '{_rawData["Z_code"]}' AS ""Z_code"",
+                                {_rawData["LocalCode"]} AS ""LocalCode"",
+                                {_rawData["Syoumi"]} AS ""Syoumi"",
+                                {_rawData["Junbi"]} AS ""Junbi"",
+                                {_rawData["tan_cd"]} AS ""tan_cd""
+                        ) AS src";
         }
+
 
         public override async Task<NxOperationResult<int>>
         ReceiveExecAsync(object? sendData) {
