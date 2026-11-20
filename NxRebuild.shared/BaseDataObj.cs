@@ -171,10 +171,6 @@ namespace NxRebuild.shared {
             _w_tblName = meta.WorkPriTable;
             _w_detailTblList = Clean(meta.WorkDtlTblList);
             _datatype = meta.DataType;
-            if (_primaryTableName == "Ry_lib") {
-                Console.WriteLine(_datatype);
-                Console.WriteLine(_DataTypeColName);
-            }
         }
 
 
@@ -1247,8 +1243,6 @@ namespace NxRebuild.shared {
                                 FROM ""{_primaryTableName}""
                                 WHERE {whereClause};
                             ";
-                System.Diagnostics.Debug.WriteLine($"[DEBUG] SQL: {sql}");
-                System.Diagnostics.Debug.WriteLine($"[DEBUG] PARAMS: {System.Text.Json.JsonSerializer.Serialize(param)}");
 
                 var record = await DBcon.QueryFirstOrDefaultAsync<dynamic>(sql, param, tran);
 

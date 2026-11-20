@@ -96,15 +96,21 @@ namespace NxRebuild.Api.Controllers {
         }
 
         //Httpエンドポイントで必ず呼び出す事。
-        protected abstract Task CreateObjMgrAsync(RecordQuery query);
-        // { 派生先での実装例（_dataObjMgr の型は派生先に合わせて変更すること）
-        //   ※ ほぼコピペで使えるが、各コントローラ固有の ObjMgr を new する点だけ注意
-        //     // ★ユーザー情報を取得（JWT の tenant_code を含む）
-        //    await SetUserInfo();
-        //    EnsureConnection(); // ★ここで _db を開く
-        //    
+        protected virtual async Task CreateObjMgrAsync(RecordQuery query) {
+            await SetUserInfo();
+            EnsureConnection();
 
-        //}
+            Guid uid = (_userID == null || _userID == Guid.Empty)
+                ? Guid.Empty
+                : _userID.Value;
+
+            await InitializeNxApi();
+
+            _dataObjMgr = CreateMgrInstance(uid);
+            await _dataObjMgr.InitializeAsync(query);
+        }
+
+        protected abstract IsrvBaseDataObjMgr<T, TKey> CreateMgrInstance(Guid userId);
 
         [HttpGet("sync/{refreshedAt}")]
         public virtual async Task<IActionResult> SyncAll(

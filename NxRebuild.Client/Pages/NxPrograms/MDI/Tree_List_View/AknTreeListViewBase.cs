@@ -49,8 +49,73 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
         protected IBaseDataObjMgr<TObj, TKey>? DataMgr { get; set; }
         // ---------------------------------------------------------
 
+        private MyTreeData<TKey>? FindNodeById(IEnumerable<MyTreeData<TKey>> nodes, TKey targetId) {
+            foreach (var node in nodes) {
+                if (node.ItemData is IBaseDataObj<TKey> obj &&
+                    EqualityComparer<TKey>.Default.Equals(obj.DataID, targetId)) {
+                    return node;
+                }
+
+                var childMatch = FindNodeById(node.Children, targetId);
+                if (childMatch != null)
+                    return childMatch;
+            }
+
+            return null;
+        }
+
+        protected void RestoreSelectedFolder(TKey? previousFolderId) {
+            if (previousFolderId == null || EqualityComparer<TKey>.Default.Equals(previousFolderId, default)) {
+                SelectedFolder = FindRoot();
+                return;
+            }
+
+            var matchedNode = FindNodeById(TreeData, previousFolderId);
+            if (matchedNode?.ItemData is IBaseDataObj<TKey> folderObj) {
+                SelectedFolder = folderObj;
+            } else {
+                SelectedFolder = FindRoot();
+            }
+        }
+
         protected void SyncRefreshUI() {
-            InvokeAsync(StateHasChanged);
+            //選択済のフォルダがある場合はそのフォルダを再選択する
+            _ = InvokeAsync(() => {
+                var prevFolderId = SelectedFolder is IBaseDataObj<TKey> currentFolder
+                    ? currentFolder.DataID
+                    : default;
+
+                // GridDataItems 再構築前後に選択ID / 編集中IDを引き継ぐイメージ
+                var selectedIds = GridDataItems
+                    .Where(x => x.IsSelected && x.ItemData != null)
+                    .Select(x => x.ItemData!.DataID)
+                    .ToHashSet();
+
+                var editingRow = GridDataItems.FirstOrDefault(x => x.IsEditing && x.ItemData != null);
+                TKey? editingId = editingRow?.ItemData is IBaseDataObj<TKey> editObj
+                    ? editObj.DataID
+                    : default;
+
+                BuildTreeFromMgr();
+                RestoreSelectedFolder(prevFolderId);
+
+                if (SelectedFolder != null) {
+                    BuildGridFromFolder(SelectedFolder);
+                }
+
+                foreach (var row in GridDataItems) {
+                    if (row.ItemData == null) continue;
+
+                    if (selectedIds.Contains(row.ItemData.DataID)) {
+                        row.IsSelected = true;
+                    }
+                    if (editingId != null && EqualityComparer<TKey>.Default.Equals(row.ItemData.DataID, editingId)) {
+                        row.IsEditing = true;
+                        row.EditingName = row.ItemData.DataName;
+                    }
+                }
+                StateHasChanged();
+            });
         }
         // ノード選択イベントハンドラ
         public virtual void HandleNodeSelection(MyTreeData<TKey> selectedNode) {

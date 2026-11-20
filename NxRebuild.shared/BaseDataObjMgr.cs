@@ -653,21 +653,7 @@ namespace NxRebuild.shared {
             dataObj.DataID = _GenerateDataID();
             dataObj.ForeignKeys = ForeignKeys;
 
-            //if (_priymaryTableName == "Ry_lib") {
-            //    Console.WriteLine(dataObj.DataType);
-            //    Console.WriteLine(dataObj.DataID);
-
-            //    Console.WriteLine($"[DBG] Mgr={this.GetType().Name} Mgr.DataType={DataType} (set前)");
-            //    Console.WriteLine($"[DBG] HasColumn({_priymaryTableName},Type)={NxTypeMapper.HasColumn(_priymaryTableName, "Type")}");
-            //    Console.WriteLine($"[DBG] set前 obj.DataType={dataObj.DataType} raw[Type]={(dataObj._rawData.TryGetValue("Type", out var b) ? b?.ToString() + " (" + b?.GetType().Name + ")" : "キー無し")}");
-
-
-            //    dataObj.DataType = DataType;
-
-            //    Console.WriteLine($"[DBG] set後 obj.DataType={dataObj.DataType} raw[Type]={(dataObj._rawData.TryGetValue("Type", out var a) ? a?.ToString() + " (" + a?.GetType().Name + ")" : "キー無し")}");
-            //} else {
-                dataObj.DataType = DataType;
-            //}
+            dataObj.DataType = DataType;
 
             // DataID は仮で OK（保存時に確定でもいい）
             return dataObj;
@@ -765,7 +751,7 @@ namespace NxRebuild.shared {
             }
             // 1. ページング前の総件数を求めて query に直接書き込む
             if (query != null && query.PageSize > 0) {
-                string countSql = _BuildSql(query);
+                string countSql = _BuildCountSql(query);
                 query.TotalCount = await DBcon.ExecuteScalarAsync<int>(countSql, param);
             }
         
@@ -846,6 +832,32 @@ namespace NxRebuild.shared {
             }
 
             return string.Join(" ", sql);
+        }
+
+        // BaseDataObjMgr.cs の _BuildSql 付近に追加するヘルパー
+        public virtual string _BuildCountSql(RecordQuery? q) {
+            RecordQuery? countQuery = null;
+            if (q != null) {
+                countQuery = new RecordQuery {
+                    And = q.And,
+                    Or = q.Or,
+                    Keyword = q.Keyword,
+                    TargetIds = q.TargetIds,
+                    OrderBy = "",
+                    OrderDesc = false,
+                    PageIndex = 0,
+                    PageSize = 0
+                };
+            }
+
+            string baseSql = _BuildSql(countQuery);
+            // "SELECT * FROM ..." の先頭選択列だけを COUNT(*) に差し替える
+            const string selectPrefix = "SELECT *";
+            if (baseSql.StartsWith(selectPrefix, StringComparison.OrdinalIgnoreCase)) {
+                return "SELECT COUNT(*)" + baseSql.Substring(selectPrefix.Length);
+            }
+
+            return $"SELECT COUNT(*) FROM ({baseSql}) AS cnt_sub";
         }
 
 

@@ -22,32 +22,11 @@ namespace NxRebuild.Api.Controllers {
     [Route("RyLib")]
     public class RyLibController : NxDataController<RyLibEntity, Guid> {
 
-        protected override async Task CreateObjMgrAsync(RecordQuery q) {
 
-            await SetUserInfo();
-
-            EnsureConnection(); // _db を初期化（NxDataController側で定義）
-
-            Guid uid;
-
-            if (_userID == null || _userID == Guid.Empty) {
-                uid = Guid.Empty;   // anonymous 
-            } else {
-                uid = _userID.Value; // Guid? → Guid
-            }
-
-            // API初期化（共通化済み）
-            await InitializeNxApi();
-
-
-            // DataObjMgr を生成
-            _dataObjMgr = new RyLibEntityMgr(_db, _tenantCode, uid);
-
-            // DataObjMgr の初期化
-            await _dataObjMgr.InitializeAsync(q);
-
-            await Task.CompletedTask;
+        protected override IsrvBaseDataObjMgr<RyLibEntity, Guid> CreateMgrInstance(Guid userId) {
+            return new RyLibEntityMgr(_db, _tenantCode, userId);
         }
+
         protected override async Task<NxOperationResult<Guid>> BeforeDeleteProcess(
         IBaseDataObj<Guid> obj, IDbTransaction tran) {
             if (obj.DataType == NxDataType.Folder) {
