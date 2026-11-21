@@ -299,6 +299,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                 response = await Http.PostAsJsonAsync(url, postJson);
 
                 if (!response.IsSuccessStatusCode) {
+                    tran.Rollback();
                     if (response.StatusCode == HttpStatusCode.ServiceUnavailable) {
                         return new NxOperationResult<TKey> {
                             OperationErrorCode = NxOperationErrorCode.HttpError,
@@ -316,6 +317,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                     // ★ 応答を読む（JSON パース）
                     op = await response.Content.ReadFromJsonAsync<NxOperationResult<TKey>>();
                 } catch (Exception ex) {
+                    tran.Rollback();
                     Console.WriteLine("SyncBaseDataObj.SaveAsync RESPONSE PARSE ERROR:");
                     Console.WriteLine(ex.Message);
                     tran.Rollback();
@@ -366,7 +368,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
                 // ★ サーバー正史の RawData をローカルへ反映
                 if (op.RawData != null) {
-                    await UpdateDetailIDExec(newID, op.NewID, tran);
+                    await _UpdateDetailIDExec(newID, op.NewID, tran);
                     await UpdateRawDataToTbl(op.RawData, tran);
 
                     // =======================================================
@@ -416,14 +418,9 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         // 子テーブルの親IDを更新する。DELETEしないのでFKが壊れない。
         // 抽象化は子テーブルが1つの場合のみまで、それ以上はオーバーライドして
         // 子テーブルのアップデートを実装する
-        protected virtual async Task UpdateDetailIDExec(TKey oldID, TKey newID, IDbTransaction? tran) {
-            if (EqualityComparer<TKey>.Default.Equals(oldID, newID)) return;
-            foreach (var tbl in DetailTableList) {
-                string sql = $@"UPDATE ""{tbl}"" SET ""{IdColName}"" = @NewID
-                        WHERE ""{IdColName}"" = @OldID AND ""{TenantCodeCol}"" = @TenantCode;";
-                await DBcon.ExecuteAsync(sql, new { NewID = newID, OldID = oldID, TenantCode }, tran);
-            }
-        }
+        protected virtual async Task _UpdateDetailIDExec(TKey oldID, TKey newID, IDbTransaction? tran) 
+            => await _dataObj._UpdateDetailIDExec(oldID, newID, tran);
+        
 
 
 

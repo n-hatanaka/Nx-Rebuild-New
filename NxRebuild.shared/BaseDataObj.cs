@@ -1749,6 +1749,17 @@ namespace NxRebuild.shared {
             }
         }
 
+        // 子テーブルの親IDを更新する。DELETEしないのでFKが壊れない。
+        // 抽象化は子テーブルが1つの場合のみまで、それ以上はオーバーライドして
+        // 子テーブルのアップデートを実装する
+        public virtual async Task _UpdateDetailIDExec(TKey oldID, TKey newID, IDbTransaction? tran) {
+            if (EqualityComparer<TKey>.Default.Equals(oldID, newID)) return;
+            foreach (var tbl in DetailTableList) {
+                string sql = $@"UPDATE ""{tbl}"" SET ""{IdColName}"" = @NewID
+                        WHERE ""{IdColName}"" = @OldID AND ""{TenantCodeCol}"" = @TenantCode;";
+                await DBcon.ExecuteAsync(sql, new { NewID = newID, OldID = oldID, TenantCode }, tran);
+            }
+        }
         // =======================================================
         // 正本 Raw に反映
         // =======================================================

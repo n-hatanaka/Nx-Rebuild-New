@@ -889,42 +889,34 @@ namespace NxRebuild.shared {
 
 
         // 親子関係を設定する（新規作成の場合はUIがここに新しいDataObjを渡す。
+        // 既存データに親データが無い場合はrootを親にする。（同期途中での親データ欠落を想定）
         public virtual void SetParentAll() {
             var index = new Dictionary<TKey, IBaseDataObj<TKey>>(_dataList.Count);
             foreach (var x in _dataList)
-                index.TryAdd(x.DataID, x);        // 重複IDは先勝ち(FirstOrDefault と同じ挙動)
+                index.TryAdd(x.DataID, x);
 
+            var root = FindRoot();
             foreach (var obj in _dataList)
-                _SetParentCore(obj, id => index.TryGetValue(id, out var p) ? p : null);
+                _SetParentCore(obj, id => index.TryGetValue(id, out var p) ? p : null, root);
         }
-        public virtual void SetParent(IBaseDataObj<TKey> obj) =>      // 単発用(従来どおり)
-            _SetParentCore(obj, id => _dataList.FirstOrDefault(
-                x => EqualityComparer<TKey>.Default.Equals(x.DataID, id)));
 
-        private void _SetParentCore(IBaseDataObj<TKey> obj, Func<TKey, IBaseDataObj<TKey>?> find) {
+        public virtual void SetParent(IBaseDataObj<TKey> obj) =>
+            _SetParentCore(obj, id => _dataList.FirstOrDefault(
+                x => EqualityComparer<TKey>.Default.Equals(x.DataID, id)), FindRoot());
+
+        private IBaseDataObj<TKey>? FindRoot() =>
+            _dataList.FirstOrDefault(x => x.DataType == NxDataType.root);
+
+        private void _SetParentCore(IBaseDataObj<TKey> obj,
+                                    Func<TKey, IBaseDataObj<TKey>?> find,
+                                    IBaseDataObj<TKey>? root) {
             if (string.IsNullOrEmpty(obj.ParentIDColName)) { obj.ParentDataObj = null; return; }
 
             var pid = obj.ParentID;
             if (pid == null || obj.DataType == NxDataType.root) { obj.ParentDataObj = null; return; }
 
-            var parent = find(pid);
-            if (parent != null) {
-                obj.ParentDataObj = parent;
-            } else {
-                obj.ParentDataObj = null;
-                obj.ParentID = GetMinValue<TKey>();
-            }
-        }
-
-        //TKeyの最小値を返すメソッド。int.MinValueやGuid.Emptyなど、TKeyの型に応じて適切な最小値を返す。
-        public static TKey GetMinValue<TKey>() {
-            if (typeof(TKey) == typeof(int))
-                return (TKey)(object)int.MinValue;
-
-            if (typeof(TKey) == typeof(Guid))
-                return (TKey)(object)Guid.Empty; // UUIDv7 の最小値
-
-            throw new NotSupportedException("Unsupported TKey type.");
+            // 親が見つからなければ root にぶら下げる(ParentID は変更しない)
+            obj.ParentDataObj = find(pid) ?? root;
         }
 
 

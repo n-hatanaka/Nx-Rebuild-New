@@ -218,21 +218,30 @@
         SyncRyLibEntityMgr ryMgr,
         int chunkSize = 10)
     {
-        int chunkIndex = 0;
+        int ZmchunkIndex = 0;
+        int RychunkIndex = 0;
         bool zmstDone =false;
+        int zmSyncCnt = 0;
         bool ryDone = false;
+        int rySyncCnt = 0;
 
         DbState.Connection.Execute("PRAGMA foreign_keys = OFF;");
         while (!zmstDone || !ryDone)
         {
             if (!zmstDone)
             {
-                var res = await zmstMgr!.SyncPageAsync(chunkSize,chunkIndex);
-                if (!res.Success || res.Completed)
+                var res = await zmstMgr!.SyncPageAsync(chunkSize,ZmchunkIndex);
+                if (!res.Success)
                 {
-                    zmstDone = true;
-                    if (res.Success && res.Completed)
-                    {
+                    zmstDone = true;                       // 失敗: 定期同期は開始しない
+                }
+                else
+                {
+                    ZmchunkIndex++;
+                    zmSyncCnt += res.SyncedCount;
+                    if (ZmchunkIndex * chunkSize >= (res.TotalCount ?? 0))
+                    {   // 全ページ取得済み
+                        zmstDone = true;
                         GlobalState.ZmstScheduler?.Start();
                     }
                 }
@@ -242,18 +251,23 @@
 
             if (!ryDone)
             {
-                var res = await ryMgr!.SyncPageAsync(chunkSize,chunkIndex);
-                if (!res.Success || res.Completed)
+                var res = await ryMgr!.SyncPageAsync(chunkSize,RychunkIndex);
+                if (!res.Success)
                 {
-                    ryDone = true;
-                    if (res.Success && res.Completed)
-                    {
+                    ryDone = true;                       // 失敗: 定期同期は開始しない
+                }
+                else                
+                {
+                    RychunkIndex++;
+                    rySyncCnt += res.SyncedCount;
+                    if (RychunkIndex * chunkSize >= (res.TotalCount ?? 0))
+                    {   // 全ページ取得済み
+                        ryDone = true;
                         GlobalState.RyLibScheduler?.Start();
                     }
                 }
             }
 
-            chunkIndex++;
             await Task.Yield();
         }
         DbState.Connection.Execute("PRAGMA foreign_keys = ON;");

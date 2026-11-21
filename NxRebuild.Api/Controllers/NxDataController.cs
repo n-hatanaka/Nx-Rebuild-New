@@ -115,14 +115,25 @@ namespace NxRebuild.Api.Controllers {
         [HttpGet("sync/{refreshedAt}")]
         public virtual async Task<IActionResult> SyncAll(
             DateTime refreshedAt, 
-            [FromQuery] RecordQuery? query = null) 
+            [FromQuery] RecordQuery? query = null,
+            [FromQuery] string? ids = null) 
         {
             try {
                 var syncedAt = DateTime.UtcNow;   
                 
                 // query が渡されていない場合は新規インスタンスを作成
                 var q = query ?? new RecordQuery();
-        
+
+                if (!string.IsNullOrWhiteSpace(ids)) {
+                    var keyType = Nullable.GetUnderlyingType(typeof(TKey)) ?? typeof(TKey);
+                    foreach (var s in ids.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)) {
+                        object key = keyType == typeof(Guid)
+                            ? Guid.Parse(s)
+                            : Convert.ChangeType(s, keyType, System.Globalization.CultureInfo.InvariantCulture);
+                        q.TargetIds.Add(key);
+                    }
+                }
+
                 // ★ Recordクエリの条件（And/Or/TargetIds/Keyword）が空かどうかを判定
                 bool hasCustomQuery = q.And.Count > 0 || q.Or.Count > 0 || q.TargetIds.Count > 0 || !string.IsNullOrEmpty(q.Keyword);
         
@@ -139,6 +150,7 @@ namespace NxRebuild.Api.Controllers {
                         Operator = ">=",
                         Value = refreshedAt
                     });
+
                 }
         
                 // DataObjMgr を生成（ここで q が渡され、DBから条件に合ったデータおよび TotalCount が取得される）
@@ -172,17 +184,19 @@ namespace NxRebuild.Api.Controllers {
                         Data = json
                     });
                 }
-        
-                // q.TotalCount から総page数を取得
+
                 int totalCount = q.TotalCount > 0 ? q.TotalCount : 0;
-        
-                // レスポンスにページング情報（PageIndex, TotalCount）を含めて返す
+                int totalPages = q.PageSize > 0
+                    ? (int)Math.Ceiling(totalCount / (double)q.PageSize)
+                    : (totalCount > 0 ? 1 : 0);
+
                 return Ok(new NxOperationResult<TKey> {
                     SyncItems = items,
                     RefreshedAt = syncedAt.AddSeconds(-10),
                     Message = "Sync completed",
                     PageIndex = q.PageIndex,
-                    TotalPageCnt = totalCount
+                    TotalCount = totalCount,
+                    TotalPageCnt = totalPages
                 });
             } catch (Exception ex) {
                 return BadRequest(new NxOperationResult<TKey> {

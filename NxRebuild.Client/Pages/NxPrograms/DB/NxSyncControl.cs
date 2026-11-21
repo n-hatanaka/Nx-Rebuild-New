@@ -31,6 +31,35 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             return new SlotReleaser(_slot);
         }
 
+        public async Task WaitWhilePausedAsync(CancellationToken cancellationToken = default) {
+            while (Volatile.Read(ref _pauseCount) > 0) {
+                await Task.Delay(50, cancellationToken);
+            }
+        }
+
+        // ---- チャンク同期側（一時停止中なら解除を待ちつつ枠を取る） ----
+        //既存の TryBeginSync()（非ブロッキングで空き枠を取る）に加えて、
+        //バックグラウンドチャンク同期用に
+        //「一時停止（_pauseCount > 0）が解除されるのを待ちつつ実行枠を取る」
+        public async Task<IDisposable?> AcquireSyncSlotAsync(CancellationToken cancellationToken = default) {
+            while (!cancellationToken.IsCancellationRequested) {
+                while (Volatile.Read(ref _pauseCount) > 0) {
+                    await Task.Delay(50, cancellationToken);
+                }
+
+                await _slot.WaitAsync(cancellationToken);
+
+                if (Volatile.Read(ref _pauseCount) > 0) {
+                    _slot.Release();
+                    continue;
+                }
+
+                return new SlotReleaser(_slot);
+            }
+
+            return null;
+        }
+
         private sealed class Resumer : IDisposable {
             private NxSyncControl? _c;
             public Resumer(NxSyncControl c) => _c = c;

@@ -52,7 +52,8 @@ namespace NxRebuild.shared {
         public string Message { get; set; } = string.Empty;
         // ★ ページング制御用に持たせる情報
         public int PageIndex { get; set; } = 0;
-        public int TotalPageCnt { get; set; } = 0;
+        public int TotalCount { get; set; } = 0;      //  条件に合う総件数
+        public int TotalPageCnt { get; set; } = 0;    // 総ページ数(件数ではない)
         // Save / Rename
         public TKey? NewID { get; set; }
         public string UpdateAt { get; set; } = string.Empty;

@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Data.Sqlite;
 using Npgsql;
 using NxRebuild.Client.Pages.Auth;
+using NxRebuild.Client.Services;
 using NxRebuild.shared;
 using System.Data;
 using System.Net;
@@ -25,7 +26,13 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         where TBase : BaseDataObj<TKey>
         where TSync : SyncBaseDataObj<TKey> {
         event Action? DataChanged;
+        Task<NxChunkSyncResult<TKey>> SyncAllChunksAsync(int chunkSize = 100, int startPageIndex = 0, CancellationToken cancellationToken = default);
+        Task<NxChunkSyncResult<TKey>> SyncPageAsync(
+                                                            int chunkSize = 100,
+                                                            int pageIndex = 0,
+                                                            CancellationToken cancellationToken = default);
         Task<NxOperationResult<TKey>> SyncData();
+        Task<NxOperationResult<TKey>> SyncOnDemandAsync(IEnumerable<TKey> targetIds);
     }
 
     public interface INotifyDataChanged {
@@ -77,7 +84,6 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
             set => _baseDataObjMgr.PrimaryPKDict = value;
         }
 
-        protected readonly SemaphoreSlim _syncSemaphore = new(1, 1);
         protected volatile bool _onDemandRequested;
         protected DateTime? _syncRefreshedAtUtc;
 
@@ -128,6 +134,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
             if (!string.IsNullOrEmpty(syncObj.NameColName)) {
                 workingRaw[syncObj.NameColName] = folderName;
+                
 
                 var result = await syncObj.SaveAsync(workingRaw);
                 if (!result.Success) {
@@ -239,114 +246,96 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         }
 
         /// <summary>
-        /// 指定ページ単位のチャンクで同期を実行する（バックグラウンド同期向け）。
+        /// 指定されたIDリストを対象にオンデマンド同期を実行する。
+        /// </summary>
+        public virtual async Task<NxOperationResult<TKey>> SyncOnDemandAsync(IEnumerable<TKey> targetIds) {
+            var ids = targetIds?
+                .Where(id => id != null)
+                .Distinct()
+                .Cast<object>()
+                .ToList() ?? new List<object>();
+
+            //成功扱い
+            if (ids.Count == 0) {
+                return new NxOperationResult<TKey> {
+                    Message = "同期対象のIDがありません"
+                };
+            }
+
+            RequestOnDemandInterrupt();
+            try {
+                using var slot = await NxSyncControl.For(DBcon).AcquireSyncSlotAsync();
+                if (slot == null) return new NxOperationResult<TKey> { Message = "キャンセルされました" };
+                return await SyncDataCore(new RecordQuery { TargetIds = ids });
+            } finally {
+                ClearOnDemandInterrupt();
+            }
+        }
+
+        /// <summary>
+        /// 指定ページ単位のチャンクで同期を実行する（バックグラウンド同期、ページ遷移型アプリ向け）。
+        /// 同期済の件数は返せないため呼び出しもとで管理する事
         /// </summary>
         public virtual async Task<NxChunkSyncResult<TKey>> SyncPageAsync(
                                                             int chunkSize = 100,
                                                             int pageIndex = 0,
                                                             CancellationToken cancellationToken = default) {
 
-            if (chunkSize <= 0)
-                chunkSize = 100;
+            if (chunkSize <= 0) chunkSize = 100;
+            int currentPage = Math.Max(pageIndex, 0);
 
-            if (pageIndex < 0)
-                pageIndex = 0;
-
-            DateTime startedAtUtc = DateTime.UtcNow;
-            int currentPage = pageIndex;
-            int? totalCount = null;
-
-            if (cancellationToken.IsCancellationRequested) {
-                return new NxChunkSyncResult<TKey> {
-                    Success = false,
-                    Completed = false,
-                    InterruptedByOnDemand = false,
-                    NextPageIndex = currentPage,
-                    SyncedCount = 0,
+            NxChunkSyncResult<TKey> Result(
+                bool success, string message,
+                bool completed = false, 
+                bool interrupted = false,
+                int nextPage = -1, 
+                int syncedCount = 0, 
+                int totalCount = 0) => new() {
+                    Success = success,
+                    Completed = completed,
+                    InterruptedByOnDemand = interrupted,
+                    NextPageIndex = nextPage < 0 ? currentPage : nextPage,
+                    SyncedCount = syncedCount,
                     TotalCount = totalCount,
                     RefreshedAt = _syncRefreshedAtUtc,
-                    Message = "キャンセルされました"
+                    Message = message
                 };
-            }
 
-            if (_onDemandRequested) {
-                return new NxChunkSyncResult<TKey> {
-                    Success = true,
-                    Completed = false,
-                    InterruptedByOnDemand = true,
-                    NextPageIndex = currentPage,
-                    SyncedCount = 0,
-                    TotalCount = totalCount,
-                    RefreshedAt = _syncRefreshedAtUtc,
-                    Message = "オンデマンド同期要求のためチャンク同期を一時中断しました"
-                };
-            }
+            if (cancellationToken.IsCancellationRequested)
+                return Result(false, "キャンセルされました");
 
-            await Task.Yield();
+            if (_onDemandRequested)
+                return Result(true, "オンデマンド同期要求のためチャンク同期を一時中断しました", interrupted: true);
+       
 
+            // 一時停止の解除待ちと枠の確保は AcquireSyncSlotAsync がまとめて行う
+            // (TryBeginSync を使う SyncData だと、枠が埋まっているときにスキップされてしまう)
             NxOperationResult<TKey> chunkResult;
-
-            await _syncSemaphore.WaitAsync(cancellationToken);
             try {
-                var query = new RecordQuery {
+                using var slot = await NxSyncControl.For(DBcon).AcquireSyncSlotAsync(cancellationToken);
+                if (slot == null)
+                    return Result(false, "キャンセルされました");
+
+                chunkResult = await SyncDataCore(new RecordQuery {
                     PageIndex = currentPage,
                     PageSize = chunkSize
-                };
-
-                chunkResult = await SyncData(query);
-            } finally {
-                _syncSemaphore.Release();
+                });
+            } catch (OperationCanceledException) {
+                return Result(false, "キャンセルされました");
             }
 
-            if (!chunkResult.Success) {
-                return new NxChunkSyncResult<TKey> {
-                    Success = false,
-                    Completed = false,
-                    InterruptedByOnDemand = false,
-                    NextPageIndex = currentPage,
-                    SyncedCount = 0,
-                    TotalCount = totalCount,
-                    RefreshedAt = _syncRefreshedAtUtc,
-                    Message = chunkResult.Message
-                };
-            }
+            if (!chunkResult.Success)
+                return Result(false, chunkResult.Message);
 
-            int fetchedCount = chunkResult.SyncItems?.Count ?? 0;
+            // PageIndex は0始まり、TotalPageCnt は総ページ数
+            bool completed = currentPage + 1 >= chunkResult.TotalPageCnt;
 
-            if (chunkResult.TotalPageCnt > 0) {
-                totalCount = chunkResult.TotalPageCnt;
-            }
-
-            int nextPage = currentPage + 1;
-
-            // すでに取得済み件数基準で判定するなら、呼び出し元または管理フィールドで累計を保持する
-            bool hasMore = totalCount.HasValue
-                ? (nextPage * chunkSize) < totalCount.Value && fetchedCount > 0
-                : fetchedCount >= chunkSize;
-
-            if (!hasMore) {
-                return new NxChunkSyncResult<TKey> {
-                    Success = true,
-                    Completed = true,
-                    InterruptedByOnDemand = false,
-                    NextPageIndex = nextPage,
-                    SyncedCount = fetchedCount,
-                    TotalCount = totalCount,
-                    RefreshedAt = _syncRefreshedAtUtc,
-                    Message = "Chunk sync completed"
-                };
-            }
-
-            return new NxChunkSyncResult<TKey> {
-                Success = true,
-                Completed = false,
-                InterruptedByOnDemand = false,
-                NextPageIndex = nextPage,
-                SyncedCount = fetchedCount,
-                TotalCount = totalCount,
-                RefreshedAt = _syncRefreshedAtUtc,
-                Message = "Page sync step completed"
-            };
+            return Result(true,
+                completed ? "Page sync completed" : "Page sync step completed",
+                completed: completed,
+                nextPage: completed ? currentPage : currentPage + 1,
+                syncedCount: chunkResult.SyncItems?.Count ?? 0,
+                totalCount: chunkResult.TotalCount);
         }
 
 
@@ -354,97 +343,44 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         /// 全ページをページ単位のチャンクで同期を実行する（バックグラウンド同期向け）。
         /// </summary>
         public virtual async Task<NxChunkSyncResult<TKey>> SyncAllChunksAsync(
-            int chunkSize = 100,
-            int startPageIndex = 0,
-            CancellationToken cancellationToken = default) {
+            int chunkSize = 100, int startPageIndex = 0, CancellationToken cancellationToken = default) {
 
-            if (chunkSize <= 0)
-                chunkSize = 100;
-
-            if (startPageIndex < 0)
-                startPageIndex = 0;
-
-            DateTime startedAtUtc = DateTime.UtcNow;
-            int currentPage = startPageIndex;
-            int totalSyncedCount = 0;
+            if (chunkSize <= 0) chunkSize = 100;
+            int currentPage = Math.Max(startPageIndex, 0);
+            int totalSynced = 0;
             int? totalCount = null;
 
-            while (!cancellationToken.IsCancellationRequested) {
-                if (_onDemandRequested) {
-                    return new NxChunkSyncResult<TKey> {
-                        Success = true,
-                        Completed = false,
-                        InterruptedByOnDemand = true,
-                        NextPageIndex = currentPage,
-                        SyncedCount = totalSyncedCount,
-                        TotalCount = totalCount,
-                        RefreshedAt = _syncRefreshedAtUtc,
-                        Message = "オンデマンド同期要求のためチャンク同期を一時中断しました"
-                    };
-                }
+            NxChunkSyncResult<TKey> Result(bool success, bool completed, bool interrupted, string message) => new() {
+                Success = success,
+                Completed = completed,
+                InterruptedByOnDemand = interrupted,
+                NextPageIndex = currentPage,
+                SyncedCount = totalSynced,
+                TotalCount = totalCount,
+                RefreshedAt = _syncRefreshedAtUtc,
+                Message = message
+            };
 
+            while (!cancellationToken.IsCancellationRequested) {
                 var step = await SyncPageAsync(chunkSize, currentPage, cancellationToken);
 
-                totalSyncedCount += step.SyncedCount;
-                if (step.TotalCount.HasValue) {
-                    totalCount = step.TotalCount;
-                }
+                totalSynced += step.SyncedCount;
+                if (step.TotalCount.HasValue) totalCount = step.TotalCount;
 
-                if (!step.Success) {
-                    return new NxChunkSyncResult<TKey> {
-                        Success = false,
-                        Completed = false,
-                        InterruptedByOnDemand = false,
-                        NextPageIndex = currentPage,
-                        SyncedCount = totalSyncedCount,
-                        TotalCount = totalCount,
-                        RefreshedAt = _syncRefreshedAtUtc,
-                        Message = step.Message
-                    };
-                }
+                if (!step.Success)
+                    return Result(false, false, false, step.Message);
 
-                if (step.InterruptedByOnDemand) {
-                    return new NxChunkSyncResult<TKey> {
-                        Success = true,
-                        Completed = false,
-                        InterruptedByOnDemand = true,
-                        NextPageIndex = step.NextPageIndex,
-                        SyncedCount = totalSyncedCount,
-                        TotalCount = totalCount,
-                        RefreshedAt = _syncRefreshedAtUtc,
-                        Message = step.Message
-                    };
-                }
+                if (step.InterruptedByOnDemand)                 // 同じページから再開できるよう currentPage はそのまま
+                    return Result(true, false, true, step.Message);
 
                 currentPage = step.NextPageIndex;
 
-                if (step.Completed) {
-
-                    return new NxChunkSyncResult<TKey> {
-                        Success = true,
-                        Completed = true,
-                        InterruptedByOnDemand = false,
-                        NextPageIndex = currentPage,
-                        SyncedCount = totalSyncedCount,
-                        TotalCount = totalCount,
-                        RefreshedAt = _syncRefreshedAtUtc,
-                        Message = "Chunk sync completed"
-                    };
-                }
+                if (step.Completed)
+                    return Result(true, true, false, "Chunk sync completed");
 
                 await Task.Yield();
             }
-
-            return new NxChunkSyncResult<TKey> {
-                Success = false,
-                Completed = false,
-                InterruptedByOnDemand = false,
-                NextPageIndex = currentPage,
-                SyncedCount = totalSyncedCount,
-                TotalCount = totalCount,
-                RefreshedAt = _syncRefreshedAtUtc,
-                Message = "キャンセルされました"
-            };
+            return Result(false, false, false, "キャンセルされました");
         }
 
 
@@ -465,6 +401,10 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         // 3. Core 側の処理でクエリをシリアライズ、あるいは URL/クエリパラメータとしてサーバーに投げる
         protected virtual async Task<NxOperationResult<TKey>> SyncDataCore(RecordQuery? query = null) {
             DateTime refreshed_at = Refreshed_at;
+            if (query != null)
+                refreshed_at = DateTime.MinValue;
+
+
             var url = $"{ApiRoute}/sync/{refreshed_at:O}";
             var isQueried = false;
             // もし query があれば、ページング情報などをクエリパラメータとして付与する
@@ -472,13 +412,13 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                 var queryParams = new List<string>();
                 if (query.PageIndex > 0) queryParams.Add($"pageIndex={query.PageIndex}");
                 if (query.PageSize > 0) queryParams.Add($"pageSize={query.PageSize}");
-                
-                if (queryParams.Count > 0) {
-                    url += "?" + string.Join("&", queryParams);
-                    isQueried = true;
-                }
+                if (query.TargetIds is { Count: > 0 })
+                    queryParams.Add("ids=" + string.Join(",", query.TargetIds));
+
+                isQueried = true;   // query があれば常に「絞り込み同期」扱い
+                if (queryParams.Count > 0) url += "?" + string.Join("&", queryParams);
             }
-        
+
             HttpResponseMessage response = await _http.GetAsync(url);
         
             if (!response.IsSuccessStatusCode) {
@@ -515,7 +455,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
             try {
                 var index = _baseDataObjMgr.BuildGetIndex();      // ループの前に1回だけ
-
+                var n = 0;
                 foreach (var item in syncResult.SyncItems) {
                     index.TryGetValue(item.DataId, out var target);
 
@@ -551,10 +491,9 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
                         await _baseDataObjMgr._DeleteDataObjFromListAsync(target.DataID, false, tran);
                     }
+                    // UIへ処理を譲る（ WASM では Task.Yield だと描画されないことがある）
+                    if (++n % 50 == 0) await Task.Delay(1);
                 }
-                // 条件指定なしの通常同期（またはページング同期）のときだけ基準時刻を更新する例
-
-
                 tran.Commit();
             } catch (Exception ex) {
                 tran.Rollback();
@@ -572,11 +511,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
 
             try {
-                 // 絞り込み条件プロパティがあれば判定
-                if (!isQueried && (syncResult.RefreshedAt != null)) {
-                    _syncRefreshedAtUtc = syncResult.RefreshedAt;
-                }
-
+                _syncRefreshedAtUtc = syncResult.RefreshedAt;               
                 DataChanged?.Invoke(); 
             } catch (Exception ex) { 
                 return new NxOperationResult<TKey> {
@@ -589,6 +524,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                 Message = "Sync completed",
                 RefreshedAt = syncResult.RefreshedAt,
                 SyncItems = syncResult.SyncItems,
+                TotalCount = syncResult.TotalCount,
                 TotalPageCnt = syncResult.TotalPageCnt
             };
         }

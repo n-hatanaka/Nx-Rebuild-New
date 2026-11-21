@@ -52,7 +52,11 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
             set => WorkingRaw["Rymemo"] = value;
         }
 
+        private ISyncZmstEntityMgr? _zmstMgr; // または SyncZmstEntityMgr?
         protected override async Task OnInitializedAsync() {
+            var zm = GlobalState.ZmstEntityMgr as ISyncZmstEntityMgr;
+
+
             var rm = GlobalState.RyLibEntityMgr ?? throw new Exception("RyLibEntityMgr が初期化されていません。");
             IsNew = Ry_Code == Guid.Empty;
 
@@ -63,7 +67,6 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
             await RyData.DataOpenAsync();
             
             RyData.CreateWorkingMemory(WorkingRaw);
-            BuildZairyouOptions();
             RowMgr = new RyLibRowEntityMgr(RyData.DBcon, RyData.TenantCode, RyData.CurrUsrID);
             RowMgr.ForeignKeys = new() {
                 ["Ry_Code"] = RyData.DataID
@@ -73,11 +76,47 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
                 q.And.Add(new Condition { Column = "Ry_Code", Operator = "=", Value = Ry_Code });
                 await RowMgr.InitializeAsync(q);
 
+                var missingIds = new List<int>();
+
+                if (zm != null) {
+                    foreach (var row in RowMgr.DataList.OfType<RyLibRowEntity>()) {
+                        // row.LocalCode が未取得ならリストに積む（重複は除外）
+                        if (row.LocalCode > 0 && zm.Get(row.LocalCode) == null && !missingIds.Contains(row.LocalCode)) {
+                            missingIds.Add(row.LocalCode);
+                        }
+                    }
+                }
+
+                if (missingIds.Count > 0 && zm != null) {
+                    var result = await zm.SyncOnDemandAsync(missingIds);
+
+                }
+
+                BuildZairyouOptions();
                 foreach (var e in RowMgr.DataList.OfType<RyLibRowEntity>().OrderBy(r => r.SortNo)) {
                     var obj = CreateDataObjFromEntity(e);
                     Rows.Add(obj);
                 }
+
             }
+            // Zmst の変更通知を購読（Initializeの最後に入れないと、初期化時のデータ変更通知で BuildZairyouOptions() が呼ばれてしまう）
+            SubscribeZmst();            
+        }
+
+        private void SubscribeZmst() {
+            var zm = GlobalState.ZmstEntityMgr as ISyncZmstEntityMgr;
+            if (zm == null || _zmstMgr == zm) return;
+            if (_zmstMgr != null) _zmstMgr.DataChanged -= HandleZmstDataChanged;
+            _zmstMgr = zm;
+            _zmstMgr.DataChanged += HandleZmstDataChanged;
+        }
+
+
+        private void HandleZmstDataChanged() {
+            _ = InvokeAsync(() => {
+                BuildZairyouOptions();
+                StateHasChanged();
+            });
         }
 
         // FrmRyLibViewBase にあった処理をそのまま移設(登録はしない)
@@ -424,6 +463,11 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
 
             if (RyData != null && (!IsNew || _committed)) {
                 await RyData.DataCloseAsync();
+            }
+            //イベント解除
+            if (_zmstMgr != null) {
+                _zmstMgr.DataChanged -= HandleZmstDataChanged;
+                _zmstMgr = null;
             }
 
             Console.WriteLine($"RyouriEdit(RyCode={CurrentRyCode}) が破棄（DisposeAsync）されました。");
