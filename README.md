@@ -8,8 +8,8 @@ based on the Nexus UI–DB Transformation Architecture
 
 **This project is provided under the Nexus Transformation License 1.0  
 (Non-Commercial & Commercial Dual License).  
-Commercial use requires a separate commercial license agreement.  
-Please refer to the LICENSE file for details.**
+Commercial use requires a separate commercial license agreement or enrollment in the designated GitHub Sponsors program.  
+Please refer to the `LICENSE` file for details.**
 
 This repository uses the open data published by the Ministry of Education, Culture, Sports, Science and Technology (MEXT) in Japan:  
 “Standard Tables of Food Composition in Japan.”  
@@ -86,27 +86,6 @@ Even huge systems maintain structural stability and loose coupling.
 
 ---
 
-# Usage (Quick Guide)
-
-1. Load the server schema on the client  
-   → Build an in-memory DB (WASM recommended) with the same schema
-
-2. Copy the base classes from the `/Shared` folder  
-   - BaseDataObj  
-   - BaseDataObjMgr
-
-3. Use synchronization wrappers  
-   - SyncBaseDataObj  
-   - SyncBaseDataObjMgr
-
-4. On the server, inherit from NxDataController  
-   → CRUD/API is completed by creating derived classes
-
-5. UI directly handles DataObj  
-   → WASM UI achieves complete isomorphism with the local DB
-
----
-
 # Target Users
 
 - Individual developers  
@@ -152,7 +131,7 @@ the following properties hold:
 
 - Nx Architecture can be used regardless of runtime environment  
 - Full CRUD operation with or without synchronization  
-- Entity abstraction via BaseDataObj / BaseDataObjMgr  
+- Entity abstraction via `BaseDataObj` / `BaseDataObjMgr`  
 - UI abstraction that handles **collections of multiple entities**  
 - Safe client-side autonomous CRUD for entities  
 - Easy implementation of copy/paste operations  
@@ -167,8 +146,9 @@ the following properties hold:
 
 # Divergence Oscillation Model
 
-The Divergence Oscillation Model is an abstract model  
-for safely handling differences when client and server states  
+The Divergence Oscillation Model is an architecture designed to  
+**“share identical DB schemas and identical class structures between client and server, completely unifying synchronization and local operations,”**  
+and serves as an abstract model for safely handling differences when client and server states  
 **diverge**.
 
 In practice:
@@ -192,9 +172,9 @@ even in distributed environments.
 
 This structure is supported by:
 
-- BaseDataObj  
-- BaseDataObjMgr  
-- Sync wrappers  
+- `BaseDataObj`  
+- `BaseDataObjMgr`  
+- `Sync` wrappers  
 - Homomorphic interface structures  
 
 ---
@@ -206,7 +186,7 @@ that allows UI developers and application logic developers
 to treat distributed environments as a **single computer**.
 
 Distributed failures (sync drift, ordering collapse, retries, partial failures)  
-are absorbed by BaseDataObj / SyncBaseDataObj,  
+are absorbed by `BaseDataObj` / `SyncBaseDataObj`,  
 so UI developers do not need to handle distributed complexity.
 
 Network outages, DB failures, and server downtime  
@@ -217,7 +197,6 @@ As a result:
 
 - UI developers can build applications as if handling a single computer  
 - Network engineers only need to work within the limited scope  
-  of SyncBaseDataObj  
+  of `SyncBaseDataObj`  
 
 This structural separation is the core of Nx Architecture.
-

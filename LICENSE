@@ -10,14 +10,14 @@ developers and non-commercial purposes.
 ----------------------------------------------------------------------
 Nx Architecture may be used free of charge under the following conditions:
 
-- Use by individual developers
+- Non-commercial use by individual developers (personal use, learning, free/open-source releases, etc.)
 - Use for non-commercial purposes
 - Use for academic research or educational purposes
 - Use in non-commercial OSS projects
 
-※ Even individual developers are considered “commercial users” when applying this
-   architecture in commissioned work, contract development, or any paid service
-   provided to corporations or organizations.
+※ Even individual developers are considered “commercial users” when providing paid
+   services or products, or when applying this architecture in commissioned work,
+   contract development, or paid engagements for corporations or organizations.
 
 ----------------------------------------------------------------------
 2. Evaluation and Proof-of-Concept (PoC)
@@ -33,7 +33,7 @@ as non-commercial under the following conditions:
 ※ Individual developers may evaluate without time restrictions.
 
 ----------------------------------------------------------------------
-3. Commercial Use (Corporations / Organizations)
+3. Commercial Use (Corporations / Sole Proprietors / Individuals)
 ----------------------------------------------------------------------
 The following activities constitute commercial use and require either a separate
 commercial license or enrollment in the designated GitHub Sponsors program:
@@ -45,8 +45,9 @@ commercial license or enrollment in the designated GitHub Sponsors program:
 - Commercial implementations using Nx Architecture
 - PoC or evaluation exceeding 30 days
 - Commercial implementations using Nx Architecture specifications or abstract models
-- Use by corporations or for-profit entities for business operations
-  (including internal tools and internal workflow systems)
+- Use by corporations, for-profit entities, or individuals for business activities,
+  revenue-generating purposes, or business operations (including internal tools and
+  internal workflow systems)
 
 [Author Obligations]
 The Author provides the following assurances to the Licensee:
@@ -67,7 +68,7 @@ These obligations apply only during the term of a commercial use agreement or an
   to be used commercially after termination.
 - Continued commercial use requires renewed sponsorship or a new commercial license.
 
-[GitHub Sponsors (Corporate Plans)]
+[GitHub Sponsors (For Commercial Use)]
 Tier A (Gold Sponsor) — ¥50,000 / month
 - Full exemption from commercial licensing
 - Large logo displayed at the top of the README
@@ -90,7 +91,7 @@ Separate contracts will be established depending on corporate scale and usage ty
 4. Specifications and Abstract Models
 ----------------------------------------------------------------------
 The specifications of Nx Architecture, its abstract model known as the Divergence
-Oscillation Model, and the architecture used to operate it (Nexsus UI–DB Transformation
+Oscillation Model, and the architecture used to operate it (Nexus UI–DB Transformation
 Architecture) are treated as copyrighted works under this license.
 
 - Specification review, analysis, and academic research are permitted as non-commercial use.
@@ -100,12 +101,12 @@ However, commercial implementations using the specifications or abstract models,
 or commercial use of Nx Architecture’s implementation (code or internal structure),
 are subject to the commercial-use provisions of this license.
 
-[Prohibition of Clean-Room Reimplementation]
-Any person who agrees to this license and views or uses this software or its specifications /
-internal structures is prohibited from independently developing, clean-room reimplementing,
-or providing software for commercial purposes that possesses functionality substantially
-identical or equivalent to the design philosophy or abstract models of this software
-(including the Divergence Oscillation Model and UI–DB node structures).
+[Prohibition of Competing Software and Imitation]
+Any person who views or uses the source code, architectural diagrams, or documentation
+of this software is prohibited from developing a competing software or framework that
+reproduces, adapts, or appropriates substantially identical design structures of this
+software (in whole or in part), and from commercially providing or redistributing such
+software to third parties.
 
 ----------------------------------------------------------------------
 5. Prohibited Actions
