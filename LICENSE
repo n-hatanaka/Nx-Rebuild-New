@@ -90,23 +90,25 @@ Separate contracts will be established depending on corporate scale and usage ty
 ----------------------------------------------------------------------
 4. Specifications and Abstract Models
 ----------------------------------------------------------------------
-The specifications of Nx Architecture, its abstract model known as the Divergence
-Oscillation Model, and the architecture used to operate it (Nexus UI–DB Transformation
-Architecture) are treated as copyrighted works under this license.
+The specifications, documentation, sample code, architectural descriptions, and
+descriptions of the Divergence Oscillation Model of Nx Architecture are covered under
+this license.
+
+This license does not claim rights over abstract ideas, structural concepts, or
+algorithms themselves, but governs the use of documents, descriptions, implementations,
+and derivative works that express them.
 
 - Specification review, analysis, and academic research are permitted as non-commercial use.
 - Standardization by organizations (ISO / W3C / IETF, etc.) is permitted as non-commercial use.
 
-However, commercial implementations using the specifications or abstract models,
-or commercial use of Nx Architecture’s implementation (code or internal structure),
-are subject to the commercial-use provisions of this license.
+However, building commercial systems or products by directly using or appropriating
+the code, architectural descriptions, or specifications of this software is subject to
+the commercial-use provisions of Section 3.
 
-[Prohibition of Competing Software and Imitation]
-Any person who views or uses the source code, architectural diagrams, or documentation
-of this software is prohibited from developing a competing software or framework that
-reproduces, adapts, or appropriates substantially identical design structures of this
-software (in whole or in part), and from commercially providing or redistributing such
-software to third parties.
+[Restrictions on Reproduction and Adaptation]
+Those who use the source code, architectural materials, documentation, specifications,
+or sample implementations of this software must not reproduce, modify, adapt, or
+redistribute them beyond the scope permitted by this license.
 
 ----------------------------------------------------------------------
 5. Prohibited Actions
@@ -114,8 +116,11 @@ software to third parties.
 The following actions are prohibited:
 
 - Misrepresenting commercial use as non-commercial or evaluation use
-- Commercial imitation or reproduction of the Divergence Oscillation Model or Nx Architecture
-- Using the name, philosophy, or abstract structure of Nx Architecture as a commercial brand
+- Reproducing, appropriating, or adapting the code, documentation, or architectural
+  descriptions of this software without authorization to provide or redistribute
+  commercial products or services
+- Using the name or brand of Nx Architecture as a commercial product or service name
+  without authorization
 - Creating redistributions or derivatives intended to circumvent license conditions
 
 ----------------------------------------------------------------------
@@ -157,5 +162,6 @@ the structural groups based on BaseDataObj / BaseDataObjMgr) are publicly disclo
 technologies as evidenced by the commit history and publication timestamps of this
 repository.
 
-Due to this public disclosure, it is legally impossible for any third party to obtain
-new patents covering these structures, concepts, or design philosophies.
+This repository and its commit history are published to establish prior art for the
+technologies described herein, and this public record may be referenced as prior art
+with respect to future intellectual property claims.
