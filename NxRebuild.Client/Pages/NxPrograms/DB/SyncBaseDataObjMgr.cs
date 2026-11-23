@@ -230,6 +230,81 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         // ローカル側の整合性が崩れることはありません。次回の同期で解決されます。
         // =======================================================
 
+        protected virtual async Task<NxOperationResult<TKey>> LoadCatalogCore(
+                                                                RecordQuery? query = null) {
+            var url = $"{ApiRoute}/catalog";
+
+            if (query != null) {
+                var queryParams = new List<string>();
+
+                if (query.PageIndex > 0)
+                    queryParams.Add($"pageIndex={query.PageIndex}");
+
+                if (query.PageSize > 0)
+                    queryParams.Add($"pageSize={query.PageSize}");
+
+                if (query.TargetIds is { Count: > 0 }) {
+                    queryParams.Add(
+                        "ids=" +
+                        string.Join(",", query.TargetIds));
+                }
+
+                if (queryParams.Count > 0) {
+                    url += "?" + string.Join("&", queryParams);
+                }
+            }
+
+            var response = await _http.GetAsync(url);
+
+            if (!response.IsSuccessStatusCode) {
+                return new NxOperationResult<TKey> {
+                    OperationErrorCode =
+                        NxOperationErrorCode.HttpError,
+                    Message = $"HTTPエラー: {response.StatusCode}"
+                };
+            }
+
+            List<Dictionary<string, object?>>? rows;
+
+            try {
+                rows =
+                    await response.Content
+                        .ReadFromJsonAsync<
+                            List<Dictionary<string, object?>>>();
+            } catch (Exception ex) {
+                return new NxOperationResult<TKey> {
+                    OperationErrorCode =
+                        NxOperationErrorCode.ResponseParseError,
+                    Message = $"レスポンス解析エラー: {ex.Message}"
+                };
+            }
+
+            if (rows == null) {
+                return new NxOperationResult<TKey> {
+                    Message = "カタログが取得できませんでした"
+                };
+            }
+
+
+            foreach (var row in rows) {
+                var obj = CreateNewDataObj(default);
+
+                obj._SetProperties(row);
+                if (obj.DataType == DataType)
+                    obj.DataType = NxDataType.Catalog;
+                _baseDataObjMgr._dataList.Add(obj);
+                
+            }
+
+            SetParentAll();
+
+            DataChanged?.Invoke();
+
+            return new NxOperationResult<TKey> {
+                Message = "Catalog loaded"
+            };
+        }
+
         /// <summary>
         /// オンデマンド同期から割り込みを要求する。
         /// 進行中のチャンクが完了したタイミングで処理を譲る。
@@ -467,6 +542,8 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                         target.DataID = item.DataId;
                         await target.JsonToTblAsync(item.Data, tran);
 
+                        if(target.DataType != DataType) 
+                            target.DataType = DataType;
 
                         //ここは InsertNewDataItem にしないでください
                         //InsertNewDataItem は内部で SetParent を呼びます。

@@ -45,6 +45,7 @@ namespace NxRebuild.shared {
     public enum NxDataType {
         root = 0,
         Folder = 1,
+        Catalog =512,
 
         //ここから下は使われるシステムに合わせて作成する。必要なければ削除してOK
         Zairyou = 2,

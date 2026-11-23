@@ -28,10 +28,13 @@ namespace NxRebuild.Api.Controllers {
         protected string _tblName;//メタデータのテーブル名
         protected string _nameColName; //テーブルのデータ名カラムのカラム名
         protected string _idColName;//テーブルのIDカラムのカラム名
+        protected string[] _priTblPkColList; //テーブルのPKカラムのカラム名リスト
+        protected string _parentIdCol; //テーブルの親IDカラムのカラム名
         protected string _tenantCodeCol;
         protected string _updateAtCol;
         protected string _lockedAtCol;
         protected string _lockedByCol;
+        protected string _dataTypeCol;
 
         protected Guid _tenantCode;//テナントコード
         protected ApplicationUser _user;
@@ -58,6 +61,9 @@ namespace NxRebuild.Api.Controllers {
             _lockedByCol = meta.LockedByCol;
 
             _idColName = meta.IdCol;
+            _parentIdCol = meta.ParentIDCol;
+            _priTblPkColList = meta.PriTblPKColList;
+            _dataTypeCol = meta.DataTypeCol;
             
         }
 
@@ -111,6 +117,68 @@ namespace NxRebuild.Api.Controllers {
         }
 
         protected abstract IsrvBaseDataObjMgr<T, TKey> CreateMgrInstance(Guid userId);
+
+        [HttpGet("catalog")]
+        public virtual async Task<IActionResult> Catalog(
+                                                [FromQuery] RecordQuery? query = null,
+                                                [FromQuery] string? ids = null) {
+            try {
+                var q = query ?? new RecordQuery();
+
+                if (!string.IsNullOrWhiteSpace(ids)) {
+                    var keyType =
+                        Nullable.GetUnderlyingType(typeof(TKey))
+                        ?? typeof(TKey);
+
+                    foreach (var s in ids.Split(',',
+                             StringSplitOptions.RemoveEmptyEntries |
+                             StringSplitOptions.TrimEntries)) {
+                        object key = keyType == typeof(Guid)
+                            ? Guid.Parse(s)
+                            : Convert.ChangeType(
+                                s,
+                                keyType,
+                                System.Globalization.CultureInfo.InvariantCulture);
+
+                        q.TargetIds.Add(key);
+                    }
+                }
+
+                await CreateObjMgrAsync(q);
+
+                var rows =
+                    _dataObjMgr.DataList
+                    .Select(obj => {
+                        var row = new Dictionary<string, object?>();
+
+                        // PK全部返す
+                        foreach (var pkCol in _priTblPkColList) {
+                            if (((BaseDataObj<TKey>)obj)._rawData.TryGetValue(pkCol, out var pkVal)) {
+                                row[pkCol] = pkVal;
+                            }
+                        }
+
+                        if (!string.IsNullOrWhiteSpace(_parentIdCol))
+                            row[_parentIdCol] = obj.ParentID;
+
+                        if (!string.IsNullOrWhiteSpace(_nameColName))
+                            row[_nameColName] = obj.DataName;
+
+                        if (!string.IsNullOrWhiteSpace(_dataTypeCol))
+                            row[_dataTypeCol] = obj.DataType;
+
+                        return row;
+                    })
+                    .ToList();
+
+                return Ok(rows);
+            } catch (Exception ex) {
+                return BadRequest(new {
+                    Message = ex.Message
+                });
+            }
+        }
+
 
         [HttpGet("sync/{refreshedAt}")]
         public virtual async Task<IActionResult> SyncAll(
