@@ -1,3 +1,15 @@
+
+https://github.com/user-attachments/assets/8878a9d4-3bb7-4669-9973-e382f1094718
+
+> ブラウザ上のMDIウィンドウ間でエンティティをコピーする実動作デモ。UIからCRUDと同期ロジックを分離し、
+> インメモリSQLiteとPostgreSQLを連携させています。非同期(クライアント完結)データを抱える画面間と、
+> 同期（サーバー）データを抱える画面間でUIはその違いを意識せず扱える様子です。
+>
+> Live demo of copying entities across browser MDI windows. CRUD and sync logic are separated
+> from the UI, backed by in-memory SQLite and PostgreSQL. Shows the UI handling
+> both asynchronous (browser-local) and synchronous (server-synced) screen data
+> without caring about the difference.
+
 # Nx‑Rebuild‑New  
 Implementation example of the **Divergence Oscillation Model**  
 based on the Nexus UI–DB Transformation Architecture
