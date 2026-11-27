@@ -673,14 +673,15 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                 }
             }
 
-            // ⑥ 編集モードへ（DataOpen）
-            await _dataObj.DataOpenAsync();
 
             // ⑦ UI ローカルへロック情報を反映
             await _ReWriteLockInfoAsync(null, lockStatus.LockedByUserId, lockStatus.Locked_at);
 
             // ⑧ RawData を DB 正本で上書き
             await _dataObj._UpdatePropertiesFromTblAsync();
+
+            // ⑥ 編集モードへ（DataOpen）
+            await _dataObj.DataOpenAsync();
 
             // ⑨ NxOperationResult として返す（LockStatus を含む）
             return new NxOperationResult<TKey> {
@@ -940,8 +941,42 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
 
         //クライアントローカル内でデータのコピーを行う。
         //コピーするデータを作成する。
-        public virtual object? SendData() {
-            return _dataObj.SendData();
+        //同期前の場合は先ず同期を行う
+        public virtual async Task<object?> SendData() {
+            try {
+                if (DataType == NxDataType.Catalog) {
+                    var url = $"{ApiRoute}/sync/{DateTime.MinValue:O}?ids={DataID}";
+
+                    var response = await Http.GetAsync(url);
+
+                    if (!response.IsSuccessStatusCode)
+                        return null;
+
+                    var syncResult =
+                        await response.Content
+                            .ReadFromJsonAsync<
+                                NxOperationResult<TKey>>();
+
+                    var item =
+                        syncResult?.SyncItems?.FirstOrDefault();
+
+                    if (item == null)
+                        return null;
+
+                    using var tran = DBcon.BeginTransaction();
+
+                    await _dataObj.JsonToTblAsync(
+                        item.Data,
+                        tran);
+
+                    tran.Commit();
+
+                }
+
+                return await _dataObj.SendData();
+            } catch {
+                return null;
+            }
         }
 
     }

@@ -62,7 +62,9 @@ namespace NxRebuild.shared {
                     continue;
 
                 // ★ ZmstEntity ならそのまま返す（BaseDataObj として扱える）
-                if (obj is IZmstEntity && (((IBaseDataObj<int>)obj).DataType == NxDataType.Zairyou))
+                if (obj is IZmstEntity 
+                        && ((((IBaseDataObj<int>)obj).DataType == NxDataType.Zairyou)
+                            || ((IBaseDataObj<int>)obj).DataType == NxDataType.Catalog))
                     return (IZmstEntity)obj;
 
             }
@@ -75,7 +77,8 @@ namespace NxRebuild.shared {
         public override Dictionary<int, IBaseDataObj<int>> BuildGetIndex() {
             var index = new Dictionary<int, IBaseDataObj<int>>();
             foreach (var x in _dataList)
-                if (x is IZmstEntity && x is not CategoryEntity && x.DataType == NxDataType.Zairyou)
+                if (x is IZmstEntity && x is not CategoryEntity
+                    && (x.DataType == NxDataType.Zairyou || x.DataType == NxDataType.Catalog))
                     index.TryAdd(x.DataID, x);
             return index;
         }
@@ -189,6 +192,7 @@ namespace NxRebuild.shared {
                     obj._SetProperties(dict);
 
                     await obj._LoadDetailTablesFromRawAsync();
+
 
                     _dataList.Add(obj);
                 }

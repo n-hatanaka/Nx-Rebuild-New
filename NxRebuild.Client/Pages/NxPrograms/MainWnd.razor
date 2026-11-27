@@ -166,6 +166,8 @@
                 GlobalState.NutPropScheduler = new SyncScheduler<int>(GlobalState.NutProperties.SyncData, 30);
                 GlobalState.NutPropScheduler.Start();
 
+                
+                var sw = Stopwatch.StartNew();
 
                 initMessage = "材料マスタ初期化中...";
                 StateHasChanged();
@@ -179,6 +181,9 @@
                                 new SyncScheduler<int>(
                                     () => ((ISyncZmstEntityMgr)GlobalState.ZmstEntityMgr).SyncData(),
                                     5);
+
+                await ((ISyncZmstEntityMgr)GlobalState.ZmstEntityMgr).LoadCatalog();
+
 
                 initMessage = "料理ライブラリ初期化中...";
                 StateHasChanged();                
@@ -194,6 +199,10 @@
                         () => ((ISyncRyLibEntityMgr)GlobalState.RyLibEntityMgr).SyncData(),
                         30);
 
+                await ((ISyncRyLibEntityMgr)GlobalState.RyLibEntityMgr).LoadCatalog();
+
+                Console.WriteLine(
+                    $"StandBy={sw.ElapsedMilliseconds}ms");
                 initMessage = "初期化完了！";
                 isInitializing = false;
                 StateHasChanged();

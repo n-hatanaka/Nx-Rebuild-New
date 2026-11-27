@@ -81,7 +81,8 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
                 if (zm != null) {
                     foreach (var row in RowMgr.DataList.OfType<RyLibRowEntity>()) {
                         // row.LocalCode が未取得ならリストに積む（重複は除外）
-                        if (row.LocalCode > 0 && zm.Get(row.LocalCode) == null && !missingIds.Contains(row.LocalCode)) {
+                        if (zm.Get(row.LocalCode).DataType == NxDataType.Catalog
+                                && !missingIds.Contains(row.LocalCode)) {
                             missingIds.Add(row.LocalCode);
                         }
                     }
@@ -169,7 +170,8 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
 
             ZairyouOptions = zm.DataList
                 .OfType<IZmstEntity>()
-                .Where(z => z is not CategoryEntity && z.DataType == NxDataType.Zairyou)
+                .Where(z => z is not CategoryEntity
+                        && (z.DataType == NxDataType.Zairyou || z.DataType == NxDataType.Catalog))
                 .Select(z => new ZairyouOption(z.DataID, z.ZCode, $"{z.ZCode} {z.DataName}"))
                 .OrderBy(o => o.Code, StringComparer.Ordinal)
                 .ToList();
@@ -230,9 +232,13 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.RyLib {
                 .ToList();
         }
 
-        protected void OnZairyouChanged(MyDataObj<int> obj, object? value) {
+        protected async Task OnZairyouChangedAsync(MyDataObj<int> obj, object? value) {
             int.TryParse(value?.ToString(), out var localCode);
             var opt = ZairyouOptions.FirstOrDefault(o => o.LocalCode == localCode);
+            var zobj = GlobalState.ZmstEntityMgr.Get(opt.LocalCode);
+
+            if (zobj?.DataType == NxDataType.Catalog)
+                await ((ISyncZmstEntityMgr)GlobalState.ZmstEntityMgr).SyncOnDemandAsync([zobj.DataID]);
 
             obj.ExtraData["LocalCode"] = localCode;
             obj.ExtraData["Z_code"] = opt?.Code ?? "";

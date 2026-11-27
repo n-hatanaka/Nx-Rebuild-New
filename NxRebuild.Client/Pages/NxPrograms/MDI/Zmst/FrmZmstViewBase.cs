@@ -125,7 +125,8 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
             var item = GridDataItems.FirstOrDefault(x => x.IsSelected);
             if (item == null) return;
 
-            if (item.ItemData.DataType != NxDataType.Zairyou)
+            if (!(item.ItemData.DataType == NxDataType.Zairyou 
+                || item.ItemData.DataType == NxDataType.Catalog))
                 return;
 
             var baseObj = (IZmstEntity)item.ItemData;

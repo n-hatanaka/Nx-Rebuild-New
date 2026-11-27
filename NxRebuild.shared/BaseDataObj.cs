@@ -116,7 +116,7 @@ namespace NxRebuild.shared {
 
         Task<NxOperationResult<TKey>> ReceiveExecAsync(object ReceiveData);
 
-        object? SendData();
+        Task<object?> SendData();
 
         void _SetProperties(IDictionary<string, object?> record);
 
@@ -2010,7 +2010,7 @@ namespace NxRebuild.shared {
 
         //クライアントローカル内でデータのコピーを行う。
         //コピーするデータを作成する。
-        public virtual object? SendData() {
+        public virtual async Task<object?> SendData() {
             return null;
         }
 

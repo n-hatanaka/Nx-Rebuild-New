@@ -127,7 +127,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Zmst {
                 : (IZmstEntity)zm.Get(LocalCode) ?? throw new Exception($"LocalCode={LocalCode} の Zmst がロードされていません。");
 
 
-            await Entity.DataOpenAsync();
+            //await Entity.DataOpenAsync();
 
             // ★ DeepCopy を Entity にやらせる
             Entity.CreateWorkingMemory(WorkingRaw);

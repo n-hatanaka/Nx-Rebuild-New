@@ -39,7 +39,11 @@ namespace NxRebuild.Api.Controllers {
             return ((ZmstEntity)obj).GenerateDataID(tran);
         }
 
-
+        //カタログに材料コードを追加する
+        protected override void AddCatalogColumns(IBaseDataObj<int> obj, Dictionary<string, object?> row) {
+            var zmst = (ZmstEntity)obj;
+            row["Z_code"] = zmst.ZCode;
+        }
 
     }
 }

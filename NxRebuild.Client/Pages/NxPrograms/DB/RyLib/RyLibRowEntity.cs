@@ -144,7 +144,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB.RyLib {
             }
         }
 
-        public override object SendData() {
+        public override async Task<object?> SendData() {
             return $@"
                             src.""sort_no"",
                             src.""Z_code"",

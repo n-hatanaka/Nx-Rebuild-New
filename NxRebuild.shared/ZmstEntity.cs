@@ -169,7 +169,7 @@ namespace NxRebuild.shared {
             
             if (!result)
                 return result;
-
+            DataType = NxDataType.Zairyou;
             await _LoadDetailTablesFromRawAsync();
             return result;
         }
@@ -231,7 +231,7 @@ namespace NxRebuild.shared {
         // ---------------------------------------------------------
         // 料理明細行(RyLibRowEntity)へドロップされた際にデータを渡す
         // ---------------------------------------------------------
-        public override object SendData() {
+        public override async Task<object?> SendData() {
             return $@"
                             src.""sort_no"",
                             src.""Z_code"",

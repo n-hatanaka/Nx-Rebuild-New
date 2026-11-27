@@ -118,6 +118,10 @@ namespace NxRebuild.Api.Controllers {
 
         protected abstract IsrvBaseDataObjMgr<T, TKey> CreateMgrInstance(Guid userId);
 
+        //同期完了までにクライアントにデータの存在を知らせるためのカタログ情報を返す
+        //カタログに含める情報はPK、データ名、親ID、データタイプの最小情報の軽いプリロードで
+        //クライアントをスタンバイ状態に出来る。
+        // 継承先でカタログに追加の列を返したい場合は AddCatalogColumns をオーバーライドする
         [HttpGet("catalog")]
         public virtual async Task<IActionResult> Catalog(
                                                 [FromQuery] RecordQuery? query = null,
@@ -146,30 +150,40 @@ namespace NxRebuild.Api.Controllers {
 
                 await CreateObjMgrAsync(q);
 
-                var rows =
-                    _dataObjMgr.DataList
-                    .Select(obj => {
-                        var row = new Dictionary<string, object?>();
+                var rows = new List<Dictionary<string, object?>>();
 
-                        // PK全部返す
-                        foreach (var pkCol in _priTblPkColList) {
-                            if (((BaseDataObj<TKey>)obj)._rawData.TryGetValue(pkCol, out var pkVal)) {
-                                row[pkCol] = pkVal;
-                            }
+                foreach (var obj in _dataObjMgr.DataList) {
+                    var row = new Dictionary<string, object?>();
+
+                    foreach (var pkCol in _priTblPkColList) {
+                        if (((BaseDataObj<TKey>)obj)._rawData
+                                .TryGetValue(pkCol, out var pkVal)) {
+                            row[pkCol] = pkVal;
                         }
+                    }
 
-                        if (!string.IsNullOrWhiteSpace(_parentIdCol))
-                            row[_parentIdCol] = obj.ParentID;
+                    if (!string.IsNullOrWhiteSpace(_parentIdCol))
+                        row[_parentIdCol] = obj.ParentID;
 
-                        if (!string.IsNullOrWhiteSpace(_nameColName))
-                            row[_nameColName] = obj.DataName;
+                    if (!string.IsNullOrWhiteSpace(_nameColName))
+                        row[_nameColName] = obj.DataName;
 
-                        if (!string.IsNullOrWhiteSpace(_dataTypeCol))
-                            row[_dataTypeCol] = obj.DataType;
+                    if (!string.IsNullOrWhiteSpace(_dataTypeCol))
+                        row[_dataTypeCol] = obj.DataType;
 
-                        return row;
-                    })
-                    .ToList();
+                    if (!string.IsNullOrWhiteSpace(_lockedAtCol))
+                        row[_lockedAtCol] = obj.LockedAt;
+
+                    if (!string.IsNullOrWhiteSpace(_updateAtCol))
+                        row[_updateAtCol] = obj.Update_at;
+
+
+
+                    // 追加のカタログ列を継承先で返す場合は AddCatalogColumns をオーバーライドする
+                    AddCatalogColumns(obj, row);
+
+                    rows.Add(row);
+                }
 
                 return Ok(rows);
             } catch (Exception ex) {
@@ -177,6 +191,15 @@ namespace NxRebuild.Api.Controllers {
                     Message = ex.Message
                 });
             }
+        }
+
+        // =======================================================
+        // 継承先でカタログに追加の列を返したい場合はこのメソッド
+        // をオーバーライドする
+        // ======================================================
+        protected virtual void AddCatalogColumns(
+                                    IBaseDataObj<TKey> obj,
+                                    Dictionary<string, object?> row) {
         }
 
 

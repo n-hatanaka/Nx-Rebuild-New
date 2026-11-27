@@ -3,12 +3,14 @@ using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Data.Sqlite;
 using Npgsql;
 using NxRebuild.Client.Pages.Auth;
+using NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View;
 using NxRebuild.Client.Services;
 using NxRebuild.shared;
 using System.Data;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using static MudBlazor.CategoryTypes;
 
 namespace NxRebuild.Client.Pages.NxPrograms.DB {
     // 分割同期処理の結果
@@ -33,6 +35,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                                                             CancellationToken cancellationToken = default);
         Task<NxOperationResult<TKey>> SyncData();
         Task<NxOperationResult<TKey>> SyncOnDemandAsync(IEnumerable<TKey> targetIds);
+        Task<NxOperationResult<TKey>> LoadCatalog(RecordQuery? query = null);
     }
 
     public interface INotifyDataChanged {
@@ -228,9 +231,18 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         // 通信失敗時はスナップショット更新が進まないだけでローカル正史は壊れません。
         // そのためネットワーク例外・タイムアウト・APIエラーが発生しても、
         // ローカル側の整合性が崩れることはありません。次回の同期で解決されます。
+        // 
+        // 同期を担うメソッドは
+        // 1. SyncData() : 従来の引数なしの同期（既存呼び出しを維持するため）
+        // 2. SyncData(RecordQuery) : RecordQuery を受け取れるようにした新しい同期（オーバーロード版）
+        // 3. SyncDataCore(RecordQuery) : 同期要求処理の核でクエリをシリアライズ、あるいは URL/クエリパラメータとしてサーバーに投げる
+        // 4. SyncOnDemandAsync : オンデマンド同期
+        // 5. SyncPageAsync : ページ単位の同期（バックグラウンドで一部づつ同期をする場合に使用）
+        // 6. SyncAllChunksAsync：全データのチャンク単位の同期（バックグラウンド同期向け
+        // 7. LoadCatalog : 同期完了までにクライアントにデータの存在を知らせるためのプリロードデータとしてのカタログ情報を返す 
         // =======================================================
 
-        protected virtual async Task<NxOperationResult<TKey>> LoadCatalogCore(
+        public virtual async Task<NxOperationResult<TKey>> LoadCatalog(
                                                                 RecordQuery? query = null) {
             var url = $"{ApiRoute}/catalog";
 
@@ -290,6 +302,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                 var obj = CreateNewDataObj(default);
 
                 obj._SetProperties(row);
+                //DataType が DataType と同じ(Folderではない)場合は、NxDataType.Catalog に上書きする
                 if (obj.DataType == DataType)
                     obj.DataType = NxDataType.Catalog;
                 _baseDataObjMgr._dataList.Add(obj);
@@ -476,6 +489,8 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
         // 3. Core 側の処理でクエリをシリアライズ、あるいは URL/クエリパラメータとしてサーバーに投げる
         protected virtual async Task<NxOperationResult<TKey>> SyncDataCore(RecordQuery? query = null) {
             DateTime refreshed_at = Refreshed_at;
+
+            //同期条件がある場合は全ての条件を満たすデータを取得するため、Refreshed_at は最小値を設定することで無視する
             if (query != null)
                 refreshed_at = DateTime.MinValue;
 
@@ -569,7 +584,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                         await _baseDataObjMgr._DeleteDataObjFromListAsync(target.DataID, false, tran);
                     }
                     // UIへ処理を譲る（ WASM では Task.Yield だと描画されないことがある）
-                    if (++n % 50 == 0) await Task.Delay(1);
+                    await Task.Delay(1);
                 }
                 tran.Commit();
             } catch (Exception ex) {
@@ -738,7 +753,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.DB {
                 // 送信データ取得
                 // =====================================
 
-                var sendData = sourceObj.SendData();
+                var sendData = await sourceObj.SendData();
 
                 // =====================================
                 // 受信処理

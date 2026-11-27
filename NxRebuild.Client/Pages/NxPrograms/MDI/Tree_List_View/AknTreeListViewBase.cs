@@ -390,7 +390,7 @@ namespace NxRebuild.Client.Pages.NxPrograms.MDI.Tree_List_View {
 
             // 子アイテムを抽出（正本から）
             var children = DataMgr.DataList
-                .Where(x => x.DataType == NxDataType.Zairyou &&
+                .Where(x => x.DataType != NxDataType.Folder &&
                             EqualityComparer<TKey>.Default.Equals(x.ParentID, parentId))
                 .ToList();
 

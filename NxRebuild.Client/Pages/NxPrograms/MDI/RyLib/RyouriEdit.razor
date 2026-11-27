@@ -168,11 +168,11 @@ else
                             <div class="ry-list-cell cell-material">
                                 <select class="form-select form-select-sm"
                                         value="@IntOf(vm.ExtraData, "LocalCode")"
-                                        @onchange="e => OnZairyouChanged(vm, e.Value)">
+                                        @onchange="async e => await OnZairyouChangedAsync(vm, e.Value)">
                                     <option value="0">（材料を選択）</option>
                                     @foreach (var z in ZairyouOptions)
                                     {
-                                        <option value="@z.LocalCode">@z.Label</option>
+                                        <option @key="z.LocalCode" value="@z.LocalCode">@z.Label</option>
                                     }
                                 </select>
                             </div>
